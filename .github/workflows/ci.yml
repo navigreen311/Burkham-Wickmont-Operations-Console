@@ -1,0 +1,130 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    types: [opened, synchronize, reopened, edited]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/bwc_console_ci?schema=public
+  # Test-only key. Real environments load this from a secret manager; a signature is only
+  # as meaningful as the custody of its key, and a key in a workflow file has none.
+  LEDGER_SIGNING_KEY: ci-only-signing-key-not-used-anywhere-else-0123456789
+  INTEGRATION_MODE: stub
+
+jobs:
+  lint-and-types:
+    name: Lint & Type Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm db:generate
+      - name: Lint
+        run: pnpm lint
+      - name: Type check
+        run: pnpm exec tsc -b apps/api
+      - name: Format check
+        run: pnpm format:check
+
+  test:
+    name: Tests & Invariants
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: bwc_console_ci
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm db:generate
+      - name: Apply migrations
+        run: pnpm db:deploy
+      - name: Unit, integration and invariant tests
+        run: pnpm test
+
+  invariants:
+    name: Invariants (named check)
+    runs-on: ubuntu-latest
+    # Runs the invariant suite on its own so a failure names the discipline that broke
+    # rather than appearing as one red test among many. Branch protection requires a fixed
+    # set of named checks, so this exists as its own job deliberately.
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: bwc_console_ci
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm db:generate
+      - run: pnpm db:deploy
+      - name: Invariants only
+        run: pnpm test:invariants
+
+  secret-hygiene:
+    name: Secret Hygiene
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: No secret-shaped or client-data files tracked
+        run: |
+          set -euo pipefail
+          if git ls-files | grep -E '(^|/)\.env$|\.env\.(local|production)$|\.pem$|\.key$'; then
+            echo "::error::A secret-shaped file is tracked."
+            exit 1
+          fi
+          echo "No secret-shaped files tracked."
+      - name: No PII-shaped literals in source
+        run: |
+          set -euo pipefail
+          # SSN-shaped literals outside tests. Tests use synthetic values on purpose, to
+          # prove redaction works, so they are excluded rather than the pattern weakened.
+          if git grep -nE '\b[0-9]{3}-[0-9]{2}-[0-9]{4}\b' -- 'packages' 'apps' | grep -v '\.test\.ts'; then
+            echo "::error::An SSN-shaped literal appears in source."
+            exit 1
+          fi
+          echo "No PII-shaped literals in source."

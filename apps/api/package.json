@@ -1,0 +1,36 @@
+{
+  "name": "@bwc/api",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Express host. Wires the middleware chain and serializes Outcome. No business logic.",
+  "type": "module",
+  "main": "./dist/server.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "dev": "tsx watch src/server.ts",
+    "start": "node dist/server.js"
+  },
+  "dependencies": {
+    "@bwc/clients": "workspace:*",
+    "@bwc/consent": "workspace:*",
+    "@bwc/core": "workspace:*",
+    "@bwc/db": "workspace:*",
+    "@bwc/firewall": "workspace:*",
+    "@bwc/identity": "workspace:*",
+    "@bwc/integration": "workspace:*",
+    "@bwc/ledger": "workspace:*",
+    "@bwc/middleware": "workspace:*",
+    "@bwc/placement": "workspace:*",
+    "@bwc/tenancy": "workspace:*",
+    "dotenv": "^16.4.7",
+    "express": "^5.1.0",
+    "helmet": "^8.1.0"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.2",
+    "@types/node": "^22.14.0",
+    "tsx": "^4.19.3",
+    "typescript": "^5.8.3"
+  }
+}
