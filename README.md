@@ -1,0 +1,134 @@
+# Burkham Wickmont Operations Console
+
+The dedicated operating environment for the Burkham Wickmont Village — the surface through which
+an AI agent workforce delivers a private-CFO-style capital operations service at national scale,
+with human oversight concentrated at high-leverage decision points.
+
+**This is a service-company platform, not a customer-facing SaaS product.** Clients experience the
+Burkham Wickmont brand, deliverables, and outcomes. They touch the Console only through the
+narrowly scoped Client Portal (module 11.10), which is a secure delivery and approval surface.
+
+## Status
+
+**Phase: repository setup.** AI development context and commands are in place. No application code
+scaffolded yet — stack selection pending.
+
+## Scope
+
+58 modules across 11 functional categories. 46 build in V1.
+
+| # | Category | Modules | V1 |
+|---|---|---|---|
+| 1 | Client & Engagement | 5 | 5 |
+| 2 | Operations | 6 | 6 |
+| 3 | Document & Deliverable Management | 4 | 4 |
+| 4 | Communications Hub | 5 | 5 |
+| 5 | Capital Operations & Intelligence | 6 | 4 |
+| 6 | Risk & Defense | 5 | 3 |
+| 7 | Compliance & Governance | 5 | 4 |
+| 8 | Partner & Referrer Portal | 4 | 2 |
+| 9 | KPI Dashboards & Reporting | 4 | 2 |
+| 10 | Inter-Venture Commerce | 2 | 1 |
+| 11 | Technical Platform | 12 | 10 |
+| | **Total** | **58** | **46** |
+
+V1 targets 150–180 days. V1.5 adds the remaining 12 modules. V2 completes the 50-state Regulatory
+Engine, cross-portfolio integration, and native statement parsing.
+
+## Canonical documents
+
+| Document | What it holds |
+|---|---|
+| [`docs/reference/blueprint-v2.md`](docs/reference/blueprint-v2.md) | Module-by-module specification, dependencies, orchestration and data-flow patterns, V1/V1.5/V2 phasing |
+| [`docs/reference/specifications-v2.md`](docs/reference/specifications-v2.md) | Cross-cutting architecture, security posture, governance, data model, success criteria |
+| [`CLAUDE.md`](CLAUDE.md) | Always-true development context: the nine principles, five locked decisions, hard invariants, middleware order, delivery recipe |
+
+Read the reference documents before designing any module. `CLAUDE.md` is the distilled always-on
+context, not a substitute for them.
+
+## The five locked decisions
+
+| | Decision |
+|---|---|
+| **A** | Statement parsing — **Plaid** (Link + Assets) is the V1 data source; native parsing is V2 |
+| **B** | Bureau data — B2B aggregator for business credit + separate personal provider, **per-pull client authorization** |
+| **C** | Workflow execution — the **Console's Workflow Engine** is the runner; CapitalForge's workflow store is legacy and never read |
+| **D** | Credit unions — V1 placement is **Navy Federal only**; provenance discipline is portfolio-wide |
+| **E** | Compliance state — **categorical**, never numeric: `Pass` / `Pass with Findings` / `Needs Review` / `Fail` |
+
+## Architectural position
+
+```
+Gardner (parent-level governance, five ventures)
+    └── Burkham Wickmont (customer-facing operating brand)
+          └── Burkham Wickmont Village (10 departments, AI agent workforce)
+                └── Burkham Wickmont Operations Console  ← this repository
+                      └── Forge platforms (CapitalForge, FunnelForge, SelfPublisherForge,
+                          AnimaForge, VideoEditForge, ChamberForge)
+                            └── Village OS framework
+```
+
+The Console **calls** the Forge platforms as services; it does not embed them. CapitalForge lives
+at [`navigreen311/Capitalforge`](https://github.com/navigreen311/Capitalforge) and is checked out
+locally at `../capitalforge`.
+
+## What the Console owns vs. calls
+
+**Owns:** all workflow execution · per-application authorization · per-pull bureau authorization ·
+Plaid connection authorization · compliance categorical state · provenance metadata on
+recommendations · multi-tenant isolation · cross-portfolio handoff to Collingswood.
+
+**Calls:** capital operations → CapitalForge · voice → VoiceForge · vision/audio → VisionAudioForge ·
+marketing automation → FunnelForge · long-form content → SelfPublisherForge · animation → AnimaForge ·
+video → VideoEditForge · UHNW handoff → ChamberForge · bank data → Plaid · business bureau → Nav or
+equivalent · personal credit → Array or equivalent.
+
+## AI development workflow
+
+This repository is set up for AI-assisted development. See [`CLAUDE.md`](CLAUDE.md) for the full
+contract.
+
+| Command | Purpose |
+|---|---|
+| `/impl-feature` | Plan and implement a complete feature end-to-end in its own branch |
+| `/test-suite` | Create or extend unit / integration / e2e coverage and wire into CI |
+| `/deploy-prod` | Prepare production deployment assets and a repeatable pipeline |
+| `/code-review` | Example-driven review across architecture, correctness, security, maintainability |
+| `/api-test` | Generate API contract and integration tests from a spec or live endpoints |
+
+Branch convention: `ai-feature/<slug>`, prefixed with the blueprint module number where one
+applies — `ai-feature/m11-3-event-ledger`.
+
+## Getting started
+
+```bash
+git clone https://github.com/navigreen311/Burkham-Wickmont-Operations-Console.git
+cd Burkham-Wickmont-Operations-Console
+```
+
+Application scaffolding, install steps, and run/test commands land here once the stack is selected.
+
+## Local environment
+
+Available on the development machine and expected by the intended stack:
+
+- Node 24 · pnpm 9 · npm 11
+- PostgreSQL 17 (native service `postgresql-x64-17`)
+- Memurai (Redis-compatible, native service `Memurai`)
+- Python 3.14
+- GitHub CLI 2.92, authenticated as `navigreen311`
+
+## Security notice
+
+This system handles the most sensitive data class in the Green Companies portfolio: SSNs, EINs,
+full bank statements via Plaid, tax returns, government IDs, and personal and business credit
+reports for clients across all 50 states.
+
+- Never commit `.env`, credentials, or API keys.
+- Never log PII. SSN, EIN, bank account numbers, and tax IDs are field-level encrypted.
+- Vendor integrations require Argus security review and a signed DPA before activation.
+- No state comes online without documented counsel review of its Regulatory Engine module.
+
+## License
+
+Private and proprietary. All rights reserved.

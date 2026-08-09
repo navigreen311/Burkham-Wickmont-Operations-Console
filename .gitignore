@@ -1,0 +1,53 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+__pycache__/
+.venv/
+venv/
+
+# Build output
+dist/
+build/
+.next/
+.next-build/
+out/
+*.tsbuildinfo
+
+# Environment and secrets — never commit
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+secrets/
+
+# Client data — never commit. This repository handles SSN, EIN, bank, and credit data.
+uploads/
+/data/
+*.csv
+*.ofx
+*.qfx
+plaid-*.json
+bureau-*.json
+!docs/**/*.csv
+
+# Test and coverage output
+coverage/
+test-results/
+playwright-report/
+.playwright-failures.jsonl
+
+# Logs
+*.log
+logs/
+
+# Editor and OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Local Claude Code settings (project settings ARE committed)
+.claude/settings.local.json
