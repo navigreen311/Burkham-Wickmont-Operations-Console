@@ -182,6 +182,11 @@ At the end of substantial outputs (architectures, dependency versions, cloud ser
 - Follow standard project structures and naming conventions for token efficiency.
 - Match the sibling platform where it does not conflict: `../capitalforge` is the closest
   exemplar in this portfolio for stack idiom, test layout, and script naming.
+- **Keep `.ps1` files ASCII-only.** Windows PowerShell 5.1 reads a BOM-less script as ANSI, so a
+  UTF-8 em dash decodes into bytes ending in a curly quote — which PowerShell accepts as a string
+  delimiter. The result is a parse error reported dozens of lines away from the character that
+  caused it (`scripts/setup.ps1` hit exactly this on first run). Use `-` not `—` in scripts.
+  Prose files are unaffected.
 
 ## Security & Secrets
 
