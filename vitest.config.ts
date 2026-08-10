@@ -18,6 +18,9 @@ const WORKSPACE_PACKAGES = [
   'placement',
   'notifications',
   'workflow',
+  'claims',
+  'scanner',
+  'deliverables',
 ] as const;
 
 export default defineConfig({

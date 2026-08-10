@@ -16,7 +16,7 @@ generator client {
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
-  schemas  = ["tenancy", "identity", "ledger", "clients", "consent", "firewall", "workflow", "notifications"]
+  schemas  = ["tenancy", "identity", "ledger", "clients", "consent", "firewall", "workflow", "notifications", "deliverables", "claims"]
 }
 
 // ---------------------------------------------------------------------------
@@ -433,6 +433,134 @@ enum NotificationStatus {
   cancelled
 
   @@schema("notifications")
+}
+
+// ---------------------------------------------------------------------------
+// 7.4 Marketing Claim Library - version-controlled approved and banned language
+// ---------------------------------------------------------------------------
+
+enum ClaimDisposition {
+  approved
+  banned
+  requires_disclaimer
+
+  @@schema("claims")
+}
+
+model MarketingClaim {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+
+  /// The literal phrase, matched on word boundaries rather than as a substring.
+  phrase      String
+  disposition ClaimDisposition
+
+  /// Why. Blueprint 7.4 requires "public documentation of ban rationale for internal training" -
+  /// a banned phrase without a reason cannot be taught, argued with, or safely revisited.
+  rationale String
+
+  /// `*` means every jurisdiction; a state code restricts it to that state.
+  ///
+  /// A sentinel rather than NULL, deliberately: Postgres treats NULL as distinct from NULL, so a
+  /// unique constraint containing a nullable column would permit two "global" entries for the
+  /// same phrase - exactly the case this constraint exists to prevent.
+  jurisdiction String @default("*")
+
+  /// Disclosure text a requires_disclaimer phrase obliges.
+  requiredDisclosure String?
+
+  /// Compliance Review Board approval, per blueprint 7.4's weekly cadence.
+  approvedBy String
+  version    Int     @default(1)
+  active     Boolean @default(true)
+
+  createdAt    DateTime  @default(now())
+  deprecatedAt DateTime?
+
+  @@unique([tenantId, phrase, jurisdiction])
+  @@index([tenantId, disposition, active])
+  @@map("marketing_claims")
+  @@schema("claims")
+}
+
+// ---------------------------------------------------------------------------
+// 3.1 Document & Deliverable Management / 3.4 Deliverable Approval Workflow
+// ---------------------------------------------------------------------------
+
+/// draft -> qa_checked -> scanned -> awaiting_human -> approved -> delivered
+/// with blocked and rejected as terminal off-ramps. Ordering is enforced by this
+/// state, not by the order a caller happens to invoke things in.
+enum DeliverableStatus {
+  draft
+  qa_checked
+  scanned
+  blocked
+  awaiting_human
+  approved
+  rejected
+  delivered
+
+  @@schema("deliverables")
+}
+
+model DeliverableTemplate {
+  id      String @id @default(uuid()) @db.Uuid
+  key     String
+  version Int
+
+  title       String
+  description String
+
+  /// True when a human must review before delivery regardless of scan result -
+  /// anything carrying funding recommendations or compliance state.
+  requiresHumanReview Boolean @default(true)
+
+  createdAt DateTime @default(now())
+
+  @@unique([key, version])
+  @@map("deliverable_templates")
+  @@schema("deliverables")
+}
+
+model Deliverable {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  clientId String @db.Uuid
+
+  templateKey     String
+  templateVersion Int
+
+  /// Monotonic per (client, template). A regenerated deliverable is a new version, never an
+  /// edit - the previous one may already have been sent.
+  version Int
+
+  status DeliverableStatus @default(draft)
+
+  /// The structured content document. This, not the rendered bytes, is the audit artifact.
+  content Json
+
+  /// sha256 over the canonical JSON of `content`. Answers "was this what we sent?" without
+  /// retaining the rendering. A font substitution or library upgrade changes the bytes and must
+  /// not change the evidence.
+  contentHash String
+
+  scanResult Json?
+  scannedAt  DateTime?
+
+  reviewedBy String?
+  reviewedAt DateTime?
+  rejectionReason String?
+
+  deliveredAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([clientId, templateKey, version])
+  @@index([tenantId, status])
+  @@index([tenantId, clientId])
+  @@map("deliverables")
+  @@schema("deliverables")
 }
 
 model TaskNotification {

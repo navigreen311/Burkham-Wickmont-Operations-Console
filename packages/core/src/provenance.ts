@@ -10,11 +10,27 @@
  * is a rejected write - see `requireProvenance`.
  */
 
+/**
+ * Timestamps in provenance are **ISO 8601 strings, not `Date`**.
+ *
+ * Provenance crosses a serialization boundary constantly: it is embedded in deliverable content
+ * stored as JSON, and in ledger payloads stored as JSONB. A `Date` survives none of those round
+ * trips - it comes back as a string, and any code calling `.toISOString()` on it throws. That
+ * defect is invisible in a unit test that never persists, and fatal the first time a stored
+ * deliverable is re-rendered.
+ *
+ * A type that crosses a JSON boundary should be JSON-native. `IsoTimestamp` is the honest shape.
+ */
+export type IsoTimestamp = string;
+
+export const toIso = (value: Date | string): IsoTimestamp =>
+  typeof value === 'string' ? value : value.toISOString();
+
 /** A rule read from a named source that someone verified on a date. */
 export interface IssuerRuleProvenance {
   readonly tag: 'issuer_rule';
   readonly sourceUrl: string;
-  readonly lastVerified: Date;
+  readonly lastVerified: IsoTimestamp;
   readonly verifiedBy: string;
 }
 
@@ -32,7 +48,7 @@ export interface UnresearchedDefaultProvenance {
 export interface VendorFeedProvenance {
   readonly tag: 'vendor_feed';
   readonly vendor: 'plaid' | 'business_bureau' | 'personal_credit' | 'capitalforge';
-  readonly retrievedAt: Date;
+  readonly retrievedAt: IsoTimestamp;
   readonly consentReference: string;
 }
 
@@ -94,11 +110,11 @@ export function requireProvenance<T extends object>(
 export const describeProvenance = (provenance: Provenance): string => {
   switch (provenance.tag) {
     case 'issuer_rule':
-      return `Issuer rule, verified ${provenance.lastVerified.toISOString().slice(0, 10)} by ${provenance.verifiedBy}`;
+      return `Issuer rule, verified ${provenance.lastVerified.slice(0, 10)} by ${provenance.verifiedBy}`;
     case 'unresearched_default':
       return `Unresearched default - not verified against the issuer. ${provenance.rationale}`;
     case 'vendor_feed':
-      return `${provenance.vendor} feed, retrieved ${provenance.retrievedAt.toISOString().slice(0, 10)}`;
+      return `${provenance.vendor} feed, retrieved ${provenance.retrievedAt.slice(0, 10)}`;
   }
 };
 

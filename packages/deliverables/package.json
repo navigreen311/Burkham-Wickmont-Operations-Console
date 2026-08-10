@@ -1,0 +1,32 @@
+{
+  "name": "@bwc/deliverables",
+  "version": "0.1.0",
+  "private": true,
+  "description": "3.1 Document and Deliverable Management + 3.4 Deliverable Approval Workflow.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@bwc/core": "workspace:*",
+    "@bwc/db": "workspace:*",
+    "@bwc/ledger": "workspace:*",
+    "@bwc/clients": "workspace:*",
+    "@bwc/notifications": "workspace:*",
+    "@bwc/scanner": "workspace:*",
+    "pdfkit": "^0.15.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.8.3",
+    "@types/pdfkit": "^0.13.4"
+  }
+}

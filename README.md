@@ -18,11 +18,10 @@ narrowly scoped Client Portal (module 11.10), which is a secure delivery and app
 | [Workflow Engine core](docs/m2-2-workflow-engine.md)            | Playbooks, instances, durable Postgres task queue, retry/backoff/dead-letter, wait states, decision predicates, SLA escalation                                                                                      |
 | [Scheduler, listener, worker](docs/m2-2-scheduler-listener.md)  | Cron schedules with timezones, Ledger-triggered workflows, event-wait resolution, and a worker process that runs it all                                                                                             |
 
-**108 tests green** (lint, types, format clean). Module 2.2 is complete — all seven components of
-Specification v2 §5.3.
+**165 tests green** (lint, types, format clean). Module 2.2 complete (all seven §5.3 components);
+Category 3 slice A complete (3.1, 3.4, plus 4.2 and 7.4).
 
-Next: Category 3 (Document & Deliverable Management) or Category 1's remaining Client &
-Engagement modules.
+Next: 3.2 Secure Document Vault, then 3.3 Document Intelligence Pipeline.
 
 ## Scope
 
