@@ -138,6 +138,28 @@ importers:
         specifier: ^5.8.3
         version: 5.9.3
 
+  packages/billing:
+    dependencies:
+      '@bwc/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+      '@bwc/core':
+        specifier: workspace:*
+        version: link:../core
+      '@bwc/db':
+        specifier: workspace:*
+        version: link:../db
+      '@bwc/identity':
+        specifier: workspace:*
+        version: link:../identity
+      '@bwc/ledger':
+        specifier: workspace:*
+        version: link:../ledger
+    devDependencies:
+      typescript:
+        specifier: ^5.8.3
+        version: 5.9.3
+
   packages/capital:
     dependencies:
       '@bwc/clients':
