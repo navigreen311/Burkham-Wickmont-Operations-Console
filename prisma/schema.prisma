@@ -16,7 +16,7 @@ generator client {
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
-  schemas  = ["tenancy", "identity", "ledger", "clients", "consent", "firewall", "workflow", "notifications", "deliverables", "claims", "vault", "intelligence", "lenders", "governance", "graph", "regulatory", "contracts", "billing", "sales", "evidence"]
+  schemas  = ["tenancy", "identity", "ledger", "clients", "consent", "firewall", "workflow", "notifications", "deliverables", "claims", "vault", "intelligence", "lenders", "governance", "graph", "regulatory", "contracts", "billing", "sales", "evidence", "comms"]
 }
 
 // ---------------------------------------------------------------------------
@@ -2259,4 +2259,143 @@ model EvidenceExport {
   @@index([tenantId, clientId, exportedAt])
   @@map("evidence_exports")
   @@schema("evidence")
+}
+
+// ---------------------------------------------------------------------------
+// 4.1 Communications Hub, with 4.4 Client Notification Preference Center
+//
+// The two are one slice because the preference record is the GATE, not a
+// convenience. Taking permission as a parameter would let a caller assert consent
+// the client never gave, which is the failure TCPA exists about.
+//
+// Two kinds of "no" live here and are deliberately not the same field: a
+// PREFERENCE (I would rather have email) can be overridden by urgency, and a
+// PROHIBITION (do not call me; not after 9pm) cannot be overridden by anything.
+// ---------------------------------------------------------------------------
+
+enum CommsChannel {
+  email
+  sms
+  voice
+
+  @@schema("comms")
+}
+
+enum CommsDirection {
+  outbound
+  inbound
+
+  @@schema("comms")
+}
+
+enum CommsStatus {
+  /// Cleared every gate and handed to the provider seam.
+  approved_to_send
+  /// A gate refused it. `blockedReason` says which.
+  blocked
+  /// Recorded as received.
+  received
+
+  @@schema("comms")
+}
+
+/// 4.4 Client Notification Preference Center - one row per client.
+model NotificationPreference {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  clientId String @db.Uuid
+
+  /// Per-channel permission. Absent permission is NOT permission: these default to false, so a
+  /// client who has said nothing is contactable on nothing until somebody records that they are.
+  emailAllowed Boolean @default(false)
+  smsAllowed   Boolean @default(false)
+  voiceAllowed Boolean @default(false)
+
+  /// IANA zone, e.g. `America/Chicago`. Quiet hours are computed in it, and its absence is a
+  /// refusal rather than a default - defaulting would send at the wrong hour for exactly the
+  /// clients furthest away, invisibly.
+  timezone String?
+
+  preferredChannel CommsChannel?
+
+  /// A standing instruction with legal force. No urgency flag reaches past it.
+  doNotCall       Boolean   @default(false)
+  doNotCallSetOn  DateTime?
+  doNotCallReason String?
+
+  /// Where an urgent alert goes when the preferred channel is unavailable.
+  urgentRouting String?
+
+  updatedBy String
+  updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now())
+
+  @@unique([tenantId, clientId])
+  @@map("notification_preferences")
+  @@schema("comms")
+}
+
+/// A versioned message template. Superseded rather than edited: a message sent in March has to
+/// remain explicable when somebody asks what the client was told.
+model MessageTemplate {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+
+  key     String
+  version Int
+  channel CommsChannel
+
+  /// Empty for SMS and voice.
+  subject String?
+  body    String
+
+  supersededAt DateTime?
+  createdAt    DateTime  @default(now())
+  createdBy    String
+
+  @@unique([tenantId, key, version])
+  @@index([tenantId, key, supersededAt])
+  @@map("message_templates")
+  @@schema("comms")
+}
+
+/// The communication log - blueprint 4.1's "full client comms log preserved for compliance audit".
+///
+/// BLOCKED messages are logged too. "We tried to contact this client and could not" is evidence,
+/// and a log holding only what went out would answer a regulator's question with the half that
+/// flatters us.
+model Communication {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  clientId String @db.Uuid
+
+  direction CommsDirection
+  channel   CommsChannel
+  status    CommsStatus
+
+  templateKey     String?
+  templateVersion Int?
+
+  subject String?
+  /// The message itself. This table is the audit record, so it holds the body - the Ledger does
+  /// not, and carries a hash instead.
+  body String
+  /// sha256 over the body, so the Ledger can identify a message without quoting it.
+  bodyHash String
+
+  /// Set when a gate refused it. Names which gate and why.
+  blockedReason String?
+
+  /// Set when urgency rerouted the message away from the preferred channel.
+  urgentReroute Boolean @default(false)
+
+  occurredAt DateTime
+  recordedBy String
+
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, clientId, occurredAt])
+  @@index([tenantId, status])
+  @@map("communications")
+  @@schema("comms")
 }

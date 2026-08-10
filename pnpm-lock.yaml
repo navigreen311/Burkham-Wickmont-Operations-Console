@@ -211,6 +211,25 @@ importers:
         specifier: ^5.8.3
         version: 5.9.3
 
+  packages/comms:
+    dependencies:
+      '@bwc/core':
+        specifier: workspace:*
+        version: link:../core
+      '@bwc/db':
+        specifier: workspace:*
+        version: link:../db
+      '@bwc/ledger':
+        specifier: workspace:*
+        version: link:../ledger
+      '@bwc/middleware':
+        specifier: workspace:*
+        version: link:../middleware
+    devDependencies:
+      typescript:
+        specifier: ^5.8.3
+        version: 5.9.3
+
   packages/consent:
     dependencies:
       '@bwc/core':
@@ -313,6 +332,9 @@ importers:
       '@bwc/clients':
         specifier: workspace:*
         version: link:../clients
+      '@bwc/comms':
+        specifier: workspace:*
+        version: link:../comms
       '@bwc/consent':
         specifier: workspace:*
         version: link:../consent
@@ -499,6 +521,9 @@ importers:
       '@bwc/regulatory':
         specifier: workspace:*
         version: link:../regulatory
+      '@bwc/scanner':
+        specifier: workspace:*
+        version: link:../scanner
       '@bwc/tenancy':
         specifier: workspace:*
         version: link:../tenancy

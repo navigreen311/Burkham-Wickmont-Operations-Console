@@ -150,6 +150,15 @@ export const EVENT_TYPES = [
   // Compliance Evidence Vault (7.1). An export is itself an audit artifact: who took a copy of
   // a client file, when, and why.
   'evidence.file.exported',
+  // Communications Hub (4.1) with the Preference Center (4.4). Bodies never reach the
+  // Ledger; these carry a hash, so a message can be identified without being quoted.
+  'comms.preferences.updated',
+  'comms.do_not_call.set',
+  'comms.do_not_call.lifted',
+  'comms.template.published',
+  'comms.message.sent',
+  'comms.message.blocked',
+  'comms.message.received',
 ] as const;
 
 export type EventType = (typeof EVENT_TYPES)[number];

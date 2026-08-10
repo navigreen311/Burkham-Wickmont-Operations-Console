@@ -151,8 +151,11 @@ describe('the file names what it could not include', () => {
       expect(entry.itemCount).toBe(0);
     }
 
-    const communications = notBuilt.find((entry) => entry.key === 'communications');
-    expect(communications?.note).toMatch(/should not treat its absence as evidence/);
+    // `communications` used to be the example here. 4.1 was built, so it reports real coverage
+    // now - which is the point of the registry: a source graduating from `not_built` changes the
+    // file without anybody editing the file.
+    const complaints = notBuilt.find((entry) => entry.key === 'client_complaints');
+    expect(complaints?.note).toMatch(/complaints about PROVIDERS/);
   });
 
   it('restates the gaps so a reader does not have to scan the coverage map', async () => {

@@ -7,25 +7,17 @@
   },
   "include": ["src/**/*.ts"],
   "references": [
-    { "path": "../scanner" },
-    { "path": "../regulatory" },
     {
       "path": "../core"
+    },
+    {
+      "path": "../db"
     },
     {
       "path": "../ledger"
     },
     {
-      "path": "../identity"
-    },
-    {
-      "path": "../tenancy"
-    },
-    {
-      "path": "../clients"
-    },
-    {
-      "path": "../firewall"
+      "path": "../middleware"
     }
   ]
 }

@@ -8,7 +8,7 @@
  * copied these facts into its own tables would produce a second version of each, drifting from the
  * first, and the copy is the one a regulator would be shown.
  *
- * Three sources are deliberately `not_built`. They are in the registry rather than omitted from it,
+ * Two sources are deliberately `not_built`. They are in the registry rather than omitted from it,
  * because a file that silently lacks a section asserts a completeness it does not have - and the
  * reader has no way to tell an absent section from an empty one.
  */
@@ -21,6 +21,7 @@ import { forClient as documentsForClient } from '@bwc/vault';
 import { forClient as deliverablesForClient } from '@bwc/deliverables';
 import { contractsForClient } from '@bwc/contracts';
 import { engagementsForClient, recordsFor, refundsDue } from '@bwc/billing';
+import { communicationMetadataFor } from '@bwc/comms';
 import { canonicalJson } from '@bwc/deliverables';
 import { noData, ok, type Outcome } from '@bwc/core';
 import {
@@ -241,12 +242,22 @@ export const EVIDENCE_SOURCES: readonly EvidenceSource[] = [
       );
     },
   },
-  notBuiltSource(
-    'communications',
-    '4.1 Communications Hub',
-    'Inbound and outbound client communications.',
-    'The Communications Hub is not built. This file therefore contains no record of what was said to the client outside the artifacts listed above, and a reader should not treat its absence as evidence that nothing was said.',
-  ),
+  {
+    key: 'communications',
+    module: '4.1 Communications Hub',
+    description:
+      'Inbound and outbound client communications, including attempts that were blocked and why.',
+    fetch: async (context) => {
+      // Metadata only. The body lives in the communications log, which is the audit record; an
+      // evidence file assembled for export should not carry every message a client was sent
+      // inside it by default. A reader who needs the wording asks the log.
+      const entries = await communicationMetadataFor(context.tenantId, context.clientId);
+      return fromRows(
+        entries,
+        'No communication has been recorded with this client - nothing sent, nothing blocked, nothing received.',
+      );
+    },
+  },
   notBuiltSource(
     'client_complaints',
     '4.4 Complaint Handling',

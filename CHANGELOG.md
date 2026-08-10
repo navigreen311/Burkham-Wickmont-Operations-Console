@@ -7,6 +7,48 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added - Communications Hub and Preference Center (`ai-feature/m4-1-communications-hub`)
+
+**4.1 Communications Hub** with **4.4 Client Notification Preference Center**. See
+[docs/m4-1-communications-hub.md](docs/m4-1-communications-hub.md).
+
+- **Both modules in one slice**, because the preference record is the gate rather than a
+  convenience. A send path accepting `smsAllowed: true` from its caller would let code assert
+  consent the client never gave.
+- **Urgency overrides preference, never prohibition.** It moves a message between channels the
+  client _permits_; it cannot create permission, reach past do-not-call, or move a message into
+  quiet hours. A flag that could would be a documented mechanism for breaking the law.
+- **Absence of permission is not permission** - every channel defaults to false.
+- **Quiet hours are computed in the recipient's IANA zone**, and a missing timezone **refuses**
+  rather than defaulting. Defaulting sends at the wrong hour for exactly the clients furthest away,
+  and the failure is invisible from the sending side.
+- **A blocked send is still logged.** A log holding only what went out would answer a regulator
+  with the half that flatters us.
+- **The send returns `not_built` at the provider seam**, not `ok`. Nothing delivered it, and saying
+  otherwise would put "the client was told" in a compliance log when they were not.
+- **7.1's `communications` gap is closed** - the Evidence Vault now reports real coverage, carrying
+  metadata while the bodies stay in the log.
+
+**Fixed - step 7 of the middleware chain was a no-op.** Its comment said the Communication
+Compliance Scanner "is not built" and the step was "unreachable while step 5 refuses every
+client-facing action". Both were true when written and **both stopped being true when 7.2 made step
+5 pass** - and nothing failed, because the step reported `skipped` with the detail "no client-facing
+content in scope" even when there was content. Found by a test that sent a banned phrase to a client
+and watched it go. Step 7 now runs the scanner, blocks banned language, and blocks a
+`requires_disclosure` phrase whose disclosure is absent.
+
+> **Consequence:** the scanner refuses rather than certifying content clean against an **empty**
+> library, so any tenant sending client-facing content must have the claim library seeded. "We
+> checked nothing and found nothing" is not a pass.
+
+**Fixed - the claim library banned one word order and not the other.** "Your approval is guaranteed
+once you sign" passed cleanly, because the library held the noun phrase "guaranteed approval" and
+not the inversion a person actually writes. The scanner is exact-phrase by design, so covering a
+paraphrase means adding it - two variants added with the discovery recorded in their rationale.
+
+**Tests:** 624 pass (36 new). Do-not-call and the scanner block were mutation-verified - disabling
+either produces 6 failures.
+
 ### Added - Compliance Evidence Vault (`ai-feature/m7-1-compliance-evidence-vault`)
 
 **7.1 Compliance Evidence Vault** - regulator-ready file assembly with coverage reporting. See

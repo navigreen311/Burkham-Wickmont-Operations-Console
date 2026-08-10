@@ -18,7 +18,7 @@ narrowly scoped Client Portal (module 11.10), which is a secure delivery and app
 | [Workflow Engine core](docs/m2-2-workflow-engine.md)            | Playbooks, instances, durable Postgres task queue, retry/backoff/dead-letter, wait states, decision predicates, SLA escalation                                                                                      |
 | [Scheduler, listener, worker](docs/m2-2-scheduler-listener.md)  | Cron schedules with timezones, Ledger-triggered workflows, event-wait resolution, and a worker process that runs it all                                                                                             |
 
-**588 tests green** (lint, types, format clean). Module 2.2 complete (all seven §5.3 components);
+**624 tests green** (lint, types, format clean). Module 2.2 complete (all seven §5.3 components);
 **Category 3 complete** (3.1, 3.2, 3.3, 3.4), plus 4.2, 7.4, and **Category 5's V1 modules complete**
 (5.1, 5.3, 5.4, 5.6) with 5.2 pulled forward from V1.5 because 5.3 and 5.4 depend on it, plus
 1.2 Entity Graph. No `not_built` remains anywhere on the funding path.
@@ -169,6 +169,7 @@ packages/contracts  7.3  Contract & Disclosure Builder - templates, clauses, fee
 packages/billing    1.4  Pricing, Billing & Offer Management - ladder, credit chain, refund triggers
 packages/sales      1.3  Sales Motion & Engagement Tracking - leads, attribution, conversion
 packages/evidence   7.1  Compliance Evidence Vault - regulator-ready assembly with coverage
+packages/comms      4.1  Communications Hub + 4.4 Preference Center - the send gate and the log
 packages/lenders    5.2  Lender Intelligence Database - catalogue, rules, eligibility, suitability
 packages/governance 5.4  Capital Product Governance Board - approval, cadence, complaints, blacklist
 tests/invariants    one test per hard invariant

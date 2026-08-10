@@ -30,6 +30,7 @@ import { assertSameTenant } from '@bwc/tenancy';
 import { find as findClient } from '@bwc/clients';
 import { evaluate as evaluateGate } from '@bwc/firewall';
 import { checkJurisdiction, type RegulatoryClearance } from '@bwc/regulatory';
+import { scanForTenant } from '@bwc/scanner';
 import {
   failed,
   isProhibitedAction,
@@ -279,14 +280,72 @@ export const chain = async (
   }
 
   // --- 7. Compliance scan -------------------------------------------------
-  // 4.2 Communication Compliance Scanner is not built. Unreachable while step 5 refuses
-  // every client-facing action, and retained so the order stays visible and the step has
-  // somewhere to land when the Scanner is built.
-  trace.push({
-    step: 'compliance_scan',
-    outcome: 'skipped',
-    detail: 'no client-facing content in scope',
-  });
+  //
+  // This step was a no-op for longer than it should have been. Its comment said the Scanner was
+  // not built and the step "unreachable while step 5 refuses every client-facing action" - true
+  // when written, and false from the moment 7.2 made step 5 pass for an activated state. Nothing
+  // failed: the step reported `skipped` with the detail "no client-facing content in scope" even
+  // when there was content, which is precisely the shape of a guard that looks fine.
+  //
+  // Found by a Communications Hub test that sent a banned phrase to a client and watched it go.
+  if (request.clientFacingContent === undefined) {
+    trace.push({
+      step: 'compliance_scan',
+      outcome: 'skipped',
+      detail: 'no client-facing content in scope',
+    });
+  } else {
+    const scan = await scanForTenant({
+      tenantId: request.tenantId,
+      text: request.clientFacingContent,
+      actor: { id: actor.id, kind: actor.kind },
+      ...(request.clientId !== undefined ? { clientId: request.clientId } : {}),
+      ...(request.jurisdiction !== undefined ? { jurisdiction: request.jurisdiction } : {}),
+      context: request.action,
+    });
+
+    if (scan.status !== 'ok') {
+      return blockAt('compliance_scan', scan as Outcome<never>, 'scan did not complete');
+    }
+
+    if (scan.value.verdict === 'blocked') {
+      return blockAt(
+        'compliance_scan',
+        refused(
+          `Client-facing content contains language the Marketing Claim Library bans: ${scan.value.findings
+            .filter((finding) => finding.disposition === 'banned')
+            .map((finding) => finding.phrase)
+            .join(', ')}.`,
+          'Blueprint 7.4 with specification 5.5 step 7 - the Communication Compliance Scanner',
+        ),
+        'banned language',
+      );
+    }
+
+    // A `requires_disclosure` phrase is fine PROVIDED the disclosure it obliges travels with the
+    // content. The library's disclosure text is exact, so the check is exact - matching loosely
+    // would let a paraphrase satisfy an obligation the specific wording exists to discharge.
+    const missing = scan.value.requiredDisclosures.filter(
+      (disclosure) => !request.clientFacingContent?.includes(disclosure),
+    );
+
+    if (missing.length > 0) {
+      return blockAt(
+        'compliance_scan',
+        refused(
+          `Client-facing content uses language requiring ${missing.length} disclosure(s) that it does not carry: ${missing.join(' | ')}`,
+          'Blueprint 7.4 - a requires_disclaimer phrase must travel with the disclosure it obliges',
+        ),
+        'missing required disclosure',
+      );
+    }
+
+    trace.push({
+      step: 'compliance_scan',
+      outcome: 'passed',
+      detail: `${scan.value.libraryEntriesChecked} library entries checked; verdict ${scan.value.verdict}`,
+    });
+  }
 
   return {
     result: ok({ actor, trace, ...(clearance !== undefined ? { clearance } : {}) }),
