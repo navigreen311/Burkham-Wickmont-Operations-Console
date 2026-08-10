@@ -86,7 +86,7 @@ describe('provenance on output', () => {
       provider: sourced('Navy Federal', {
         tag: 'issuer_rule',
         sourceUrl: 'https://example.invalid/terms',
-        lastVerified: new Date('2026-08-01'),
+        lastVerified: '2026-08-01',
         verifiedBy: 'funding_strategy',
       }),
       product: sourced('Business LOC', {

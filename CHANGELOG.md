@@ -7,6 +7,47 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added — Deliverables, approval pipeline and the Compliance Scanner (`ai-feature/m3-deliverables-and-compliance-scanner`)
+
+Category 3 slice A. **3.1** Document & Deliverable Management, **3.4** Deliverable Approval
+Workflow, **4.2** Communication Compliance Scanner, **7.4** Marketing Claim Library. The first
+slice that produces something a client receives.
+
+4.2 and 7.4 are included because blueprint 3.4 puts the Scanner in the middle of the approval
+pipeline. Without them the pipeline could never complete, on top of middleware step 5 already
+refusing every client-facing action — one honest blockage is discipline, two stacked is a system
+that cannot be demonstrated.
+
+- **The content model is the artifact** (ADR-0005). A deliverable is a structured document,
+  versioned and hashed over canonical JSON, anchored in the Ledger; the PDF is a rendering. Hashing
+  bytes would let a font substitution change the evidence while every word stayed the same.
+- **Provenance cannot be omitted** — `KeyFigure.value` is `Sourced<T>`, so a figure cannot be
+  constructed without it. Unresearched defaults render as `[Unverified assumption]` plus a
+  document-level notice (Decision D).
+- **Compliance state has no numeric field**, so no renderer can print a score (Decision E).
+- **Approval ordering is enforced by state**, not call order: `deliver()` requires `approved`,
+  reachable only from `scanned`, reachable only from `qa_checked`. Approval requires a human actor.
+- **The Scanner blocks, and scans the content model** — so banned language cannot enter during
+  rendering, and a phrase interpolated from client data is checked as thoroughly as the template.
+  Word-boundary matching: "guaranteed approval" blocks, "no guarantee of approval" does not.
+  An empty claim library **refuses rather than reporting clean**.
+- **Claim library entries carry a rationale and are deprecated, never deleted.** Jurisdiction uses
+  a `*` sentinel rather than NULL, because `NULL != NULL` in Postgres would have let the unique
+  constraint accept two global entries for the same phrase.
+- Two real templates (Capital Command Brief, Funding Suitability Memo), both carrying the
+  not-a-lender and no-guarantee disclosures.
+- ADR-0005, `docs/m3-deliverables-and-compliance-scanner.md`, plan doc.
+- 57 new tests (165 total).
+
+### Fixed
+
+- **Any stored deliverable would have failed to render.** `Provenance` carried `Date` objects, but
+  deliverable content is stored as JSON — so timestamps came back as strings and
+  `describeProvenance` threw on `.toISOString()`. Invisible to unit tests, which never persist.
+  Provenance timestamps are now `IsoTimestamp` (ISO strings): a type that crosses a JSON boundary
+  should be JSON-native. Guarded by a test that re-reads a deliverable from the database before
+  rendering it.
+
 ### Added — Workflow Engine scheduler, listener and worker (`ai-feature/m2-2-workflow-scheduler-listener`)
 
 Completes module 2.2. All seven components of Specification v2 §5.3 now exist, and the Engine runs

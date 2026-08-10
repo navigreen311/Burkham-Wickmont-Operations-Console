@@ -50,6 +50,20 @@ export const EVENT_TYPES = [
   // Notification & Task Queue (11.4)
   'notification.raised',
   'notification.completed',
+  // Document & Deliverable Management (3.1) and Deliverable Approval Workflow (3.4)
+  'deliverable.drafted',
+  'deliverable.qa_checked',
+  'deliverable.scanned',
+  'deliverable.blocked',
+  'deliverable.approved',
+  'deliverable.rejected',
+  'deliverable.delivered',
+  // Communication Compliance Scanner (4.2)
+  'scanner.blocked_content',
+  'scanner.novel_language',
+  // Marketing Claim Library (7.4)
+  'claim.published',
+  'claim.deprecated',
 ] as const;
 
 export type EventType = (typeof EVENT_TYPES)[number];
