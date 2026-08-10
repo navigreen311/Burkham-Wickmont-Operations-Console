@@ -3510,6 +3510,41 @@ model ClientRecoveryCode {
   @@schema("identity")
 }
 
+/// A per-source attempt counter, shared by every instance of the portal process.
+///
+/// **In the `identity` schema on purpose.** 11.1 already owns the other half of this control:
+/// per-account lockout. Rate limiting and lockout are the two halves of one answer - one counts the
+/// victim, the other counts the attacker - and keeping the two counters in one schema is what stops
+/// somebody changing one without seeing the other.
+model RateLimitCounter {
+  /// `scope:key`. The scope namespaces sign-in from password reset, which are separate budgets;
+  /// the key is what `rateLimitKey` derived from the request.
+  ///
+  /// **The key is an IP address and it is stored as one.** A hash would look like pseudonymity and
+  /// would not be any: IPv4 is four billion values, so an unsalted digest is a lookup table and a
+  /// salted one needs a secret this table would then have to be given. ADR-0020's rule - claiming
+  /// anonymity you do not have is worse than not claiming it - applies. What limits the exposure is
+  /// retention: rows live for one window plus the sweep interval, and none of this reaches the
+  /// Ledger or a log.
+  id String @id
+
+  /// Attempts inside the current window. Incremented by ONE atomic statement, never read-then-write:
+  /// two instances that both read 4 and both write 5 have let six requests through on a limit of
+  /// five, and that is invisible to a sequential test.
+  attempts Int @default(1)
+
+  /// When the current window opened. A request arriving after `windowStartedAt + window` resets the
+  /// row rather than creating a second one.
+  windowStartedAt DateTime
+
+  /// Last touched. What the sweep reads.
+  updatedAt DateTime @updatedAt
+
+  @@index([updatedAt])
+  @@map("rate_limit_counters")
+  @@schema("identity")
+}
+
 /// A signed-in session.
 model ClientSession {
   id       String @id @default(uuid()) @db.Uuid

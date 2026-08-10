@@ -7,6 +7,41 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added - a shared rate-limit store (`ai-feature/shared-rate-limit`)
+
+The last of the three gaps the transport slice named. See
+[docs/m11-shared-rate-limit.md](docs/m11-shared-rate-limit.md) and ADR-0025.
+
+- **Postgres, not Redis.** The instinct that a limiter must not touch the database is right for one
+  protecting a static asset and wrong here: **this one protects a scrypt verification** costing a
+  hundred milliseconds, and an indexed upsert costs one.
+- **The decisive reason is not speed.** Every shared limiter must answer whether it fails open or
+  closed when its store is unavailable, and with Redis both answers are bad because Redis can be
+  down while Postgres is healthy. With Postgres the question dissolves: sign-in needs that same
+  database to read the user and issue a session, so failing closed **costs nothing that was not
+  already lost**. The dilemma is removed by the choice of store rather than papered over.
+- **One statement, because a counter is a read-modify-write.** Two instances that both read 4 and
+  both write 5 have let six requests through on a limit of five, and a SEQUENTIAL test cannot see
+  it. `INSERT … ON CONFLICT DO UPDATE … RETURNING` is atomic; the window rolls inside the same
+  statement. The test fires ten overlapping requests through two limiters and asserts exactly three
+  were allowed - the read-then-write version reports **five allowed and ten attempts counted as six**.
+- Timestamps bind as ISO strings cast to `::timestamp`, never as JS `Date`s - a `Date` goes as
+  `timestamptz` against a naive `timestamp(3)` column and Postgres shifts the comparison by the
+  session timezone.
+- **The counter lives in the `identity` schema**, because 11.1 already owns the other half of this
+  control: lockout counts the victim, rate limiting counts the attacker.
+- **`PORTAL_RATE_LIMIT_STORE` has no default** and the app refuses to start without it, for the
+  reason `PORTAL_TRUST_PROXY` has none - both are settings whose wrong value produces a system that
+  looks like it is enforcing a control and is not. `memory` stays supported and correct for one
+  instance. Both limiters are built by one factory from that one setting.
+- **Semantics did not change** - fixed window, same boundary burst. Changing the algorithm and the
+  storage in one slice would make it impossible to say which change caused a difference in behaviour.
+- Swept on one write in a hundred rather than by a scheduled job: a job can stop, and **if this sweep
+  stops the cost is disk rather than a broken limit**.
+
+**Changed - `RateLimiter.check` is now async**, including the in-memory implementation. Two
+interfaces, one per implementation, would mean the transport choosing between them.
+
 ### Added - multi-factor authentication for client users (`ai-feature/client-mfa`)
 
 The second gap the transport slice named, and the larger one. See

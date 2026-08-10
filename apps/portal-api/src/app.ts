@@ -47,7 +47,12 @@ import type { ConsentKind } from '@bwc/consent';
 import type { DocumentKind, VaultConfig } from '@bwc/vault';
 import { send } from '@bwc/http';
 import { readConfig, type PortalConfig } from './config.js';
-import { createRateLimiter, rateLimitKey, type RateLimiter } from './limiter.js';
+import {
+  createRateLimiter,
+  createSharedRateLimiter,
+  rateLimitKey,
+  type RateLimiter,
+} from './limiter.js';
 
 export interface PortalAppDeps {
   readonly config?: PortalConfig;
@@ -163,18 +168,23 @@ const asyncRoute =
 export const createPortalApp = (deps: PortalAppDeps): Express => {
   const config = deps.config ?? readConfig();
   const now = deps.now ?? ((): Date => new Date());
+  /**
+   * One factory, chosen by configuration rather than by the call site.
+   *
+   * The two limiters differ in budget and must not differ in where they count: a deployment with
+   * one shared and one per-process would be enforcing two different things and reporting neither.
+   */
+  const buildLimiter = (scope: string, windowSeconds: number, maxAttempts: number): RateLimiter =>
+    config.rateLimitStore === 'shared'
+      ? createSharedRateLimiter({ scope, windowSeconds, maxAttempts })
+      : createRateLimiter({ windowSeconds, maxAttempts });
+
   const limiter =
     deps.limiter ??
-    createRateLimiter({
-      windowSeconds: config.signInWindowSeconds,
-      maxAttempts: config.signInMaxAttempts,
-    });
+    buildLimiter('portal.sign_in', config.signInWindowSeconds, config.signInMaxAttempts);
   const resetLimiter =
     deps.resetLimiter ??
-    createRateLimiter({
-      windowSeconds: config.resetWindowSeconds,
-      maxAttempts: config.resetMaxAttempts,
-    });
+    buildLimiter('portal.password_reset', config.resetWindowSeconds, config.resetMaxAttempts);
 
   /**
    * Per-IP limiting, in front of an unauthenticated route.
@@ -185,16 +195,26 @@ export const createPortalApp = (deps: PortalAppDeps): Express => {
   const limitBy =
     (which: RateLimiter, reason: string) =>
     (req: Request, res: Response, next: NextFunction): void => {
-      const verdict = which.check(rateLimitKey(req.ip), now());
-      if (!verdict.allowed) {
-        res.setHeader('Retry-After', String(verdict.retryAfterSeconds));
-        send(
-          res,
-          refused(reason, 'Portal transport - per-IP rate limiting on the unauthenticated path'),
-        );
-        return;
-      }
-      next();
+      which
+        .check(rateLimitKey(req.ip), now())
+        .then((verdict) => {
+          if (!verdict.allowed) {
+            res.setHeader('Retry-After', String(verdict.retryAfterSeconds));
+            send(
+              res,
+              refused(
+                reason,
+                'Portal transport - per-IP rate limiting on the unauthenticated path',
+              ),
+            );
+            return;
+          }
+          next();
+        })
+        // A store that cannot be reached is refused, not waved through. It is the same database
+        // sign-in needs to read the user and issue a session, so failing closed here costs nothing
+        // that was not already lost - which is why Postgres rather than Redis (ADR-0025).
+        .catch(next);
     };
 
   const app = express();

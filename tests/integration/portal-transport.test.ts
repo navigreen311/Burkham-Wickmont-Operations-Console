@@ -131,6 +131,8 @@ beforeAll(async () => {
     signInMaxAttempts: 1000,
     resetWindowSeconds: 900,
     resetMaxAttempts: 1000,
+    // Per process here: these tests drive one server and inject their own limiters.
+    rateLimitStore: 'memory',
   };
 
   server = createServer(createPortalApp({ config, vault, limiter, resetLimiter }));
@@ -689,26 +691,28 @@ describe('rate limiting catches what lockout cannot', () => {
 describe('the limiter itself', () => {
   const NOW = new Date('2026-08-11T12:00:00.000Z');
 
-  it('allows up to the limit and refuses beyond it', () => {
+  // `check` is async even in memory: a shared store cannot be synchronous, and two interfaces -
+  // one per implementation - would mean the transport choosing between them.
+  it('allows up to the limit and refuses beyond it', async () => {
     const limit = createRateLimiter({ windowSeconds: 60, maxAttempts: 3 });
-    expect(limit.check('a', NOW).allowed).toBe(true);
-    expect(limit.check('a', NOW).allowed).toBe(true);
-    expect(limit.check('a', NOW).allowed).toBe(true);
-    expect(limit.check('a', NOW).allowed).toBe(false);
+    expect((await limit.check('a', NOW)).allowed).toBe(true);
+    expect((await limit.check('a', NOW)).allowed).toBe(true);
+    expect((await limit.check('a', NOW)).allowed).toBe(true);
+    expect((await limit.check('a', NOW)).allowed).toBe(false);
   });
 
-  it('counts each key separately', () => {
+  it('counts each key separately', async () => {
     const limit = createRateLimiter({ windowSeconds: 60, maxAttempts: 1 });
-    expect(limit.check('a', NOW).allowed).toBe(true);
-    expect(limit.check('b', NOW).allowed).toBe(true);
-    expect(limit.check('a', NOW).allowed).toBe(false);
+    expect((await limit.check('a', NOW)).allowed).toBe(true);
+    expect((await limit.check('b', NOW)).allowed).toBe(true);
+    expect((await limit.check('a', NOW)).allowed).toBe(false);
   });
 
-  it('opens a new window when the old one expires', () => {
+  it('opens a new window when the old one expires', async () => {
     const limit = createRateLimiter({ windowSeconds: 60, maxAttempts: 1 });
-    expect(limit.check('a', NOW).allowed).toBe(true);
-    expect(limit.check('a', NOW).allowed).toBe(false);
-    expect(limit.check('a', new Date(NOW.getTime() + 61_000)).allowed).toBe(true);
+    expect((await limit.check('a', NOW)).allowed).toBe(true);
+    expect((await limit.check('a', NOW)).allowed).toBe(false);
+    expect((await limit.check('a', new Date(NOW.getTime() + 61_000))).allowed).toBe(true);
   });
 
   it('counts an unattributable request rather than letting it through', async () => {
