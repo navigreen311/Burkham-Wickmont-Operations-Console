@@ -311,6 +311,22 @@ importers:
         specifier: ^5.8.3
         version: 5.9.3
 
+  packages/dashboards:
+    dependencies:
+      '@bwc/billing':
+        specifier: workspace:*
+        version: link:../billing
+      '@bwc/core':
+        specifier: workspace:*
+        version: link:../core
+      '@bwc/db':
+        specifier: workspace:*
+        version: link:../db
+    devDependencies:
+      typescript:
+        specifier: ^5.8.3
+        version: 5.9.3
+
   packages/db:
     dependencies:
       '@bwc/core':
