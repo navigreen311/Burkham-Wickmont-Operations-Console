@@ -1,0 +1,207 @@
+// Burkham Wickmont Operations Console - data model
+//
+// Specification v2 section 5.1: "No service reaches directly into another service's database."
+// Each module owns a named Postgres schema. Package boundaries enforce this in code; the
+// schema separation enforces it in the database, so a cross-module query is visible as a
+// cross-schema reference in review rather than invisible as an ordinary join.
+//
+// Append-only discipline for the ledger is enforced by a trigger, not by convention -
+// see prisma/migrations/*/migration.sql. Prisma cannot express "no UPDATE, no DELETE".
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["multiSchema"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  schemas  = ["tenancy", "identity", "ledger", "clients", "consent", "firewall"]
+}
+
+// ---------------------------------------------------------------------------
+// 11.2 Tenant / Organization Model
+// ---------------------------------------------------------------------------
+
+model Tenant {
+  id        String   @id @default(uuid()) @db.Uuid
+  slug      String   @unique
+  name      String
+  createdAt DateTime @default(now())
+
+  actors  Actor[]
+  clients Client[]
+
+  @@map("tenants")
+  @@schema("tenancy")
+}
+
+// ---------------------------------------------------------------------------
+// 11.1 Identity & Access
+// ---------------------------------------------------------------------------
+
+enum ActorKind {
+  village_agent
+  human
+
+  @@schema("identity")
+}
+
+model Actor {
+  id       String    @id @default(uuid()) @db.Uuid
+  tenantId String    @db.Uuid
+  kind     ActorKind
+  label    String
+
+  /// Authority Level 0-3. There is no level 4 holder: level 4 is the prohibited-action
+  /// list, hard-blocked by middleware for every actor. Specification v2 section 7.1.
+  authorityLevel Int
+  department     String?
+  createdAt      DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@map("actors")
+  @@schema("identity")
+}
+
+// ---------------------------------------------------------------------------
+// 11.3 Event Ledger - append-only, hash-chained, signed
+// ---------------------------------------------------------------------------
+
+model LedgerEvent {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+
+  /// Monotonic per tenant. Combined with prevHash this makes a gap or a reordering detectable.
+  seq Int
+
+  type          String
+  actorId       String  @db.Uuid
+  actorKind     String
+  clientId      String? @db.Uuid
+  correlationId String? @db.Uuid
+
+  /// Redacted before write and asserted PII-free. Retained indefinitely, which is exactly
+  /// why nothing sensitive may enter it - an append-only store cannot be cleaned up later.
+  payload Json
+
+  prevHash  String
+  signature String
+  createdAt DateTime @default(now())
+
+  @@unique([tenantId, seq])
+  @@index([tenantId, clientId])
+  @@index([tenantId, type])
+  @@map("ledger_events")
+  @@schema("ledger")
+}
+
+// ---------------------------------------------------------------------------
+// 1.1 Client Lifecycle & CRM
+// ---------------------------------------------------------------------------
+
+/// Decision E: categorical, never numeric. Declaration order is not a ranking, and no
+/// ordering is exposed anywhere in the codebase - see packages/core/src/compliance.ts.
+enum ComplianceState {
+  pending_assessment
+  pass
+  pass_with_findings
+  needs_review
+  fail
+
+  @@schema("clients")
+}
+
+model Client {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @db.Uuid
+  legalName String
+
+  complianceState ComplianceState @default(pending_assessment)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant   Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  findings ComplianceFinding[]
+
+  @@index([tenantId])
+  @@map("clients")
+  @@schema("clients")
+}
+
+model ComplianceFinding {
+  id         String    @id @default(uuid()) @db.Uuid
+  clientId   String    @db.Uuid
+  code       String
+  summary    String
+  openedAt   DateTime  @default(now())
+  resolvedAt DateTime?
+
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@index([clientId])
+  @@map("compliance_findings")
+  @@schema("clients")
+}
+
+// ---------------------------------------------------------------------------
+// 1.5 Consent & Authorization Center
+// ---------------------------------------------------------------------------
+
+/// Per-event, never blanket. Decision A makes plaid_connection GLBA-adjacent and
+/// Decision B makes the bureau pulls FCRA-adjacent, so each is authorized individually.
+enum ConsentKind {
+  application
+  business_bureau_pull
+  personal_credit_pull
+  plaid_connection
+  disclosure
+  cross_portfolio_handoff
+
+  @@schema("consent")
+}
+
+model Consent {
+  id       String      @id @default(uuid()) @db.Uuid
+  tenantId String      @db.Uuid
+  clientId String      @db.Uuid
+  kind     ConsentKind
+
+  /// What this consent covers - a specific application id, a named institution, a named
+  /// recipient for a handoff. A consent without a scope is a blanket consent by accident.
+  scope String
+
+  grantedAt DateTime  @default(now())
+  expiresAt DateTime?
+  revokedAt DateTime?
+
+  @@index([tenantId, clientId, kind])
+  @@map("consents")
+  @@schema("consent")
+}
+
+// ---------------------------------------------------------------------------
+// 6.2 Funding Ethics Firewall
+// ---------------------------------------------------------------------------
+
+enum FirewallState {
+  clear
+  triggered
+
+  @@schema("firewall")
+}
+
+model ClientFirewallState {
+  clientId  String        @id @db.Uuid
+  tenantId  String        @db.Uuid
+  state     FirewallState @default(clear)
+  reason    String?
+  updatedAt DateTime      @updatedAt @default(now())
+
+  @@index([tenantId])
+  @@map("client_firewall_states")
+  @@schema("firewall")
+}

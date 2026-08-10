@@ -1,0 +1,31 @@
+{
+  "name": "@bwc/placement",
+  "version": "0.1.0",
+  "private": true,
+  "description": "5.3 Funding Recommendation Engine. Refusal path for the walking skeleton.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@bwc/core": "workspace:*",
+    "@bwc/ledger": "workspace:*",
+    "@bwc/clients": "workspace:*",
+    "@bwc/consent": "workspace:*",
+    "@bwc/firewall": "workspace:*",
+    "@bwc/integration": "workspace:*",
+    "@bwc/middleware": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.8.3"
+  }
+}

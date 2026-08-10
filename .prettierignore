@@ -1,0 +1,7 @@
+dist/
+node_modules/
+.next/
+pnpm-lock.yaml
+prisma/migrations/
+docs/reference/
+.claude/
