@@ -12,6 +12,11 @@
  * Computing it from `lastReviewedAt` and today means there is nothing to run and nothing to
  * miss. A provider reviewed 91 days ago is overdue the moment it is asked about, on every
  * machine, including one that has been switched off for a month.
+ *
+ * A stale approval here STOPS BEING USABLE. 6.4's Do Not Fund listing does the opposite - a stale
+ * listing keeps blocking. That is one rule, not two: staleness moves toward the answer that is
+ * safe if the stale record is wrong, and the safe answer is opposite because the direction of harm
+ * is. See ADR-0013 before making them agree.
  */
 
 export type GovernanceStatus =

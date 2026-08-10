@@ -17,16 +17,17 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@bwc/billing": "workspace:*",
+    "@bwc/clients": "workspace:*",
+    "@bwc/comms": "workspace:*",
+    "@bwc/consent": "workspace:*",
+    "@bwc/contracts": "workspace:*",
     "@bwc/core": "workspace:*",
     "@bwc/db": "workspace:*",
-    "@bwc/ledger": "workspace:*",
-    "@bwc/clients": "workspace:*",
-    "@bwc/consent": "workspace:*",
-    "@bwc/vault": "workspace:*",
     "@bwc/deliverables": "workspace:*",
-    "@bwc/contracts": "workspace:*",
-    "@bwc/billing": "workspace:*",
-    "@bwc/comms": "workspace:*"
+    "@bwc/ledger": "workspace:*",
+    "@bwc/risk": "workspace:*",
+    "@bwc/vault": "workspace:*"
   },
   "devDependencies": {
     "typescript": "^5.8.3"

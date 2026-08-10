@@ -1,8 +1,8 @@
 {
-  "name": "@bwc/middleware",
+  "name": "@bwc/risk",
   "version": "0.1.0",
   "private": true,
-  "description": "The fixed seven-step middleware chain (Specification v2 section 5.5).",
+  "description": "6.4 Do Not Fund Governance and 6.5 Risk Event Timeline.",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -17,15 +17,10 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@bwc/clients": "workspace:*",
     "@bwc/core": "workspace:*",
-    "@bwc/firewall": "workspace:*",
+    "@bwc/db": "workspace:*",
     "@bwc/identity": "workspace:*",
-    "@bwc/ledger": "workspace:*",
-    "@bwc/regulatory": "workspace:*",
-    "@bwc/risk": "workspace:*",
-    "@bwc/scanner": "workspace:*",
-    "@bwc/tenancy": "workspace:*"
+    "@bwc/ledger": "workspace:*"
   },
   "devDependencies": {
     "typescript": "^5.8.3"

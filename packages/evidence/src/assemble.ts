@@ -22,6 +22,7 @@ import { forClient as deliverablesForClient } from '@bwc/deliverables';
 import { contractsForClient } from '@bwc/contracts';
 import { engagementsForClient, recordsFor, refundsDue } from '@bwc/billing';
 import { communicationMetadataFor } from '@bwc/comms';
+import { timelineFor } from '@bwc/risk';
 import { canonicalJson } from '@bwc/deliverables';
 import { noData, ok, type Outcome } from '@bwc/core';
 import {
@@ -256,6 +257,24 @@ export const EVIDENCE_SOURCES: readonly EvidenceSource[] = [
         entries,
         'No communication has been recorded with this client - nothing sent, nothing blocked, nothing received.',
       );
+    },
+  },
+  {
+    key: 'risk_timeline',
+    module: '6.5 Risk Event Timeline with 6.4 Do Not Fund Governance',
+    description:
+      'Every risk-relevant event about this client in time order, with the Do Not Fund determination and the risk facts nothing monitors yet.',
+    fetch: async (context) => {
+      // Carried as one item rather than flattened into rows, because the timeline's value is the
+      // things AROUND the entries: the standing Do Not Fund determination, and the list of risk
+      // facts no integration produces. Flattened into a row list, an empty timeline would read as
+      // a clean client, which is exactly the reading `unmonitored` exists to prevent.
+      const timeline = await timelineFor(context.tenantId, context.clientId);
+      return {
+        items: [timeline],
+        coverage: 'complete',
+        note: `${timeline.entries.length} risk event(s), worst severity ${timeline.worst ?? 'none'}. ${timeline.doNotFund === null ? 'Not on the Do Not Fund list.' : 'ON THE DO NOT FUND LIST.'} ${timeline.unmonitored.length} risk fact(s) have no producer - see the section.`,
+      };
     },
   },
   notBuiltSource(

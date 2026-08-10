@@ -353,6 +353,9 @@ importers:
       '@bwc/ledger':
         specifier: workspace:*
         version: link:../ledger
+      '@bwc/risk':
+        specifier: workspace:*
+        version: link:../risk
       '@bwc/vault':
         specifier: workspace:*
         version: link:../vault
@@ -521,6 +524,9 @@ importers:
       '@bwc/regulatory':
         specifier: workspace:*
         version: link:../regulatory
+      '@bwc/risk':
+        specifier: workspace:*
+        version: link:../risk
       '@bwc/scanner':
         specifier: workspace:*
         version: link:../scanner
@@ -596,6 +602,25 @@ importers:
       '@bwc/governance':
         specifier: workspace:*
         version: link:../governance
+      '@bwc/identity':
+        specifier: workspace:*
+        version: link:../identity
+      '@bwc/ledger':
+        specifier: workspace:*
+        version: link:../ledger
+    devDependencies:
+      typescript:
+        specifier: ^5.8.3
+        version: 5.9.3
+
+  packages/risk:
+    dependencies:
+      '@bwc/core':
+        specifier: workspace:*
+        version: link:../core
+      '@bwc/db':
+        specifier: workspace:*
+        version: link:../db
       '@bwc/identity':
         specifier: workspace:*
         version: link:../identity
