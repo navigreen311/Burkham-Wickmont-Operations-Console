@@ -7,6 +7,54 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added - KPI Dashboards (`ai-feature/m9-kpi-dashboards`)
+
+**9.1 Executive KPI Dashboard** with **9.2 Unit Economics Dashboard** - Category 9's V1 scope. 9.3
+Agent Productivity and 9.4 Lender Performance are V1.5. See
+[docs/m9-kpi-dashboards.md](docs/m9-kpi-dashboards.md) and ADR-0017.
+
+- **A metric is a value with its basis, or it is nothing** (ADR-0017). Every figure carries its
+  numerator, denominator, period and coverage. `null` is never zero: zero is a measurement, and
+  `null` means there was nothing to measure, with a note saying what would make a number appear.
+  Rates below a minimum denominator of 10 - matching 5.2 and 1.3 - still show their **counts**,
+  because those are real, and withhold the rate.
+- **`compare` refuses across unequal or unfinished periods.** Month-to-date against a completed
+  month is the most common way a dashboard misleads without anybody intending it: the arithmetic is
+  fine, it describes nothing, and it always flatters the past.
+- **The placement approval rate is refused**, and this is the slice's finding. `FundingOutcome`
+  records approvals only - denials and adverse-action notices belong to **5.5 Funding Outcome
+  Ledger, which is V1.5** - so a rate computed from what exists would read **100% forever**:
+  arithmetically correct, extremely reassuring, and the exact claim the Marketing Claim Library
+  bans. What is measurable - how many placements our own gate stopped - is reported as
+  `internalGateRefusalRate`, named so nobody reads it as the metric 9.1 asked for.
+- **Gross margin is refused.** 9.2 defines it as including per-client Plaid and bureau costs, and
+  both vendors are ungated under Decisions A and B. A margin without them is wrong in a **known
+  direction by an unknown amount** on the surface the founder steers by. `offerEconomics` gives the
+  same arithmetic as `marginBeforeUnmeasuredCostsCents`; the awkward name is the point.
+  `vendorCostForClient` returns `not_built` rather than `0`, because zero would flow into a margin
+  as a measurement.
+- **Projected LTV is refused**, naming what it would need - an observed churn rate, an observed
+  expansion rate and a chosen discount rate. `realisedRevenuePerClient` reports what has actually
+  been billed per client, with **mean tenure alongside** so a reader can see how much of a lifetime
+  the figure covers.
+- **Compliance is a distribution, never an average** - Decision E, restated by blueprint 9.1 as an
+  explicit change from v1. Every state appears including those at zero, because a dashboard that
+  omits `fail` when empty teaches its reader that a missing row means no problem. Transition
+  direction comes from a hard-coded pairwise table rather than an ordering: the moment an ordering
+  exists somebody averages it.
+- **The Gardner rollup strips PII structurally** - the type has no field a client identifier could
+  occupy, rather than a redaction pass over a richer object, which works until somebody adds a
+  field. It carries a `withheld` list so a portfolio view cannot read as complete.
+- **CAC takes spend from the caller.** No module owns marketing spend, and inventing a store for it
+  in a dashboard package would make the company's cost base a second source of truth. A channel
+  with no supplied spend is reported with its conversion count and a null CAC rather than dropped -
+  a channel missing from a CAC report reads as a channel that acquired nobody.
+- **Nothing is stored.** No snapshot table: a snapshot needs a job, and a job that stops leaves a
+  dashboard showing last month's numbers under this month's date. 11.6 Data Warehouse changes where
+  the reads come from, not this argument.
+- Revenue is **billed, not collected** - only `charge` lines count, so a payment cannot
+  double-count what a charge already recorded.
+
 ### Added - Call Promise Tracking and Marketing Ops (`ai-feature/m4-calls-and-marketing-ops`)
 
 **4.3 Call Recording, Summaries & Promise Tracking** with **4.5 Marketing Ops**, completing
