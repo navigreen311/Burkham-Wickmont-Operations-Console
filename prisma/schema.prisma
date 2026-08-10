@@ -3318,6 +3318,7 @@ model ClientUser {
   mfaFactors ClientMfaFactor[]
   mfaChallenges ClientMfaChallenge[]
   recoveryCodes ClientRecoveryCode[]
+  emailChanges ClientEmailChange[]
 
   @@unique([tenantId, email])
   @@index([tenantId, clientId])
@@ -3507,6 +3508,79 @@ model ClientRecoveryCode {
 
   @@index([tenantId, clientUserId])
   @@map("client_recovery_codes")
+  @@schema("identity")
+}
+
+/// A move of the address a client's account - and therefore their account recovery - lives at.
+///
+/// **The strongest of the three credential operations.** Changing a password changes what an
+/// attacker must know; changing this changes where recovery GOES, and an attacker who moves it keeps
+/// the account even after the client resets their password, because the reset arrives in the
+/// attacker's inbox.
+///
+/// A consumed row is also the history: it records the address it replaced.
+model ClientEmailChange {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+
+  clientUserId String     @db.Uuid
+  clientUser   ClientUser @relation(fields: [clientUserId], references: [id], onDelete: Cascade)
+
+  /// Lowercased at write. Not applied to the user until the change completes: an address the
+  /// account moved to before anybody proved it was reachable is a lockout the client discovers on
+  /// the day they need to get back in.
+  newEmail String
+
+  /// The address this replaced. Written at completion, which is the only moment it is known to be
+  /// the one being left.
+  previousEmail String?
+
+  /// SHA-256 of the verification token, delivered to the NEW address. Never stored in the clear.
+  tokenHash String @unique
+
+  source ClientEmailChangeSource
+
+  /// **The distinction that has to survive.** `email` means a token sent to the new address came
+  /// back, which proves the address is reachable. `staff_assertion` means a Level 3 human vouched
+  /// for the caller - which proves the PERSON and proves nothing about the address. When somebody
+  /// asks later how an account's recovery channel moved, the answer belongs in a column rather than
+  /// in an inference.
+  verifiedBy ClientEmailVerification?
+
+  /// The Level 3 human, for a staff-assisted change. Null for self-service, as 6.4's `listedBy` is.
+  requestedBy String? @db.Uuid
+  /// How that human satisfied themselves the caller was the client.
+  verificationBasis String?
+
+  requestedAt DateTime @default(now())
+  /// Short, for the same reason a reset is: the token is used within minutes of being asked for.
+  expiresAt DateTime
+
+  consumedAt DateTime?
+  /// Set when a newer request replaced this one, or when the client recovered their account -
+  /// completing a password reset or a change cancels every pending move, so an attacker's request
+  /// cannot complete after the client has taken their account back.
+  cancelledAt DateTime?
+  cancelledReason String?
+
+  @@index([tenantId, clientUserId])
+  @@map("client_email_changes")
+  @@schema("identity")
+}
+
+enum ClientEmailChangeSource {
+  self_service
+  staff_assisted
+
+  @@schema("identity")
+}
+
+enum ClientEmailVerification {
+  /// A token delivered to the new address was presented. The address is reachable.
+  email
+  /// A Level 3 human vouched for the caller. The address is NOT known to be reachable.
+  staff_assertion
+
   @@schema("identity")
 }
 

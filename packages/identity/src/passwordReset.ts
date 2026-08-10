@@ -31,6 +31,7 @@ import { db, type Prisma } from '@bwc/db';
 import { append } from '@bwc/ledger';
 import { notBuilt, ok, refused, type EventActor, type Outcome } from '@bwc/core';
 import { findActor } from './index.js';
+import { cancelPendingEmailChanges } from './emailChange.js';
 import { checkPassword, hashPassword, hashToken, newToken, verifyPassword } from './credentials.js';
 
 /**
@@ -364,6 +365,17 @@ export const completePasswordReset = async (input: {
     });
 
     return revoked.count;
+  });
+
+  // A client recovering their account cancels any pending move of their address. Without this, an
+  // attacker with a session requests a move to their own address, the client notices and resets,
+  // and the attacker then presents the verification token and takes the recovery channel anyway -
+  // after the client believes they have dealt with it.
+  await cancelPendingEmailChanges({
+    tenantId: input.tenantId,
+    clientUserId: user.id,
+    reason: 'The password was reset.',
+    now,
   });
 
   await append({
