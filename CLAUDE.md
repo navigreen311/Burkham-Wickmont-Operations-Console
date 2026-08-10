@@ -148,6 +148,19 @@ Every feature or significant change follows this sequence:
 - **Every signal has a scope; the failure is reading it as evidence for something adjacent.**
   A green check is not a merge — verify `mergedAt`. A passing merge is not a clean merge — read
   what it wrote. A watcher that exits immediately reported nothing, not success.
+- **Never bind a JS `Date` into raw SQL.** Prisma maps `DateTime` to a naive `timestamp(3)`
+  column holding UTC, but a `Date` bound into `$queryRaw` is sent as _timestamptz_, so Postgres
+  compares it against the naive column by converting through the session timezone — the
+  comparison silently shifts by the local UTC offset. Prisma's typed queries are unaffected, so
+  it surfaces only in raw SQL, only as wrong rows, and never as an error. On a UTC machine it is
+  invisible. Bind `value.toISOString()` and cast: `${ts(now)}::timestamp`
+  (`packages/workflow/src/queue.ts`). This silently broke the task-queue claim query; guarded by
+  `tests/invariants/raw-sql-timestamps.test.ts`, which asserts raw SQL and Prisma see the same
+  rows rather than asserting a fixed count.
+- **Injectable clocks must reach every entry point, not most of them.** `start()` defaulted to
+  `new Date()` internally while every other engine function took `now`, so an instance created
+  under a test clock got wall-clock SLA deadlines. If a module takes a clock, take it everywhere
+  a timestamp is stamped.
 
 ### 5. Docs
 

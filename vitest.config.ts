@@ -16,6 +16,8 @@ const WORKSPACE_PACKAGES = [
   'integration',
   'middleware',
   'placement',
+  'notifications',
+  'workflow',
 ] as const;
 
 export default defineConfig({

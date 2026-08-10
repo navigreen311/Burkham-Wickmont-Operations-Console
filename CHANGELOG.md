@@ -7,6 +7,38 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added — Workflow Engine core (`ai-feature/m2-2-workflow-engine-core`)
+
+- **2.2 Workflow Engine** — playbooks as versioned node graphs, instance lifecycle, and the worker
+  tick. Decision C: the Console is the runner for all workflows.
+  - Durable Postgres task queue with `FOR UPDATE SKIP LOCKED`, claim leases and reclaim-on-expiry
+    for crash recovery (ADR-0003).
+  - Retry with exponential backoff capped at 24h, then dead-letter. Every failure, retry and
+    dead-letter writes a ledger event — §10.5 requires zero silent workflow failures.
+  - Wait states: a row with a future `runAt`, so 90 days is the same code path as 90 seconds.
+  - Decision points via a declarative predicate language — no `eval`, three reachable roots,
+    prototype keys rejected, ordered comparison restricted to numbers and dates.
+  - SLA breach escalation, exactly once per task, notifying Compliance & Evidence.
+  - Playbooks validated at publish (dangling `next`, unreachable nodes, no terminal), and versions
+    pinned at instance start so publishing a new version does not re-route work in flight.
+- **11.4 Notification & Task Queue** — the assignment record the Engine dispatches through.
+- ADR-0003 — Postgres-backed queue over BullMQ/Redis: one durability domain, so task state,
+  instance state and the ledger commit together.
+- `docs/m2-2-workflow-engine.md`, `docs/plans/m2-2-workflow-engine.md`.
+- 31 new tests (84 total).
+
+### Fixed
+
+- **Raw SQL timestamp comparisons shifted by the local UTC offset.** Prisma maps `DateTime` to a
+  naive `timestamp(3)` holding UTC, but a JS `Date` bound into `$queryRaw` is sent as
+  _timestamptz_, so Postgres converted through the session timezone. The task-queue claim query
+  returned the wrong rows with no error — and would have looked correct on a UTC machine.
+  Timestamps now cross into raw SQL as ISO strings cast to `timestamp`; guarded by
+  `tests/invariants/raw-sql-timestamps.test.ts`, which asserts raw SQL and Prisma agree.
+- **`start()` ignored the injected clock**, stamping the first task's `runAt` and `slaDueAt` from
+  wall-clock time while every other engine function took `now`. Instances started under a test
+  clock got SLA deadlines already breached.
+
 ### Added — Walking Skeleton on the Spine (`ai-feature/walking-skeleton-spine`)
 
 - **pnpm + Turborepo monorepo**, TypeScript end-to-end. Eleven workspace packages named for the

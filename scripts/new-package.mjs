@@ -27,6 +27,8 @@ const PACKAGES = [
   ['integration', '11.5 Integration Layer / API Gateway. The only path to an external service.', []],
   ['middleware', 'The fixed seven-step middleware chain (Specification v2 section 5.5).', ['ledger', 'identity', 'tenancy', 'clients', 'firewall']],
   ['placement', '5.3 Funding Recommendation Engine. Refusal path for the walking skeleton.', ['ledger', 'clients', 'consent', 'firewall', 'integration', 'middleware']],
+  ['notifications', '11.4 Notification & Task Queue. The substrate the Workflow Engine dispatches through.', ['db', 'ledger']],
+  ['workflow', '2.2 Workflow Engine. Playbooks, instances, durable task queue, retry policy, wait states.', ['db', 'ledger', 'clients', 'notifications']],
 ];
 
 function createPackage(name, description, deps) {
