@@ -138,6 +138,25 @@ importers:
         specifier: ^5.8.3
         version: 5.9.3
 
+  packages/capital:
+    dependencies:
+      '@bwc/clients':
+        specifier: workspace:*
+        version: link:../clients
+      '@bwc/core':
+        specifier: workspace:*
+        version: link:../core
+      '@bwc/db':
+        specifier: workspace:*
+        version: link:../db
+      '@bwc/ledger':
+        specifier: workspace:*
+        version: link:../ledger
+    devDependencies:
+      typescript:
+        specifier: ^5.8.3
+        version: 5.9.3
+
   packages/claims:
     dependencies:
       '@bwc/core':
