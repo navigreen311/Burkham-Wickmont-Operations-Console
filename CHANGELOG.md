@@ -7,6 +7,41 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added — Workflow Engine scheduler, listener and worker (`ai-feature/m2-2-workflow-scheduler-listener`)
+
+Completes module 2.2. All seven components of Specification v2 §5.3 now exist, and the Engine runs
+on its own rather than only when a test calls it.
+
+- **Scheduler** — cron-driven recurring workflows with a stored IANA timezone. Claiming is a
+  conditional update on `nextRunAt`, so concurrent workers produce exactly one winner. Catch-up
+  fires **once** after an outage rather than once per missed window, recording the gap as
+  `workflow.schedule_late`. A schedule that cannot be evaluated, or whose playbook is missing, is
+  disabled and logged rather than retried forever.
+- **Event listener** — Ledger-triggered workflow initiation and event-wait resolution. Triggers
+  carry optional declarative conditions (the playbook predicate language). `seekToLatest()` skips
+  existing history so registering a trigger does not fire it retroactively.
+- **Worker runtime** (`packages/workflow/src/worker.ts`, `apps/worker`) — scheduler → listener →
+  engine on an interval, non-overlapping passes, graceful shutdown, and a loop that survives a
+  throwing pass. `pnpm dev:worker` / `pnpm worker`.
+- ADR-0004 — `cron-parser` over a hand-rolled evaluator, with the DST case verified before
+  adopting; timezone as a stored field rather than a silent UTC default.
+- `docs/m2-2-scheduler-listener.md`, `docs/plans/m2-2-scheduler-listener.md`.
+- 24 new tests (108 total).
+
+**Exactly-once is enforced by a unique constraint on `(triggerId, ledgerEventId)`, not by the
+cursor.** A crash between starting an instance and advancing the cursor replays the event, the
+insert conflicts, and nothing starts twice — a duplicated workflow here means duplicated client
+outreach, and both instances would look legitimate.
+
+### Fixed
+
+- **Event-waits could never advance.** The listener set a resolved wait back to `pending`, but the
+  engine's `wait` handler re-parks any event-wait it claims — so the task ping-ponged between
+  `pending` and `waiting` forever and the workflow never progressed, with nothing failing.
+  Resolution now goes through `resolveEventWait()` in the engine, which owns graph advancement.
+- `@bwc/db` exported `Prisma` type-only, so `Prisma.DbNull` — a runtime sentinel needed to write a
+  nullable JSON column — was unavailable to consumers.
+
 ### Added — Workflow Engine core (`ai-feature/m2-2-workflow-engine-core`)
 
 - **2.2 Workflow Engine** — playbooks as versioned node graphs, instance lifecycle, and the worker

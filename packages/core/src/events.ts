@@ -44,6 +44,9 @@ export const EVENT_TYPES = [
   'workflow.wait_started',
   'workflow.wait_resolved',
   'workflow.sla_breached',
+  'workflow.schedule_fired',
+  'workflow.schedule_late',
+  'workflow.trigger_fired',
   // Notification & Task Queue (11.4)
   'notification.raised',
   'notification.completed',

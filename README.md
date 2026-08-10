@@ -10,12 +10,19 @@ narrowly scoped Client Portal (module 11.10), which is a secure delivery and app
 
 ## Status
 
-**Phase: V1, first slice complete.** The spine is built and tested — Event Ledger, Identity,
-Tenancy, and the fixed seven-step middleware chain — with one path driven end to end through it:
-client intake → consent → compliance state → placement correctly refused with the governing
-principle named. See [`docs/walking-skeleton-spine.md`](docs/walking-skeleton-spine.md).
+**Phase: V1 in progress. 2 of 46 modules' worth of foundation complete.**
 
-53 tests green (lint, types, format clean). Next: the Workflow Engine (module 2.2).
+| Slice                                                           | State                                                                                                                                                                                                               |
+| --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [Walking skeleton on the spine](docs/walking-skeleton-spine.md) | Event Ledger, Identity, Tenancy, the fixed seven-step middleware chain, and one path driven end to end: client intake → consent → compliance state → placement correctly refused with the governing principle named |
+| [Workflow Engine core](docs/m2-2-workflow-engine.md)            | Playbooks, instances, durable Postgres task queue, retry/backoff/dead-letter, wait states, decision predicates, SLA escalation                                                                                      |
+| [Scheduler, listener, worker](docs/m2-2-scheduler-listener.md)  | Cron schedules with timezones, Ledger-triggered workflows, event-wait resolution, and a worker process that runs it all                                                                                             |
+
+**108 tests green** (lint, types, format clean). Module 2.2 is complete — all seven components of
+Specification v2 §5.3.
+
+Next: Category 3 (Document & Deliverable Management) or Category 1's remaining Client &
+Engagement modules.
 
 ## Scope
 
@@ -130,15 +137,16 @@ node scripts/demo-walking-skeleton.mjs
 
 ## Commands
 
-| Command                                | Purpose                                         |
-| -------------------------------------- | ----------------------------------------------- |
-| `pnpm dev`                             | Run the API                                     |
-| `pnpm test`                            | All suites                                      |
-| `pnpm test:invariants`                 | The invariant suite alone                       |
-| `pnpm verify`                          | lint + typecheck + test                         |
-| `pnpm db:migrate`                      | Create and apply a migration                    |
-| `pnpm db:studio`                       | Browse the database                             |
-| `pwsh -File scripts/setup.ps1 -Verify` | Verify toolchain, files, secret hygiene, remote |
+| Command                                | Purpose                                                  |
+| -------------------------------------- | -------------------------------------------------------- |
+| `pnpm dev`                             | Run the API                                              |
+| `pnpm dev:worker`                      | Run the Workflow Engine worker (needs `WORKER_ACTOR_ID`) |
+| `pnpm test`                            | All suites                                               |
+| `pnpm test:invariants`                 | The invariant suite alone                                |
+| `pnpm verify`                          | lint + typecheck + test                                  |
+| `pnpm db:migrate`                      | Create and apply a migration                             |
+| `pnpm db:studio`                       | Browse the database                                      |
+| `pwsh -File scripts/setup.ps1 -Verify` | Verify toolchain, files, secret hygiene, remote          |
 
 ## Repository layout
 

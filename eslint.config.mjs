@@ -60,8 +60,16 @@ export default [
     },
   },
   {
-    // The API server's startup line and the demo script are meant to print.
-    files: ['apps/api/src/server.ts', 'scripts/**/*.mjs', 'scripts/**/*.js'],
+    // Entry points whose stdout is the operator interface, not leftover debugging: the API's
+    // startup line, the worker's pass log, and the demo scripts. Library and service code stays
+    // under the rule - a console call there is a log line with no scrubbing, in a system where
+    // PII must never reach a log sink.
+    files: [
+      'apps/api/src/server.ts',
+      'apps/worker/src/main.ts',
+      'scripts/**/*.mjs',
+      'scripts/**/*.js',
+    ],
     rules: { 'no-console': 'off' },
   },
   {

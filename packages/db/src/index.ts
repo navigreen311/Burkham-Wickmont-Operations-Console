@@ -7,9 +7,14 @@
  * it deliberately exports no queries of its own.
  */
 
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, Prisma } from '@prisma/client';
 
-export { PrismaClient };
+/**
+ * `Prisma` is exported as a value, not only as a type namespace: `Prisma.DbNull` and
+ * `Prisma.JsonNull` are runtime sentinels a caller needs when writing a nullable Json column,
+ * and they are the difference between "no value" and "a stored JSON null".
+ */
+export { PrismaClient, Prisma };
 export type {
   Tenant,
   Actor,
@@ -22,7 +27,6 @@ export type {
   ConsentKind,
   ClientFirewallState as ClientFirewallStateRow,
   FirewallState as FirewallStateRow,
-  Prisma,
 } from '@prisma/client';
 
 let client: PrismaClient | undefined;
