@@ -25,8 +25,10 @@ import express, { type Express, type NextFunction, type Request, type Response }
 import helmet from 'helmet';
 import {
   clientRoom,
+  completeReset,
   downloadDocument,
   principalFromToken,
+  requestReset,
   sendMessage,
   signDisclosure,
   signIn,
@@ -46,6 +48,8 @@ export interface PortalAppDeps {
   readonly vault: VaultConfig;
   /** Injectable so a test can drive the window without waiting five minutes. */
   readonly limiter?: RateLimiter;
+  /** The password-reset path counts separately - see `DEFAULT_RESET_WINDOW_SECONDS`. */
+  readonly resetLimiter?: RateLimiter;
   readonly now?: () => Date;
 }
 
@@ -125,6 +129,33 @@ export const createPortalApp = (deps: PortalAppDeps): Express => {
       windowSeconds: config.signInWindowSeconds,
       maxAttempts: config.signInMaxAttempts,
     });
+  const resetLimiter =
+    deps.resetLimiter ??
+    createRateLimiter({
+      windowSeconds: config.resetWindowSeconds,
+      maxAttempts: config.resetMaxAttempts,
+    });
+
+  /**
+   * Per-IP limiting, in front of an unauthenticated route.
+   *
+   * Runs BEFORE the body parser on every route that uses it. A limiter that parsed first would be
+   * doing the attacker's work for them.
+   */
+  const limitBy =
+    (which: RateLimiter, reason: string) =>
+    (req: Request, res: Response, next: NextFunction): void => {
+      const verdict = which.check(rateLimitKey(req.ip), now());
+      if (!verdict.allowed) {
+        res.setHeader('Retry-After', String(verdict.retryAfterSeconds));
+        send(
+          res,
+          refused(reason, 'Portal transport - per-IP rate limiting on the unauthenticated path'),
+        );
+        return;
+      }
+      next();
+    };
 
   const app = express();
 
@@ -156,27 +187,9 @@ export const createPortalApp = (deps: PortalAppDeps): Express => {
   });
 
   // --- Sign in -------------------------------------------------------------
-  //
-  // The only unauthenticated route that touches the database, and therefore the only one that is
-  // rate limited. The limit runs BEFORE the body is parsed: a limiter that parsed first would be
-  // doing the attacker's work for them.
   app.post(
     '/portal/sign-in',
-    (req: Request, res: Response, next: NextFunction) => {
-      const verdict = limiter.check(rateLimitKey(req.ip), now());
-      if (!verdict.allowed) {
-        res.setHeader('Retry-After', String(verdict.retryAfterSeconds));
-        send(
-          res,
-          refused(
-            'Too many sign-in attempts from this address. Try again shortly.',
-            'Portal transport - per-IP rate limiting on the unauthenticated path',
-          ),
-        );
-        return;
-      }
-      next();
-    },
+    limitBy(limiter, 'Too many sign-in attempts from this address. Try again shortly.'),
     express.json({ limit: config.maxJsonBytes }),
     asyncRoute(async (req, res) => {
       const body = req.body as { email?: unknown; password?: unknown };
@@ -207,6 +220,72 @@ export const createPortalApp = (deps: PortalAppDeps): Express => {
         status: 'ok',
         value: { displayName: result.value.displayName, expiresAt: result.value.expiresAt },
       });
+    }),
+  );
+
+  // --- Password reset ------------------------------------------------------
+  //
+  // Unauthenticated, and the only route here that produces a credential. Its own limiter, so a
+  // reset flood cannot exhaust the sign-in budget and lock out clients behind the same address.
+  app.post(
+    '/portal/password-reset',
+    limitBy(resetLimiter, 'Too many reset requests from this address. Try again shortly.'),
+    express.json({ limit: config.maxJsonBytes }),
+    asyncRoute(async (req, res) => {
+      const body = req.body as { email?: unknown };
+
+      if (typeof body?.email !== 'string') {
+        // The same shape of answer a real address gets, for the same reason sign-in gives one
+        // sentence: the endpoint must not report anything about the address it was handed.
+        send(
+          res,
+          refused(
+            'A reset needs the email address on the account.',
+            'Blueprint 11.1 - identity and access',
+          ),
+        );
+        return;
+      }
+
+      // 11.1 answers identically for a known address, an unknown one, an unenrolled user and a
+      // disabled one. Nothing here inspects the result to be more helpful.
+      send(res, await requestReset({ tenantId: config.tenantId, email: body.email, now: now() }));
+    }),
+  );
+
+  app.post(
+    '/portal/password-reset/complete',
+    limitBy(resetLimiter, 'Too many reset attempts from this address. Try again shortly.'),
+    express.json({ limit: config.maxJsonBytes }),
+    asyncRoute(async (req, res) => {
+      const body = req.body as { token?: unknown; password?: unknown };
+
+      if (typeof body?.token !== 'string' || typeof body?.password !== 'string') {
+        send(
+          res,
+          refused(
+            'That reset link is not valid. Ask for a new one.',
+            'Blueprint 11.1 - identity and access',
+          ),
+        );
+        return;
+      }
+
+      // The token arrives in the BODY, never a query string. The link a client clicks carries it in
+      // a URL because email leaves no alternative, but the URL a browser then posts from is not the
+      // one this server logs.
+      const result = await completeReset({
+        tenantId: config.tenantId,
+        token: body.token,
+        password: body.password,
+        now: now(),
+      });
+
+      // Every session for that user has just been revoked, including this browser's if it held one.
+      // Clearing the cookie stops the next request looking like a session that expired on its own.
+      if (result.status === 'ok') clearSessionCookie(res, config);
+
+      send(res, result);
     }),
   );
 

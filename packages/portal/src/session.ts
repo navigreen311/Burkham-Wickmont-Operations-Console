@@ -16,7 +16,16 @@
  * different people look like one.
  */
 
-import { resolveSession, authenticateClientUser, issueSession, revokeSession } from '@bwc/identity';
+import {
+  resolveSession,
+  authenticateClientUser,
+  completePasswordReset,
+  issueSession,
+  requestPasswordReset,
+  revokeSession,
+  type CompletedPasswordReset,
+  type PasswordResetAcknowledgement,
+} from '@bwc/identity';
 import { ok, type Outcome } from '@bwc/core';
 import type { ClientPrincipal } from './views.js';
 
@@ -91,6 +100,36 @@ export const principalFromToken = async (input: {
     actorId: resolved.value.clientUserId,
   });
 };
+
+/**
+ * Ask for a password reset.
+ *
+ * Passed through to 11.1 untouched, and the pass-through is the design. The value of this endpoint
+ * is that it says the same thing to every address, and the way that property dies is somebody in a
+ * transport or wrapper layer adding a helpful distinction - "we couldn't find that address" - which
+ * turns it into a list of who banks with us.
+ *
+ * There is deliberately no signed-in variant here. A client who knows their password and wants a new
+ * one is doing something else: that needs the current password, not a token mailed to an inbox that
+ * may itself be the thing that was compromised.
+ */
+export const requestReset = async (input: {
+  tenantId: string;
+  email: string;
+  now?: Date;
+}): Promise<Outcome<PasswordResetAcknowledgement>> => requestPasswordReset(input);
+
+/**
+ * Set a new password with a reset token.
+ *
+ * Every live session ends here, including the one held by whoever the client is resetting against.
+ */
+export const completeReset = async (input: {
+  tenantId: string;
+  token: string;
+  password: string;
+  now?: Date;
+}): Promise<Outcome<CompletedPasswordReset>> => completePasswordReset(input);
 
 /** Sign out. */
 export const signOut = async (input: {

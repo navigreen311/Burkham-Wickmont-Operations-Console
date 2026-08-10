@@ -241,6 +241,12 @@ export const EVENT_TYPES = [
   'identity.client_user.sign_in_failed',
   'identity.client_user.sign_in_blocked',
   'identity.client_user.disabled',
+  // Password reset. Requested and issued are separate types because they are separate acts: one is
+  // an anonymous person typing an address into a form, the other a named human deciding that the
+  // caller on the phone is who they said. Reading them as one would hide which.
+  'identity.client_user.password_reset_requested',
+  'identity.client_user.password_reset_issued',
+  'identity.client_user.password_reset_completed',
   'identity.client_session.revoked',
 ] as const;
 

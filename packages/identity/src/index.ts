@@ -133,4 +133,5 @@ export const decideAuthority = (
 
 export * from './credentials.js';
 export * from './clientUsers.js';
+export * from './passwordReset.js';
 export * from './sessions.js';

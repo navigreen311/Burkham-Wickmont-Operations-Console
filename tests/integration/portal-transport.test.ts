@@ -19,7 +19,7 @@ import { mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { create as createClient } from '@bwc/clients';
-import { enrolClientUser, inviteClientUser } from '@bwc/identity';
+import { enrolClientUser, inviteClientUser, issuePasswordReset } from '@bwc/identity';
 import {
   EnvKekProvider,
   LocalEncryptedStore,
@@ -45,6 +45,7 @@ const HUMAN = () => ({ id: fx.human.id, kind: 'human' as const });
 
 /** A generous limit for the happy path; the rate-limit tests build their own tight limiter. */
 const limiter = createRateLimiter({ windowSeconds: 300, maxAttempts: 1000 });
+const resetLimiter = createRateLimiter({ windowSeconds: 900, maxAttempts: 1000 });
 
 interface Reply {
   status: number;
@@ -118,9 +119,11 @@ beforeAll(async () => {
     maxUploadBytes: 1024 * 1024,
     signInWindowSeconds: 300,
     signInMaxAttempts: 1000,
+    resetWindowSeconds: 900,
+    resetMaxAttempts: 1000,
   };
 
-  server = createServer(createPortalApp({ config, vault, limiter }));
+  server = createServer(createPortalApp({ config, vault, limiter, resetLimiter }));
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
   const address = server.address();
   if (address === null || typeof address === 'string') throw new Error('setup: no address');
@@ -301,6 +304,153 @@ describe('sign in and the session cookie', () => {
     const none = await call('/portal/room');
     expect(forged.status).toBe(none.status);
     expect(forged.json<{ reason: string }>().reason).toBe(none.json<{ reason: string }>().reason);
+  });
+});
+
+describe('password reset over the wire', () => {
+  const RESET_EMAIL = 'transport-reset@example.com';
+  const NEW_PASSWORD = 'a-replacement-portal-password';
+  let resetUserId: string;
+
+  beforeAll(async () => {
+    const invited = await inviteClientUser({
+      tenantId: fx.tenant.id,
+      clientId,
+      email: RESET_EMAIL,
+      displayName: 'Reset Person',
+      issuedBy: fx.human.id,
+      actor: HUMAN(),
+    });
+    if (invited.status !== 'ok') throw new Error('setup: invite');
+    const enrolled = await enrolClientUser({
+      tenantId: fx.tenant.id,
+      token: invited.value.token,
+      password: PASSWORD,
+      actor: HUMAN(),
+    });
+    if (enrolled.status !== 'ok') throw new Error('setup: enrol');
+    resetUserId = enrolled.value.id;
+  });
+
+  it('answers a known and an unknown address identically, and sets no cookie', async () => {
+    const known = await call('/portal/password-reset', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ email: RESET_EMAIL }),
+    });
+    const unknown = await call('/portal/password-reset', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ email: 'not-a-client@example.com' }),
+    });
+
+    expect(known.status).toBe(unknown.status);
+    expect(known.body).toBe(unknown.body);
+    // `not_built`: no email provider is gated in, so nothing was delivered and saying otherwise
+    // would be the one answer that is a lie in both branches.
+    expect(known.status).toBe(501);
+    expect(known.headers.getSetCookie()).toHaveLength(0);
+  });
+
+  it('completes a reset with a token in the BODY, and ends every session', async () => {
+    // Sign in first, so there is a live session for the reset to end.
+    const signedIn = await call('/portal/sign-in', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ email: RESET_EMAIL, password: PASSWORD }),
+    });
+    expect(signedIn.status).toBe(200);
+    const cookie = sessionCookie(signedIn);
+
+    const issued = await issuePasswordReset({
+      tenantId: fx.tenant.id,
+      clientUserId: resetUserId,
+      issuedBy: fx.human.id,
+      verificationBasis: 'Called back on the number on file and confirmed the EIN last four.',
+      actor: HUMAN(),
+    });
+    if (issued.status !== 'ok') throw new Error('setup: issue');
+
+    const done = await call('/portal/password-reset/complete', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ token: issued.value.token, password: NEW_PASSWORD }),
+    });
+
+    expect(done.status).toBe(200);
+    expect(done.json<{ data: { sessionsRevoked: number } }>().data.sessionsRevoked).toBe(1);
+    // The token went out in an email link and came back in a body. It is not echoed.
+    expect(done.body).not.toContain(issued.value.token);
+
+    // The session taken before the reset is dead.
+    const room = await call('/portal/room', { cookie });
+    expect(room.status).toBe(409);
+
+    const withNew = await call('/portal/sign-in', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ email: RESET_EMAIL, password: NEW_PASSWORD }),
+    });
+    expect(withNew.status).toBe(200);
+  });
+
+  it('refuses a malformed body the same way it refuses a bad token', async () => {
+    const malformed = await call('/portal/password-reset/complete', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ token: 42 }),
+    });
+    const wrong = await call('/portal/password-reset/complete', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ token: 'never-real', password: NEW_PASSWORD }),
+    });
+
+    expect(malformed.status).toBe(409);
+    expect(malformed.json<{ reason: string }>().reason).toBe(
+      wrong.json<{ reason: string }>().reason,
+    );
+  });
+
+  it('counts resets on their own limiter, so a reset flood cannot block sign-in', async () => {
+    // THE ASSERTION THIS BLOCK EXISTS FOR. One shared bucket would mean an attacker spraying resets
+    // from a shared address locks legitimate clients out of signing in - a denial of service built
+    // out of two controls that are each individually correct.
+    const app = createPortalApp({
+      config: { ...config, resetMaxAttempts: 2 },
+      vault,
+      limiter: createRateLimiter({ windowSeconds: 300, maxAttempts: 1000 }),
+      resetLimiter: createRateLimiter({ windowSeconds: 900, maxAttempts: 2 }),
+    });
+    const fresh = createServer(app);
+    await new Promise<void>((resolve) => fresh.listen(0, '127.0.0.1', resolve));
+    const address = fresh.address();
+    if (address === null || typeof address === 'string') throw new Error('setup');
+    const at = `http://127.0.0.1:${address.port}`;
+
+    const ask = (): Promise<globalThis.Response> =>
+      fetch(`${at}/portal/password-reset`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ email: RESET_EMAIL }),
+      });
+
+    expect((await ask()).status).toBe(501);
+    expect((await ask()).status).toBe(501);
+    // Third is refused by the limiter.
+    const blocked = await ask();
+    expect(blocked.status).toBe(409);
+    expect(((await blocked.json()) as { reason: string }).reason).toMatch(/Too many reset/);
+
+    // And sign-in is untouched.
+    const signIn = await fetch(`${at}/portal/sign-in`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ email: EMAIL, password: PASSWORD }),
+    });
+    expect(signIn.status).toBe(200);
+
+    await new Promise<void>((resolve) => fresh.close(() => resolve()));
   });
 });
 

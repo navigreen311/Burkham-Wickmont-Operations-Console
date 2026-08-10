@@ -7,6 +7,41 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added - password reset for client users (`ai-feature/client-password-reset`)
+
+The first of the three gaps the transport slice named. See
+[docs/m11-password-reset.md](docs/m11-password-reset.md) and ADR-0023.
+
+- **A reset link is a credential in transit, so delivery does not go through 4.1.** `send` writes
+  the message body into `Communication.body` - a table staff read, and one 7.1 assembles into the
+  compliance evidence file. It also runs the middleware chain (recovery gated on a regulatory
+  activation), the preference gate (**a client who opted out of email could never recover their
+  account**) and the compliance scanner. `deliverPasswordResetLink` persists nothing, logs nothing
+  and returns nothing, and reports `not_built` naming the email provider.
+- **Requesting a reset changes nothing about the account.** Not the password - otherwise anybody who
+  knows a client's email address ends their access by typing it into a form. **Not the lockout**:
+  clearing it reads as kindness and is a lockout bypass, because an attacker who has burned five
+  guesses would reset the counter and keep going. It clears on COMPLETION, where the caller has
+  proved they hold the token.
+- **Every address gets the same answer** - enrolled, unenrolled, disabled, locked, or not a user at
+  all. The residual timing difference is one row insert, stated in the code rather than papered over.
+- **Completing a reset ends every session**, including one held by whoever the client is resetting
+  against. A reset that left them running would leave the attacker with a valid cookie for twelve
+  hours while the client believed they had shut them out.
+- **A staff-issued reset requires a recorded verification basis**, because the attack on helpdesk
+  password reset is social engineering rather than cryptography. It does not expand what Level 3 can
+  already do - the same person can invite a client user at an address they control onto any client's
+  file - it makes an existing power auditable. `issuedBy` is null for a self-service request,
+  mirroring 6.4's `listedBy`.
+- Sixty-minute window against the invitation's seventy-two hours; one live reset at a time; single
+  use; the same password cannot be set back; consumed, superseded, expired and never-real answer
+  identically.
+- Transport: `POST /portal/password-reset` and `/portal/password-reset/complete`, on their **own**
+  rate limiter. A shared bucket would let a reset flood lock legitimate clients out of signing in.
+
+**Changed - `inviteClientUser`'s refusal for an already-enrolled user** no longer says a password
+reset "is not built here". It now names the two functions that do it.
+
 ### Added - the Client Portal transport layer (`ai-feature/portal-transport`)
 
 `apps/portal-api` - HTTP for 11.10, and the last thing standing between the portal and being
