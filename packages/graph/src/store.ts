@@ -10,6 +10,12 @@
  * payload can accidentally include one - not because each of those remembered to strip it, but
  * because they were never given it. `revealSsn`/`revealEin` are the only readers, and they are
  * separate functions a caller has to deliberately reach for.
+ *
+ * The key-encryption key arrives through the same `KekProvider` seam the Vault uses, and is
+ * injectable per call. It was originally hardcoded to `new EnvKekProvider()`, which passed locally
+ * - the developer `.env` has `VAULT_KEK` - and failed on CI, which does not. The local pass was the
+ * false signal, and the deeper problem was the missing seam: a store that constructs its own key
+ * provider cannot be pointed at a KMS without editing the store.
  */
 
 import { db, Prisma } from '@bwc/db';
@@ -26,7 +32,11 @@ import {
   type OwnerNode,
 } from './model.js';
 
-const kek = (): KekProvider => new EnvKekProvider();
+/**
+ * Default provider, constructed lazily so importing this module never throws on a missing key -
+ * only using it does, at the point where a caller actually asked to encrypt something.
+ */
+const kekOr = (provider?: KekProvider): KekProvider => provider ?? new EnvKekProvider();
 
 /** Last four of an identifier, for display. Non-digits stripped so formatting cannot shift it. */
 const last4 = (value: string): string => {
@@ -52,6 +62,8 @@ export interface UpsertEntityInput {
   readonly ein?: string;
   readonly notes?: string;
   readonly actor: EventActor;
+  /** Key provider. Defaults to the environment; injectable for a KMS or for a test. */
+  readonly kek?: KekProvider;
 }
 
 export const upsertEntity = async (input: UpsertEntityInput): Promise<Outcome<EntityNode>> => {
@@ -64,7 +76,10 @@ export const upsertEntity = async (input: UpsertEntityInput): Promise<Outcome<En
 
   const einFields =
     input.ein !== undefined
-      ? { einCiphertext: await encryptField(input.ein, kek()), einLast4: last4(input.ein) }
+      ? {
+          einCiphertext: await encryptField(input.ein, kekOr(input.kek)),
+          einLast4: last4(input.ein),
+        }
       : {};
 
   const row = await db().entity.upsert({
@@ -255,6 +270,7 @@ export const upsertOwner = async (input: {
   ssn?: string;
   notes?: string;
   actor: EventActor;
+  kek?: KekProvider;
 }): Promise<Outcome<OwnerNode>> => {
   if (input.fullName.trim() === '') {
     return refused(
@@ -265,7 +281,10 @@ export const upsertOwner = async (input: {
 
   const ssnFields =
     input.ssn !== undefined
-      ? { ssnCiphertext: await encryptField(input.ssn, kek()), ssnLast4: last4(input.ssn) }
+      ? {
+          ssnCiphertext: await encryptField(input.ssn, kekOr(input.kek)),
+          ssnLast4: last4(input.ssn),
+        }
       : {};
 
   const row = await db().owner.upsert({
@@ -314,6 +333,7 @@ export const revealSsn = async (input: {
   ownerId: string;
   actor: EventActor;
   purpose: string;
+  kek?: KekProvider;
 }): Promise<Outcome<string>> => {
   if (input.purpose.trim() === '') {
     return refused(
@@ -328,7 +348,7 @@ export const revealSsn = async (input: {
   if (!row) return noData('No such owner in this tenant.');
   if (row.ssnCiphertext === null) return noData('No SSN is on file for this owner.');
 
-  const plaintext = await decryptField(row.ssnCiphertext, kek());
+  const plaintext = await decryptField(row.ssnCiphertext, kekOr(input.kek));
 
   await append({
     tenantId: input.tenantId,
@@ -347,6 +367,7 @@ export const revealEin = async (input: {
   entityId: string;
   actor: EventActor;
   purpose: string;
+  kek?: KekProvider;
 }): Promise<Outcome<string>> => {
   if (input.purpose.trim() === '') {
     return refused(
@@ -361,7 +382,7 @@ export const revealEin = async (input: {
   if (!row) return noData('No such entity in this tenant.');
   if (row.einCiphertext === null) return noData('No EIN is on file for this entity.');
 
-  const plaintext = await decryptField(row.einCiphertext, kek());
+  const plaintext = await decryptField(row.einCiphertext, kekOr(input.kek));
 
   await append({
     tenantId: input.tenantId,

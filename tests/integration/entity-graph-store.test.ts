@@ -24,6 +24,7 @@ import {
   upsertEntity,
   upsertOwner,
 } from '@bwc/graph';
+import { EnvKekProvider, generateKek } from '@bwc/vault';
 import type { Provenance } from '@bwc/core';
 import { cleanupTenant, makeFixture, type Fixture } from '../setup.js';
 
@@ -37,7 +38,18 @@ let clientId: string;
 const TEST_SSN = '000-12-3456';
 const TEST_EIN = '00-7654321';
 
+/**
+ * The test supplies its own key rather than relying on the ambient `VAULT_KEK`.
+ *
+ * This file originally used the default provider and passed locally while failing on CI, because
+ * the developer `.env` carries a key and the CI environment did not. Injecting one makes the test
+ * independent of the environment it runs in - and the missing seam it exposed is now a `kek` option
+ * on every write, so the store can be pointed at a KMS without editing it.
+ */
+const kek = new EnvKekProvider('VAULT_GRAPH_TEST_KEK');
+
 beforeAll(async () => {
+  process.env['VAULT_GRAPH_TEST_KEK'] = generateKek();
   fx = await makeFixture('entity-graph');
   const client = await createClient(fx.tenant.id, 'Graph Test Co', actor());
   clientId = client.id;
@@ -64,6 +76,7 @@ describe('PII never leaves the store in the clear', () => {
       clientId,
       fullName: 'A. Owner',
       ssn: TEST_SSN,
+      kek,
       actor: actor(),
     });
 
@@ -78,6 +91,7 @@ describe('PII never leaves the store in the clear', () => {
     const revealed = await revealSsn({
       tenantId: fx.tenant.id,
       ownerId: owner.value.id,
+      kek,
       actor: actor(),
       purpose: 'Preparing an application packet that requires the guarantor SSN.',
     });
@@ -94,6 +108,7 @@ describe('PII never leaves the store in the clear', () => {
       clientId,
       fullName: 'Purposeless Read',
       ssn: TEST_SSN,
+      kek,
       actor: actor(),
     });
     if (owner.status !== 'ok') throw new Error('fixture failed');
@@ -101,6 +116,7 @@ describe('PII never leaves the store in the clear', () => {
     const result = await revealSsn({
       tenantId: fx.tenant.id,
       ownerId: owner.value.id,
+      kek,
       actor: actor(),
       purpose: '   ',
     });
@@ -119,6 +135,7 @@ describe('PII never leaves the store in the clear', () => {
     const result = await revealSsn({
       tenantId: fx.tenant.id,
       ownerId: owner.value.id,
+      kek,
       actor: actor(),
       purpose: 'Checking.',
     });
@@ -132,6 +149,7 @@ describe('PII never leaves the store in the clear', () => {
       legalName: 'EIN Holder LLC',
       role: 'operating',
       ein: TEST_EIN,
+      kek,
       actor: actor(),
     });
     if (entity.status !== 'ok') throw new Error('fixture failed');
@@ -141,6 +159,7 @@ describe('PII never leaves the store in the clear', () => {
     const revealed = await revealEin({
       tenantId: fx.tenant.id,
       entityId: entity.value.id,
+      kek,
       actor: actor(),
       purpose: 'Completing a lender application form.',
     });
