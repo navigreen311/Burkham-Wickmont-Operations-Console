@@ -271,6 +271,25 @@ importers:
         specifier: ^5.8.3
         version: 5.9.3
 
+  packages/governance:
+    dependencies:
+      '@bwc/core':
+        specifier: workspace:*
+        version: link:../core
+      '@bwc/db':
+        specifier: workspace:*
+        version: link:../db
+      '@bwc/ledger':
+        specifier: workspace:*
+        version: link:../ledger
+      '@bwc/lenders':
+        specifier: workspace:*
+        version: link:../lenders
+    devDependencies:
+      typescript:
+        specifier: ^5.8.3
+        version: 5.9.3
+
   packages/identity:
     dependencies:
       '@bwc/core':
@@ -335,6 +354,22 @@ importers:
         specifier: ^5.8.3
         version: 5.9.3
 
+  packages/lenders:
+    dependencies:
+      '@bwc/core':
+        specifier: workspace:*
+        version: link:../core
+      '@bwc/db':
+        specifier: workspace:*
+        version: link:../db
+      '@bwc/ledger':
+        specifier: workspace:*
+        version: link:../ledger
+    devDependencies:
+      typescript:
+        specifier: ^5.8.3
+        version: 5.9.3
+
   packages/middleware:
     dependencies:
       '@bwc/clients':
@@ -390,12 +425,18 @@ importers:
       '@bwc/firewall':
         specifier: workspace:*
         version: link:../firewall
+      '@bwc/governance':
+        specifier: workspace:*
+        version: link:../governance
       '@bwc/integration':
         specifier: workspace:*
         version: link:../integration
       '@bwc/ledger':
         specifier: workspace:*
         version: link:../ledger
+      '@bwc/lenders':
+        specifier: workspace:*
+        version: link:../lenders
       '@bwc/middleware':
         specifier: workspace:*
         version: link:../middleware

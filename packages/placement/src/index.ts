@@ -1,29 +1,39 @@
 /**
- * @bwc/placement - 5.3 Funding Recommendation Engine, refusal path only.
+ * @bwc/placement - 5.3 Funding Recommendation Engine.
  *
- * The walking skeleton builds the refusal, not the recommendation. That is the deliberate
- * choice: the Engine's blueprint entry says it "refuses to generate when Funding Ethics
- * Firewall or Do Not Fund Governance triggers, or when compliance categorical state is
- * Needs Review or Fail", and that refusal is the behaviour the whole spine exists to make
- * reliable. A recommendation built before the refusal works would be a recommendation that
- * can escape the gate.
+ * The walking skeleton built the refusal before the recommendation, deliberately: the
+ * Engine's blueprint entry says it "refuses to generate when Funding Ethics Firewall or Do
+ * Not Fund Governance triggers, or when compliance categorical state is Needs Review or
+ * Fail", and a recommendation built before that refusal worked would be a recommendation
+ * that can escape the gate.
  *
- * What is here: the request path, the gate, per-application consent, and provenance on the
- * output shape. What is not: the multi-factor recommendation logic, which depends on the
- * Lender Intelligence Database (5.2, deferred to V1.5).
+ * The gate works, and the Lender Intelligence Database (5.2) and Governance Board (5.4) now
+ * exist, so the recommendation lands here - see `recommend.ts` for the ranking itself.
+ *
+ * One dependency is still missing and is reported rather than papered over. The Console's
+ * client record holds a legal name and a compliance state; it does not hold time in
+ * business, revenue, industry or an authorized credit score, because the Client Household /
+ * Entity Graph (1.2) is not built. So the underwriting profile arrives with the request, and
+ * a request without one gets `not_built` naming 1.2 - not a recommendation computed from
+ * blanks.
  */
 
 import { check as checkConsent } from '@bwc/consent';
 import { append } from '@bwc/ledger';
 import { chain, type StepTrace } from '@bwc/middleware';
+import type { ClientProfile } from '@bwc/lenders';
 import {
   isUnverified,
   notBuilt,
+  ok,
   type EventActor,
   type Outcome,
   type Provenance,
   type Sourced,
 } from '@bwc/core';
+import { rankCandidates, type RecommendationSet } from './recommend.js';
+
+export * from './recommend.js';
 
 export interface PlacementRequest {
   readonly actorId: string;
@@ -32,6 +42,13 @@ export interface PlacementRequest {
   /** The specific application this placement is for. Consent is scoped to it. */
   readonly applicationRef: string;
   readonly correlationId?: string;
+  /**
+   * The underwriting profile. Supplied by the caller because 1.2 Entity Graph does not
+   * exist to hold it; absent, the engine refuses rather than evaluating against blanks.
+   */
+  readonly profile?: ClientProfile;
+  readonly today?: Date;
+  readonly limit?: number;
 }
 
 export interface Recommendation {
@@ -46,7 +63,7 @@ export interface Recommendation {
 }
 
 export interface PlacementResult {
-  readonly recommendation: Recommendation;
+  readonly recommendations: RecommendationSet;
   readonly trace: readonly StepTrace[];
 }
 
@@ -117,18 +134,60 @@ export const requestRecommendation = async (
     return { result: consent as Outcome<PlacementResult>, trace };
   }
 
-  // 5.2 Lender Intelligence Database is deferred to V1.5. Without it there is no lender
-  // catalogue and no rule to tag, so there is no honest recommendation to make. Reporting
-  // not_built rather than returning a plausible default: an untagged recommendation would
-  // violate principle 8, and a fabricated one would violate principle 1.
-  const unbuilt = notBuilt(
-    '5.2 Lender Intelligence Database',
-    'The gate and authorization passed, but no lender catalogue exists to recommend from. Deferred to V1.5 (blueprint category 5).',
-  );
+  // The one dependency still missing. The Console holds no underwriting attributes for a
+  // client - 1.2 Entity Graph owns those and is not built - so a request that does not carry
+  // a profile has nothing to evaluate against. Reporting not_built rather than treating the
+  // blanks as zeroes, which would disqualify every provider, or as unknowns that pass, which
+  // would fabricate a recommendation the client cannot act on.
+  if (request.profile === undefined) {
+    const unbuilt = notBuilt(
+      '1.2 Client Household / Entity Graph',
+      'The gate and authorization passed, but no underwriting profile was supplied and the Console does not yet hold one. Pass a profile with the request, or build 1.2.',
+    );
+    await recordOutcome(
+      unbuilt.reason,
+      `Principle 9 - honest refusal; ${unbuilt.module} not built`,
+    );
+    return { result: unbuilt, trace };
+  }
 
-  await recordOutcome(unbuilt.reason, `Principle 9 - honest refusal; ${unbuilt.module} not built`);
+  const ranked = await rankCandidates({
+    tenantId: request.tenantId,
+    profile: request.profile,
+    ...(request.today !== undefined ? { today: request.today } : {}),
+    ...(request.limit !== undefined ? { limit: request.limit } : {}),
+  });
 
-  return { result: unbuilt, trace };
+  if (ranked.status !== 'ok') {
+    // An empty catalogue, or a catalogue in which nothing survived governance and
+    // eligibility. Both are `no_data` and not `not_built`: the module exists and was
+    // consulted, which is a materially different statement to make to a client.
+    await recordOutcome(
+      ranked.status === 'no_data' ? ranked.reason : 'recommendation ranking did not succeed',
+      'Principle 9 - honest empty state; the catalogue was consulted and produced nothing',
+    );
+    return { result: ranked as Outcome<PlacementResult>, trace };
+  }
+
+  await append({
+    tenantId: request.tenantId,
+    type: 'placement.recommended',
+    actor,
+    clientId: request.clientId,
+    ...(request.correlationId !== undefined ? { correlationId: request.correlationId } : {}),
+    payload: {
+      applicationRef: request.applicationRef,
+      // Offering ids, not client attributes. The Ledger must never carry the revenue or
+      // score the recommendation was computed from.
+      offeringIds: ranked.value.recommendations.map((entry) => entry.offeringId),
+      rejectedCount: ranked.value.rejected.length,
+      containsUnverifiedInputs: ranked.value.recommendations.some(
+        (entry) => entry.containsUnverifiedInputs,
+      ),
+    },
+  });
+
+  return { result: ok({ recommendations: ranked.value, trace }), trace };
 };
 
 /**

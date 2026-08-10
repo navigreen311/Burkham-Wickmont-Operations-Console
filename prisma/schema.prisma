@@ -16,7 +16,7 @@ generator client {
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
-  schemas  = ["tenancy", "identity", "ledger", "clients", "consent", "firewall", "workflow", "notifications", "deliverables", "claims", "vault", "intelligence"]
+  schemas  = ["tenancy", "identity", "ledger", "clients", "consent", "firewall", "workflow", "notifications", "deliverables", "claims", "vault", "intelligence", "lenders", "governance"]
 }
 
 // ---------------------------------------------------------------------------
@@ -806,4 +806,443 @@ model TaskNotification {
   @@index([tenantId, workflowTaskId])
   @@map("task_notifications")
   @@schema("notifications")
+}
+
+// ---------------------------------------------------------------------------
+// 5.2 Lender Intelligence Database
+//
+// The structured intelligence layer on every provider. Blueprint 5.2 calls it a
+// "defensible long-term asset", and what makes it defensible is not the list of
+// lenders - anyone can compile that - but the provenance on every rule. Decision D
+// applied portfolio-wide: a velocity rule read off the issuer's published terms and
+// one somebody assumed are stored differently, so they can never be presented alike.
+// ---------------------------------------------------------------------------
+
+enum ProviderKind {
+  card_issuer
+  national_bank
+  fintech_loc
+  credit_union
+  mca_provider
+  factor
+  equipment_lessor
+  sba_lender
+
+  @@schema("lenders")
+}
+
+enum ProductKind {
+  business_credit_card
+  line_of_credit
+  term_loan
+  merchant_cash_advance
+  invoice_factoring
+  equipment_finance
+  sba_loan
+
+  @@schema("lenders")
+}
+
+/// How a stored rule was arrived at. Mirrors `Provenance` in @bwc/core; stored as
+/// discrete columns rather than JSON so that "which rules are unresearched" is a
+/// query a compliance officer can run rather than a scan of every row.
+enum ProvenanceTag {
+  issuer_rule
+  unresearched_default
+  vendor_feed
+
+  @@schema("lenders")
+}
+
+model Provider {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+
+  name String
+  kind ProviderKind
+
+  /// State codes served. `*` means nationwide - a sentinel rather than an empty array,
+  /// because an empty array reads identically to "nobody has filled this in yet".
+  statesServed String[]
+
+  /// Broker and referral rules. Blueprint 5.2 tracks these because whether we may be
+  /// compensated, and how it must be disclosed, differs per provider and is the kind of
+  /// thing that changes without notice.
+  brokerRulesSummary String?
+
+  /// Disclosures this provider obliges on any communication that names it.
+  disclosureRequirements String[]
+
+  /// Free-text risks a human recorded. Deliberately not an enum: the useful ones are the
+  /// ones nobody anticipated.
+  knownRisks String[]
+
+  /// What happens at renewal - the behaviour that determines whether a facility is a
+  /// building block or a cliff.
+  renewalBehavior String?
+
+  active Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  rules     LenderRule[]
+  offerings ProductOffering[]
+  contacts  ProviderContact[]
+  appetite  AppetiteSignal[]
+  outcomes  LenderOutcome[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId, kind, active])
+  @@map("providers")
+  @@schema("lenders")
+}
+
+/// A single researched fact about a provider - a velocity rule, an inquiry tolerance, a
+/// seasoning requirement.
+///
+/// Superseded rather than overwritten. A rule that was current in March has to remain
+/// explicable when it justifies a March recommendation, and the specification requires
+/// every rule change logged with its source and verification method.
+model LenderRule {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+
+  providerId String   @db.Uuid
+  provider   Provider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+
+  /// Stable identifier for what the rule is about, e.g. `velocity.cards_per_6_months`.
+  ruleKey String
+  /// The rule's content, as text. Rules are heterogeneous - a count, a duration, a
+  /// prohibition - and a typed column per shape would fit none of them.
+  ruleValue String
+
+  version Int @default(1)
+
+  /// Provenance, per Decision D. Not nullable: an untagged rule is a rejected write.
+  provenanceTag ProvenanceTag
+
+  /// Populated for `issuer_rule`.
+  sourceUrl    String?
+  lastVerified DateTime?
+  verifiedBy   String?
+
+  /// Populated for `unresearched_default` - why the assumption is a reasonable one to hold.
+  rationale String?
+
+  /// Populated for `vendor_feed`.
+  vendor      String?
+  retrievedAt DateTime?
+
+  supersededAt DateTime?
+  createdAt    DateTime  @default(now())
+
+  @@unique([providerId, ruleKey, version])
+  @@index([tenantId, providerId, supersededAt])
+  @@index([tenantId, provenanceTag])
+  @@map("lender_rules")
+  @@schema("lenders")
+}
+
+/// A product a provider offers, and the underwriting box it applies.
+///
+/// The box is what makes eligibility computable rather than a matter of an agent's
+/// recollection.
+model ProductOffering {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+
+  providerId String   @db.Uuid
+  provider   Provider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+
+  name        String
+  productKind ProductKind
+
+  minAmount Decimal @db.Decimal(14, 2)
+  maxAmount Decimal @db.Decimal(14, 2)
+
+  /// The underwriting box. Null means the provider publishes no threshold on this
+  /// dimension - which is not the same as a threshold of zero, and must not be stored as one.
+  minTimeInBusinessMonths Int?
+  minAnnualRevenue        Decimal? @db.Decimal(14, 2)
+  minPersonalCreditScore  Int?
+
+  /// Industries this offering will not fund. Blueprint 5.2's "industries accepted / excluded".
+  excludedIndustries String[]
+
+  repaymentStructure String
+  feeModel           String
+
+  /// Indicative pricing. Mutually exclusive by product type - a factor rate is not a rate,
+  /// and 5.6 exists because the two get confused.
+  typicalAnnualRate Decimal? @db.Decimal(8, 6)
+  typicalFactorRate Decimal? @db.Decimal(6, 4)
+
+  /// Provenance on the offering's terms, same discipline as LenderRule.
+  provenanceTag ProvenanceTag
+  sourceUrl     String?
+  lastVerified  DateTime?
+  verifiedBy    String?
+  rationale     String?
+
+  active Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([providerId, name])
+  @@index([tenantId, productKind, active])
+  @@map("product_offerings")
+  @@schema("lenders")
+}
+
+enum AppetiteSignalValue {
+  expanding
+  steady
+  tightening
+  paused
+
+  @@schema("lenders")
+}
+
+/// Blueprint 5.2: "weekly appetite signal updates from Village agents."
+///
+/// Append-only by construction - each observation is a new row, so appetite has a history
+/// and a reader can see a provider tightening over three weeks rather than only that it is
+/// tight today.
+model AppetiteSignal {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+
+  providerId String   @db.Uuid
+  provider   Provider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+
+  signal     AppetiteSignalValue
+  note       String
+  /// Who or what observed it. A signal without an observer cannot be weighed.
+  observedBy String
+  observedAt DateTime
+
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, providerId, observedAt])
+  @@map("appetite_signals")
+  @@schema("lenders")
+}
+
+enum PlacementOutcome {
+  approved
+  declined
+  withdrawn
+  funded
+  failed_to_fund
+
+  @@schema("lenders")
+}
+
+/// Win/loss records, for approval-rate tracking by lender x client profile.
+///
+/// A minimal stand-in for 5.5 Funding Outcome Ledger (V1.5), which will subsume it. Kept
+/// here because blueprint 5.2 owns "historical approval-rate tracking" and a rate needs
+/// observations to be a rate at all.
+model LenderOutcome {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+
+  providerId String   @db.Uuid
+  provider   Provider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+
+  productKind ProductKind
+
+  /// Coarse bucket of the applicant, e.g. `revenue:250k-1m|tib:24-60|fico:700-749`. Coarse
+  /// on purpose: a finer key gives every client their own cohort of one, and a cohort of one
+  /// produces rates of 0% or 100%.
+  clientProfileKey String
+
+  outcome   PlacementOutcome
+  decidedAt DateTime
+
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, providerId, productKind])
+  @@index([tenantId, clientProfileKey])
+  @@map("lender_outcomes")
+  @@schema("lenders")
+}
+
+/// Contact directory. Business contacts at the provider, not client PII.
+model ProviderContact {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+
+  providerId String   @db.Uuid
+  provider   Provider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+
+  name  String
+  role  String
+  email String?
+  phone String?
+  notes String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, providerId])
+  @@map("provider_contacts")
+  @@schema("lenders")
+}
+
+enum ResearchStatus {
+  not_started
+  in_progress
+  blocked
+  complete
+
+  @@schema("lenders")
+}
+
+/// The V1.5 credit-union research workstream, per Decision D.
+///
+/// A research row is NOT a Provider. It has no offerings and no governance record, so no
+/// recommendation query can reach it - which is how "restricted to Navy Federal in V1"
+/// survives contact with an eager agent. The five deferred credit unions live here until
+/// their research completes and someone deliberately promotes them.
+model ResearchWorkstream {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+
+  providerName String
+  kind         ProviderKind
+
+  status               ResearchStatus @default(not_started)
+  assignedTo           String?
+  targetCompletionDate DateTime?
+  notes                String?
+
+  /// Set when research completes AND a provider record is created from it. Until then the
+  /// workstream is knowledge, not a placement option.
+  promotedProviderId String?   @db.Uuid
+  promotedAt         DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, providerName])
+  @@index([tenantId, status])
+  @@map("research_workstreams")
+  @@schema("lenders")
+}
+
+// ---------------------------------------------------------------------------
+// 5.4 Capital Product Governance Board
+//
+// Governance status deliberately lives in its own schema rather than as a column on
+// Provider. A `status` field on the provider would let the module that DESCRIBES
+// providers also decide which are usable, which is the separation 5.4 exists to create.
+// Separated, a provider the board has never seen has no governance row at all - and
+// absence resolves to "not approved", so the safe default is structural rather than a
+// default value somebody can edit.
+// ---------------------------------------------------------------------------
+
+enum GovernanceStatus {
+  pending_review
+  approved
+  under_review
+  suspended
+  blacklisted
+
+  @@schema("governance")
+}
+
+model ProviderGovernance {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+
+  /// One governance record per provider. Cross-schema by id rather than by relation:
+  /// specification 5.1 - no service reaches into another service's database.
+  providerId String @db.Uuid
+
+  status GovernanceStatus @default(pending_review)
+
+  lastReviewedAt DateTime?
+  /// Blueprint 5.4: "quarterly minimum". Stored per provider because a higher-risk
+  /// provider can be put on a shorter cycle; it can never be lengthened past the minimum.
+  reviewCadenceDays Int @default(90)
+
+  /// State restrictions, propagated to the Regulatory Engine. An empty approvedStates means
+  /// no restriction beyond what the provider itself serves.
+  approvedStates   String[]
+  restrictedStates String[]
+
+  requiredDisclosures  String[]
+  referralAgreementRef String?
+  reputationRiskNotes  String?
+
+  /// Complaints crossing the threshold auto-flag for review. The count is a running total
+  /// within the current window; the window resets on review.
+  complaintCount       Int       @default(0)
+  complaintWindowStart DateTime?
+
+  /// Populated only when status is blacklisted. A blacklist without a stated reason cannot
+  /// be appealed, taught, or revisited when the provider fixes the problem.
+  blacklistReason String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, providerId])
+  @@index([tenantId, status])
+  @@map("provider_governance")
+  @@schema("governance")
+}
+
+/// Audit trail on every decision - blueprint 5.4, and the record a regulator asks for when
+/// the question is "who decided this provider was acceptable, and on what basis".
+///
+/// Insert-only in practice: nothing in the package updates or deletes these rows.
+model GovernanceDecision {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+
+  providerId String @db.Uuid
+
+  fromStatus GovernanceStatus?
+  toStatus   GovernanceStatus
+
+  /// Why. Required, for the same reason a banned marketing phrase needs one: a decision
+  /// nobody can explain calcifies into folklore.
+  rationale String
+  decidedBy String
+  decidedAt DateTime @default(now())
+
+  @@index([tenantId, providerId, decidedAt])
+  @@map("governance_decisions")
+  @@schema("governance")
+}
+
+enum ComplaintSeverity {
+  low
+  moderate
+  severe
+
+  @@schema("governance")
+}
+
+model ProviderComplaint {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+
+  providerId String @db.Uuid
+
+  /// Where it came from - a client, a partner, a regulator bulletin, a public database.
+  source   String
+  summary  String
+  severity ComplaintSeverity
+
+  receivedAt DateTime
+  createdAt  DateTime @default(now())
+
+  @@index([tenantId, providerId, receivedAt])
+  @@map("provider_complaints")
+  @@schema("governance")
 }

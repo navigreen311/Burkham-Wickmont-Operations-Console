@@ -67,6 +67,14 @@ export const makeFixture = async (label: string): Promise<Fixture> => {
 /** Non-ledger cleanup. Ledger events intentionally survive - they are append-only. */
 export const cleanupTenant = async (tenantId: string): Promise<void> => {
   const prisma = db();
+  // Governance first: it references providers by id across a schema boundary, so there is
+  // no FK to cascade and the rows would otherwise outlive what they describe.
+  await prisma.providerComplaint.deleteMany({ where: { tenantId } });
+  await prisma.governanceDecision.deleteMany({ where: { tenantId } });
+  await prisma.providerGovernance.deleteMany({ where: { tenantId } });
+  await prisma.researchWorkstream.deleteMany({ where: { tenantId } });
+  // Rules, offerings, appetite, outcomes and contacts cascade from the provider.
+  await prisma.provider.deleteMany({ where: { tenantId } });
   await prisma.consent.deleteMany({ where: { tenantId } });
   await prisma.clientFirewallState.deleteMany({ where: { tenantId } });
   await prisma.client.deleteMany({ where: { tenantId } });

@@ -18,8 +18,9 @@ narrowly scoped Client Portal (module 11.10), which is a secure delivery and app
 | [Workflow Engine core](docs/m2-2-workflow-engine.md)            | Playbooks, instances, durable Postgres task queue, retry/backoff/dead-letter, wait states, decision predicates, SLA escalation                                                                                      |
 | [Scheduler, listener, worker](docs/m2-2-scheduler-listener.md)  | Cron schedules with timezones, Ledger-triggered workflows, event-wait resolution, and a worker process that runs it all                                                                                             |
 
-**287 tests green** (lint, types, format clean). Module 2.2 complete (all seven §5.3 components);
-**Category 3 complete** (3.1, 3.2, 3.3, 3.4), plus 4.2, 7.4, and Category 5's 5.1 and 5.6.
+**373 tests green** (lint, types, format clean). Module 2.2 complete (all seven §5.3 components);
+**Category 3 complete** (3.1, 3.2, 3.3, 3.4), plus 4.2, 7.4, and **Category 5's V1 modules complete**
+(5.1, 5.3, 5.4, 5.6) with 5.2 pulled forward from V1.5 because 5.3 and 5.4 depend on it.
 
 Next: 5.2 Lender Intelligence Database with 5.4 Capital Product Governance Board, or Category 1's remaining Client & Engagement modules.
 
@@ -160,7 +161,9 @@ packages/consent    1.5  Consent & Authorization Center
 packages/firewall   6.2  Funding Ethics Firewall
 packages/integration 11.5 Integration Layer - gated vendor adapters
 packages/middleware  the fixed seven-step chain
-packages/placement  5.3  Funding Recommendation Engine (refusal path)
+packages/placement  5.3  Funding Recommendation Engine
+packages/lenders    5.2  Lender Intelligence Database - catalogue, rules, eligibility, suitability
+packages/governance 5.4  Capital Product Governance Board - approval, cadence, complaints, blacklist
 tests/invariants    one test per hard invariant
 docs/decisions      ADRs
 docs/plans          feature plans, editable before implementation

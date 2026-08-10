@@ -52,3 +52,6 @@ desktop.ini
 
 # Local Claude Code settings (project settings ARE committed)
 .claude/settings.local.json
+
+# Turborepo local cache
+.turbo/
