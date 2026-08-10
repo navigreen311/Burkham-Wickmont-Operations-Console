@@ -211,6 +211,20 @@ export const EVENT_TYPES = [
   'marketing.variant.registered',
   'marketing.experiment.started',
   'marketing.experiment.concluded',
+  // Inter-Venture Commerce Hooks (10.1). Every one of these is a related-party fact an auditor
+  // asks about: who tagged this sibling, who acknowledged the conflict, who approved a price that
+  // was not the published one, and what personal information moved to Collingswood.
+  'interventure.venture.tagged',
+  'interventure.disclosure.generated',
+  'interventure.disclosure.acknowledged',
+  'interventure.disclosure.withdrawn',
+  'interventure.pricing.deviation_approved',
+  'interventure.handoff.proposed',
+  'interventure.handoff.consented',
+  'interventure.handoff.transferred',
+  'interventure.handoff.declined',
+  'interventure.invoice.raised',
+  'interventure.invoice.routing_attempted',
 ] as const;
 
 export type EventType = (typeof EVENT_TYPES)[number];
