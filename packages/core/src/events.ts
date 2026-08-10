@@ -171,6 +171,21 @@ export const EVENT_TYPES = [
   // Risk Event Timeline (6.5). Carries the fact and the severity; the summary stays in the
   // observation table, where a person wrote it and a person will read it.
   'risk.observation.recorded',
+  // Partner & Referrer Portal (8.1) with Training & Certification (8.3). `client_status.viewed`
+  // exists because a client who consented to a partner seeing their status is entitled to know
+  // when the partner looked - the same reasoning as 1.2's reveal events.
+  'partner.registered',
+  'partner.qualification.recorded',
+  'partner.onboarded',
+  'partner.suspended',
+  'partner.terminated',
+  'partner.module.published',
+  'partner.module.completed',
+  'partner.claim.approved',
+  'partner.claim.withdrawn',
+  'partner.brand.approved',
+  'partner.brand.revoked',
+  'partner.client_status.viewed',
 ] as const;
 
 export type EventType = (typeof EVENT_TYPES)[number];

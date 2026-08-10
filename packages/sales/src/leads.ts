@@ -43,6 +43,7 @@ export interface LeadRecord {
   readonly qualificationNote: string | null;
   readonly sourceChannel: string;
   readonly referrerName: string | null;
+  readonly referrerPartnerId: string | null;
   readonly sourceDetail: string | null;
   readonly attributedAt: string;
   readonly blueprintDeliveredOn: string | null;
@@ -59,6 +60,7 @@ interface LeadRow {
   qualificationNote: string | null;
   sourceChannel: string;
   referrerName: string | null;
+  referrerPartnerId: string | null;
   sourceDetail: string | null;
   attributedAt: Date;
   blueprintDeliveredOn: Date | null;
@@ -75,6 +77,7 @@ export const toLead = (row: LeadRow): LeadRecord => ({
   qualificationNote: row.qualificationNote,
   sourceChannel: row.sourceChannel,
   referrerName: row.referrerName,
+  referrerPartnerId: row.referrerPartnerId,
   sourceDetail: row.sourceDetail,
   attributedAt: row.attributedAt.toISOString(),
   blueprintDeliveredOn: row.blueprintDeliveredOn?.toISOString() ?? null,
@@ -92,6 +95,15 @@ export interface CreateLeadInput {
   readonly sourceChannel: string;
   /** The partner or referrer. First touch, not last. */
   readonly referrerName?: string;
+  /**
+   * The 8.1 Partner record behind that name, when the referrer is an onboarded partner.
+   *
+   * Part of the attribution group, so it is written here and nowhere else - the same rule the
+   * name follows. Callers should check `canRefer` before supplying it; this package deliberately
+   * does not, because a compile-time dependency from Sales on Partners would put 1.3's lead
+   * creation downstream of the partner network.
+   */
+  readonly referrerPartnerId?: string;
   readonly sourceDetail?: string;
   readonly createdOn: Date;
   readonly actor: EventActor;
@@ -126,6 +138,7 @@ export const createLead = async (input: CreateLeadInput): Promise<Outcome<LeadRe
       contactEmail: input.contactEmail ?? null,
       sourceChannel: input.sourceChannel,
       referrerName: input.referrerName ?? null,
+      referrerPartnerId: input.referrerPartnerId ?? null,
       sourceDetail: input.sourceDetail ?? null,
       attributedAt: input.createdOn,
       lastActivityAt: input.createdOn,
@@ -153,6 +166,7 @@ export const createLead = async (input: CreateLeadInput): Promise<Outcome<LeadRe
       prospectName: input.prospectName,
       sourceChannel: input.sourceChannel,
       referrerName: input.referrerName ?? null,
+      referrerPartnerId: input.referrerPartnerId ?? null,
     },
   });
 

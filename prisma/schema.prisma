@@ -16,7 +16,7 @@ generator client {
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
-  schemas  = ["tenancy", "identity", "ledger", "clients", "consent", "firewall", "workflow", "notifications", "deliverables", "claims", "vault", "intelligence", "lenders", "governance", "graph", "regulatory", "contracts", "billing", "sales", "evidence", "comms", "risk"]
+  schemas  = ["tenancy", "identity", "ledger", "clients", "consent", "firewall", "workflow", "notifications", "deliverables", "claims", "vault", "intelligence", "lenders", "governance", "graph", "regulatory", "contracts", "billing", "sales", "evidence", "comms", "risk", "partners"]
 }
 
 // ---------------------------------------------------------------------------
@@ -160,6 +160,9 @@ enum ConsentKind {
   plaid_connection
   disclosure
   cross_portfolio_handoff
+  /// 8.1 Partner & Referrer Portal. Consent to work with us is not consent to be reported on to
+  /// the partner who made the introduction; this is the authorization that separates the two.
+  partner_status_visibility
 
   @@schema("consent")
 }
@@ -2059,6 +2062,10 @@ model Lead {
   /// The partner or referrer, when there is one. First touch, not last: whoever caused the lead
   /// to exist is who the referral relationship is with.
   referrerName String?
+  /// The 8.1 Partner record behind that name, when the referrer is an onboarded partner. Written
+  /// once with the rest of the attribution group and moved only through `correctAttribution` -
+  /// a typed identity for a field that already existed, not a second attribution record.
+  referrerPartnerId String? @db.Uuid
   /// Free-form campaign or context, recorded once for the same reason.
   sourceDetail String?
   attributedAt DateTime
@@ -2083,6 +2090,7 @@ model Lead {
 
   @@index([tenantId, stage])
   @@index([tenantId, lastActivityAt])
+  @@index([tenantId, referrerPartnerId])
   @@map("leads")
   @@schema("sales")
 }
@@ -2125,6 +2133,11 @@ model AttributionCorrection {
 
   fromReferrerName String?
   toReferrerName   String?
+  /// The 8.1 Partner ids on each side, when the referrer is an onboarded partner. Carried with
+  /// the name so a correction moves both together - a correction that moved only the name would
+  /// leave the referral showing in the old partner's portal.
+  fromReferrerPartnerId String? @db.Uuid
+  toReferrerPartnerId   String? @db.Uuid
   fromSourceChannel String
   toSourceChannel   String
 
@@ -2136,6 +2149,7 @@ model AttributionCorrection {
   createdAt DateTime @default(now())
 
   @@index([tenantId, leadId])
+  @@index([tenantId, toReferrerPartnerId])
   @@map("attribution_corrections")
   @@schema("sales")
 }
@@ -2509,4 +2523,167 @@ model RiskObservation {
   @@index([tenantId, clientId, occurredAt])
   @@map("risk_observations")
   @@schema("risk")
+}
+
+
+// ---------------------------------------------------------------------------
+// 8.1 Partner & Referrer Portal, 8.3 Partner Training & Certification
+// ---------------------------------------------------------------------------
+
+enum PartnerStatus {
+  applied
+  onboarding
+  active
+  suspended
+  terminated
+
+  @@schema("partners")
+}
+
+model Partner {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+
+  legalName   String
+  contactName String
+  /// Contact email. Business contact detail for a company we have a commercial relationship with,
+  /// not client PII - but it stays out of the Ledger like everything else.
+  contactEmail String
+
+  /// One of the seven tracks. Held as text and validated in code against PARTNER_TRACKS, so a
+  /// track added by Channel Partnerships is a data change rather than a migration.
+  track  String
+  status PartnerStatus @default(applied)
+
+  /// Qualifications actually produced, as the exact strings from TRACK_REQUIREMENTS.
+  qualificationsRecorded String[]
+
+  /// Set when onboarding completed. Absent means the partner never finished, which is a
+  /// different fact from having finished and then been suspended.
+  onboardedAt DateTime?
+
+  suspendedAt   DateTime?
+  terminatedAt  DateTime?
+  /// Why the relationship ended, in the words of whoever ended it. Required to terminate.
+  terminationReason String?
+  terminatedBy      String? @db.Uuid
+
+  createdAt DateTime @default(now())
+
+  completions     PartnerModuleCompletion[]
+  claimApprovals  PartnerClaimApproval[]
+  brandConfigs    PartnerBrandConfig[]
+
+  @@index([tenantId, status])
+  @@index([tenantId, track])
+  @@map("partners")
+  @@schema("partners")
+}
+
+/// A curriculum module - blueprint 8.3. The MATERIAL lives elsewhere (SelfPublisherForge); this
+/// records that a module exists, what it covers, and whether it is required to certify.
+model PartnerCurriculumModule {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+
+  key     String
+  version Int
+  title   String
+  /// What a partner is expected to know afterwards. Read by a person deciding whether a lapsed
+  /// partner needs to retake it or only read a delta.
+  objective String
+
+  /// Which tracks must complete this. Empty means every track.
+  requiredForTracks String[]
+
+  /// Reference to the material. Not the material itself.
+  materialReference String?
+
+  publishedAt   DateTime @default(now())
+  publishedBy   String   @db.Uuid
+  supersededAt  DateTime?
+
+  completions PartnerModuleCompletion[]
+
+  @@unique([tenantId, key, version])
+  @@index([tenantId, key])
+  @@map("partner_curriculum_modules")
+  @@schema("partners")
+}
+
+/// Completion is recorded against a module VERSION. A partner who completed v1 has not completed
+/// v2, which is what makes "recertification with change delta training" expressible at all.
+model PartnerModuleCompletion {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+
+  partnerId String  @db.Uuid
+  partner   Partner @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+
+  moduleId String                  @db.Uuid
+  module   PartnerCurriculumModule @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+
+  completedAt DateTime
+  /// Who recorded it. Completion is attested by us, not self-reported by the partner.
+  recordedBy String @db.Uuid
+
+  @@unique([partnerId, moduleId])
+  @@index([tenantId, partnerId])
+  @@map("partner_module_completions")
+  @@schema("partners")
+}
+
+/// Which 7.4 claims this partner is approved to make. Holds an ID, never claim text - a second
+/// copy of the wording would drift from the library and the drifted copy is the one a partner
+/// would actually say out loud.
+model PartnerClaimApproval {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+
+  partnerId String  @db.Uuid
+  partner   Partner @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+
+  claimId String @db.Uuid
+
+  approvedAt DateTime @default(now())
+  approvedBy String   @db.Uuid
+  withdrawnAt DateTime?
+
+  @@unique([partnerId, claimId])
+  @@index([tenantId, partnerId])
+  @@map("partner_claim_approvals")
+  @@schema("partners")
+}
+
+enum BrandArrangement {
+  co_brand
+  white_label
+
+  @@schema("partners")
+}
+
+model PartnerBrandConfig {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+
+  partnerId String  @db.Uuid
+  partner   Partner @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+
+  arrangement BrandArrangement
+
+  /// The name the partner presents under. Under a white label this is the partner's own.
+  presentedName String
+  /// Where the arrangement applies: a landing page, a document set, a workspace.
+  surface String
+
+  /// Rules the partner agreed to. Stated so a brand-usage review has something to check against.
+  brandRules String[]
+
+  approvedAt DateTime @default(now())
+  approvedBy String   @db.Uuid
+  revokedAt  DateTime?
+
+  @@index([tenantId, partnerId])
+  @@map("partner_brand_configs")
+  @@schema("partners")
 }

@@ -7,6 +7,53 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added - Partner & Referrer Portal with Training & Certification (`ai-feature/m8-partner-portal`)
+
+**8.1 Partner & Referrer Portal (Core)** with **8.3 Partner Training & Certification** - Category
+8's V1 scope. 8.2 Partner Agreement & Payout Center and 8.4 Partner Risk Score are V1.5. See
+[docs/m8-partner-portal.md](docs/m8-partner-portal.md) and ADR-0014.
+
+- **Both modules in one slice**, because 8.3's headline requirement is a gate on 8.1 - "required
+  completion before partner can refer / co-brand / white-label". Built separately, 8.1 would ship a
+  referral path nothing gates.
+- **Anonymity is a property of a cohort, not of a record** (ADR-0014). Blueprint 8.1's "anonymized
+  client status sharing", built as written, strips the client's name off a status row - and a
+  partner who referred one client and is shown "1 client in underwriting" knows exactly whose
+  status that is, because they supplied the client. Stage breakdowns are **suppressed entirely**
+  below a cohort of five, with the suppression stated rather than shown as zeros. A "fewer than
+  five" band was rejected too: it still leaks against the partner's own knowledge of their count.
+- **A named client's status requires that client's own consent** - new consent kind
+  `partner_status_visibility` in 1.5 - checked live on every read, and the read is **logged**,
+  because a client who authorized a partner to look is entitled to know when they did.
+- **A lapsed certification removes the capability**, applying ADR-0013 a third time. The stale
+  record here is "this partner knows what they may claim"; if it is wrong the harm is a false
+  statement made in our name, so staleness points the same way as 5.4 and opposite to 6.4.
+- **An empty curriculum does not certify.** "Nothing to complete" and "completed everything" both
+  produce an empty outstanding list, and treating them alike would certify the whole network the
+  moment a tenant forgot to publish a curriculum.
+- **Completion is recorded against a module VERSION**, which is the mechanism behind "annual
+  recertification with change delta training". `changeKind` is required on publish, as in 7.2;
+  editorial republishes carry completions forward **keeping their original dates**, because
+  stamping today would extend every certification by a year on a typo fix.
+- **Approved claims resolve to 7.4 by id.** "Approved-claims library per partner" read literally is
+  a second claim store that would drift - and the drifted copy is the one the partner would say out
+  loud. A claim banned later stops being approved with nobody coming here.
+- **Partner brand material goes through the 4.2 scanner**, with a _stricter_ disclosure rule than
+  the send path: the disclosure must be in the material, because we do not control what a partner
+  adds after approval. White label carries two extra rules co-brand does not.
+- **Termination takes a Level 3 human.** A "termination trigger" that fired on its own would end a
+  commercial relationship, and cut off referred clients' visibility, with nobody answerable.
+- `payableToPartner` returns **`not_built`** naming 8.2, and `referralSummary` produces **no
+  conversion rate** - a partner-facing performance judgement belongs to 8.4, which is V1.5.
+
+**Changed - 1.3 attribution now carries a typed partner identity.** `Lead.referrerPartnerId` is
+written once with the rest of the attribution group, and `correctAttribution` moves the name and
+the id **together** - a correction that moved one without the other would leave them disagreeing,
+and the portal reads the id while a person reads the name. Every partner-facing read resolves
+**current** attribution rather than the lead's original column, because that column is never
+updated by design: reading it would show a partner a client that is no longer theirs and hide one
+that now is.
+
 ### Added - Risk & Defense: Do Not Fund Governance and the Risk Event Timeline (`ai-feature/m6-risk-and-defense`)
 
 **6.4 Do Not Fund Governance** with **6.5 Risk Event Timeline**, completing Category 6's V1 scope

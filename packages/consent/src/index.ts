@@ -25,6 +25,9 @@ export const CONSENT_KINDS = [
   'plaid_connection',
   'disclosure',
   'cross_portfolio_handoff',
+  // 8.1 Partner & Referrer Portal. A client consents to work with US; that is not consent to be
+  // reported on to the accountant who introduced them. This kind is what makes the difference.
+  'partner_status_visibility',
 ] as const;
 
 export type ConsentKind = (typeof CONSENT_KINDS)[number];
