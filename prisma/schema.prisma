@@ -16,7 +16,7 @@ generator client {
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
-  schemas  = ["tenancy", "identity", "ledger", "clients", "consent", "firewall", "workflow", "notifications", "deliverables", "claims", "vault", "intelligence", "lenders", "governance", "graph", "regulatory", "contracts", "billing", "sales", "evidence", "comms"]
+  schemas  = ["tenancy", "identity", "ledger", "clients", "consent", "firewall", "workflow", "notifications", "deliverables", "claims", "vault", "intelligence", "lenders", "governance", "graph", "regulatory", "contracts", "billing", "sales", "evidence", "comms", "risk"]
 }
 
 // ---------------------------------------------------------------------------
@@ -2398,4 +2398,115 @@ model Communication {
   @@index([tenantId, status])
   @@map("communications")
   @@schema("comms")
+}
+
+
+// ---------------------------------------------------------------------------
+// 6.4 Do Not Fund Governance, 6.5 Risk Event Timeline
+// ---------------------------------------------------------------------------
+
+enum DoNotFundStatus {
+  listed
+  removed
+
+  @@schema("risk")
+}
+
+/// How a client came to be listed. `compliance_fail` is written by the system per Decision E;
+/// every other trigger is a human's decision and carries their justification.
+enum DoNotFundTrigger {
+  compliance_fail
+  fraud_indicator
+  material_misrepresentation
+  repeated_default
+  regulatory_action
+  client_conduct
+  other
+
+  @@schema("risk")
+}
+
+model DoNotFundListing {
+  id       String          @id @default(uuid()) @db.Uuid
+  tenantId String          @db.Uuid
+  clientId String          @db.Uuid
+  status   DoNotFundStatus @default(listed)
+  trigger  DoNotFundTrigger
+
+  /// Why, in the words of whoever decided. Required on every listing, including automatic ones.
+  justification String
+
+  /// Set when the system listed the client rather than a person. The reviewing human is still
+  /// required to remove it - an automatic listing is not a lesser listing.
+  automatic Boolean @default(false)
+
+  listedAt DateTime @default(now())
+
+  /// Null on an automatic listing. No human decided it, and naming one would be a fiction the
+  /// audit trail cannot distinguish from a real approval - see autoListForComplianceFail.
+  listedBy String? @db.Uuid
+
+  /// Review cadence in days. Overdue flags for review and KEEPS BLOCKING - see listings.ts.
+  reviewCadenceDays Int      @default(90)
+  lastReviewedAt    DateTime?
+  lastReviewedBy    String?  @db.Uuid
+
+  removedAt            DateTime?
+  removedBy            String?   @db.Uuid
+  removalJustification String?
+
+  createdAt DateTime @default(now())
+
+  overrides DoNotFundOverride[]
+
+  @@index([tenantId, clientId, status])
+  @@map("do_not_fund_listings")
+  @@schema("risk")
+}
+
+/// A scoped, single-use exception. It permits ONE named action and leaves the listing in force.
+/// Delisting is a separate act with its own justification - see the plan for why they are not
+/// the same decision.
+model DoNotFundOverride {
+  id        String           @id @default(uuid()) @db.Uuid
+  tenantId  String           @db.Uuid
+  listingId String           @db.Uuid
+  listing   DoNotFundListing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+
+  /// The single action this permits, e.g. `placement_request`. Compared exactly.
+  action String
+
+  justification String
+  approvedBy    String   @db.Uuid
+  approvedAt    DateTime @default(now())
+
+  /// Set when the override is spent. An override is consumed by use, not by time.
+  consumedAt DateTime?
+
+  @@index([tenantId, listingId, consumedAt])
+  @@map("do_not_fund_overrides")
+  @@schema("risk")
+}
+
+/// A risk fact that no other module produces yet - a fraud alert phoned in, an NSF report read
+/// off a statement, a human intervention. Recorded so the timeline is not silent about facts the
+/// company knows; NOT a general event store, which is the Ledger's job.
+model RiskObservation {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  clientId String @db.Uuid
+
+  kind     String
+  severity String
+  summary  String
+
+  /// Where this came from, in the observer's words. A risk fact with no provenance is a rumour.
+  source     String
+  occurredAt DateTime
+  recordedAt DateTime @default(now())
+  recordedBy String   @db.Uuid
+
+  @@index([tenantId, clientId, occurredAt])
+  @@map("risk_observations")
+  @@schema("risk")
 }

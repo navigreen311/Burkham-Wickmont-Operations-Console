@@ -7,6 +7,44 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added - Risk & Defense: Do Not Fund Governance and the Risk Event Timeline (`ai-feature/m6-risk-and-defense`)
+
+**6.4 Do Not Fund Governance** with **6.5 Risk Event Timeline**, completing Category 6's V1 scope
+(6.2 Funding Ethics Firewall shipped with the walking skeleton; 6.1 and 6.3 are V1.5). See
+[docs/plans/m6-risk-and-defense.md](docs/plans/m6-risk-and-defense.md), ADR-0012 and ADR-0013.
+
+- **Both modules in one slice**, because a Do Not Fund listing _is_ a risk event, and a timeline
+  omitting the most consequential determination the company makes about a client would be a
+  timeline nobody trusted.
+- **An override permits one action; it does not delist** (ADR-0012). The obvious build - a switch
+  that turns the listing off - conflates "this application may proceed despite the listing" with
+  "this client should no longer be listed". Merging them lets one considered exception become a
+  permanent state nobody revisits, and the person granting it would not know that is what they did.
+  An override names one action, is consumed on use, and leaves the listing in force.
+- **The chain carries the override id out rather than spending it.** A caller that checks and then
+  abandons the action would otherwise have burned an exception a Level 3 human granted.
+- **An overdue review keeps blocking** (ADR-0013). 5.4 made a stale provider approval stop being
+  usable; this does the opposite, from the same rule - staleness moves toward the answer that is
+  safe if the stale record is wrong, and the safe answer is opposite because the direction of harm
+  is. Expiring a listing would let the most serious determination in the system lapse in silence.
+- **The gate is fail-closed**: an allow-list of actions that remain available while listed, so an
+  action added next year cannot move capital toward a listed client because nobody remembered to
+  block it. Reading, drafting and contacting stay open - over-blocking would make the determination
+  unsayable.
+- **Compliance `fail` lists automatically** per Decision E, and `listedBy` is **null** rather than
+  an invented approver. Naming one would put a fiction in the field a reviewer reads to find out
+  who decided, indistinguishable from a real approval. Automatic in, **human out**.
+- **Do Not Fund is reported ahead of the Firewall** inside step 4. Both are principle 7; the
+  precedence is about which true statement to lead with, since "the Firewall is triggered" sends an
+  operator to resolve the wrong thing when the real answer is a standing determination.
+- **The timeline is assembled at read time and stores nothing.** Severity is categorical and the
+  module produces no risk _score_ - the same argument Decision E makes about compliance state.
+- **The timeline says what it does not watch.** Missed payments, NSF events, utilisation changes,
+  credit-line decreases, adverse actions, disputes and complaints have no producer; each names the
+  integration that would fill it. Carried on an **empty** timeline too, because a timeline with no
+  entries and no caveat reads as a client with no risk history.
+- **7.1 carries the timeline as a source**, with the listing surfaced in the coverage note.
+
 ### Added - Communications Hub and Preference Center (`ai-feature/m4-1-communications-hub`)
 
 **4.1 Communications Hub** with **4.4 Client Notification Preference Center**. See

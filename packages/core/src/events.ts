@@ -159,6 +159,18 @@ export const EVENT_TYPES = [
   'comms.message.sent',
   'comms.message.blocked',
   'comms.message.received',
+  // Do Not Fund Governance (6.4). Every one of these is a question somebody will be asked to
+  // answer under oath: who listed this client, who let one through anyway, and on what basis.
+  // `override_granted` and `override_consumed` are separate events because granting an exception
+  // and using it are separate acts, and an exception granted and never used is worth seeing.
+  'risk.do_not_fund.listed',
+  'risk.do_not_fund.reviewed',
+  'risk.do_not_fund.removed',
+  'risk.do_not_fund.override_granted',
+  'risk.do_not_fund.override_consumed',
+  // Risk Event Timeline (6.5). Carries the fact and the severity; the summary stays in the
+  // observation table, where a person wrote it and a person will read it.
+  'risk.observation.recorded',
 ] as const;
 
 export type EventType = (typeof EVENT_TYPES)[number];

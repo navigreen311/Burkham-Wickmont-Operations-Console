@@ -4,7 +4,8 @@
  *   1. Authentication   - verify caller identity (Identity & Access)
  *   2. Tenant scope     - verify caller belongs to the tenant being operated on
  *   3. Authority Level  - verify the action is within the actor's level
- *   4. Firewall         - Firewall clear AND compliance state Pass / Pass with Findings
+ *   4. Firewall         - Do Not Fund clear, Firewall clear, AND compliance state Pass /
+ *                         Pass with Findings
  *   5. Regulatory       - state-specific compliance requirements
  *   6. Event emission   - log the action to the Event Ledger
  *   7. Compliance scan  - Communication Compliance Scanner on client-facing content
@@ -29,6 +30,7 @@ import { decideAuthority, findActor, type Actor } from '@bwc/identity';
 import { assertSameTenant } from '@bwc/tenancy';
 import { find as findClient } from '@bwc/clients';
 import { evaluate as evaluateGate } from '@bwc/firewall';
+import { checkDoNotFund } from '@bwc/risk';
 import { checkJurisdiction, type RegulatoryClearance } from '@bwc/regulatory';
 import { scanForTenant } from '@bwc/scanner';
 import {
@@ -93,6 +95,13 @@ export interface ChainResult {
    * action rather than from a second lookup that could disagree with it.
    */
   readonly clearance?: RegulatoryClearance;
+  /**
+   * Set when the client is on the Do Not Fund list and an unspent single-use override permitted
+   * this action. The caller MUST call `consumeOverride` if it proceeds - the chain deliberately
+   * does not spend it, because a caller that checks and then abandons the action for an unrelated
+   * reason would otherwise have burned an exception a Level 3 human granted.
+   */
+  readonly doNotFundOverrideId?: string;
 }
 
 /**
@@ -124,6 +133,8 @@ export const chain = async (
   request: ChainRequest,
 ): Promise<{ result: Outcome<ChainResult>; trace: readonly StepTrace[] }> => {
   const trace: StepTrace[] = [];
+  // Declared here rather than at step 4 because the result carries it out of the chain.
+  let doNotFundOverrideId: string | undefined;
   const blockAt = (
     step: MiddlewareStep,
     outcome: Outcome<never>,
@@ -192,6 +203,31 @@ export const chain = async (
       return blockAt('firewall', client as Outcome<never>, 'client not resolvable');
     }
 
+    // Do Not Fund is checked first, and the precedence is about which true statement to lead
+    // with. A triggered Firewall is a condition somebody expects to clear; a Do Not Fund listing
+    // is a standing determination that this client should not receive further capital. Reporting
+    // the Firewall when the real answer is "we decided in March not to fund this client" sends
+    // the operator to resolve the wrong thing.
+    const doNotFund = await checkDoNotFund(request.tenantId, request.clientId, request.action);
+    if (doNotFund.status !== 'ok') {
+      await append({
+        tenantId: request.tenantId,
+        type: 'placement.refused',
+        actor: { id: actor.id, kind: actor.kind },
+        clientId: request.clientId,
+        payload: {
+          action: request.action,
+          reason: doNotFund.status === 'refused' ? doNotFund.reason : 'do not fund check failed',
+          principle: doNotFund.status === 'refused' ? doNotFund.principle : 'unknown',
+          complianceState: client.value.complianceState,
+        },
+      });
+      return blockAt('firewall', doNotFund as Outcome<never>, 'do not fund listing');
+    }
+    if (doNotFund.value.overrideId !== null) {
+      doNotFundOverrideId = doNotFund.value.overrideId;
+    }
+
     const gate = await evaluateGate(request.clientId, client.value.complianceState);
     if (gate.status !== 'ok') {
       await append({
@@ -211,7 +247,7 @@ export const chain = async (
     trace.push({
       step: 'firewall',
       outcome: 'passed',
-      detail: `${gate.value.firewallState} / ${gate.value.complianceState}`,
+      detail: `${gate.value.firewallState} / ${gate.value.complianceState}${doNotFund.value.listed ? `; do not fund listing in force (${doNotFundOverrideId !== undefined ? 'single-use override approved' : 'action permitted while listed'})` : ''}`,
     });
   }
 
@@ -348,7 +384,12 @@ export const chain = async (
   }
 
   return {
-    result: ok({ actor, trace, ...(clearance !== undefined ? { clearance } : {}) }),
+    result: ok({
+      actor,
+      trace,
+      ...(clearance !== undefined ? { clearance } : {}),
+      ...(doNotFundOverrideId !== undefined ? { doNotFundOverrideId } : {}),
+    }),
     trace,
   };
 };
