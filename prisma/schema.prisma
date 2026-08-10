@@ -16,7 +16,7 @@ generator client {
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
-  schemas  = ["tenancy", "identity", "ledger", "clients", "consent", "firewall", "workflow", "notifications", "deliverables", "claims", "vault", "intelligence", "lenders", "governance", "graph", "regulatory", "contracts", "billing"]
+  schemas  = ["tenancy", "identity", "ledger", "clients", "consent", "firewall", "workflow", "notifications", "deliverables", "claims", "vault", "intelligence", "lenders", "governance", "graph", "regulatory", "contracts", "billing", "sales"]
 }
 
 // ---------------------------------------------------------------------------
@@ -1988,4 +1988,220 @@ model FundingOutcome {
   @@index([tenantId, engagementId])
   @@map("funding_outcomes")
   @@schema("billing")
+}
+
+// ---------------------------------------------------------------------------
+// 1.3 Sales Motion & Engagement Tracking
+//
+// Attribution has money attached to it - a referral fee is owed to whoever
+// introduced a client - which makes it a financial fact. A financial fact that
+// can be edited after the money is at stake is not a record; it is an opinion
+// with a timestamp. So the attribution columns are written once at creation and
+// there is no update path in the package. A correction is a separate row with
+// the original left intact.
+// ---------------------------------------------------------------------------
+
+enum LeadStage {
+  new_lead
+  qualified
+  blueprint_delivered
+  review_call_scheduled
+  converted
+  closed_lost
+
+  @@schema("sales")
+}
+
+enum QualificationStatus {
+  unqualified
+  qualified
+  disqualified
+
+  @@schema("sales")
+}
+
+/// Why a lead closed without converting.
+///
+/// Categorical rather than free text, because "why do we lose leads" is a question somebody will
+/// want counted, and a thousand sentences cannot be counted. Free-text detail sits alongside.
+enum LostReason {
+  price
+  timing
+  not_a_fit
+  went_elsewhere
+  unresponsive
+  compliance_concern
+  client_withdrew
+  other
+
+  @@schema("sales")
+}
+
+model Lead {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+
+  /// The prospective client's name. Not a Client record yet - a lead is pre-client, which is
+  /// exactly why the compliance state does not exist for it.
+  prospectName String
+  contactName  String?
+  contactEmail String?
+
+  stage         LeadStage           @default(new_lead)
+  qualification QualificationStatus @default(unqualified)
+  /// Why they were qualified or disqualified. A qualification nobody can explain is a filter
+  /// nobody can improve.
+  qualificationNote String?
+
+  // --- Attribution. Written at creation; no update path exists in the package. -------------
+  /// Where the lead came from - a channel, a campaign, a referrer's name.
+  sourceChannel String
+  /// The partner or referrer, when there is one. First touch, not last: whoever caused the lead
+  /// to exist is who the referral relationship is with.
+  referrerName String?
+  /// Free-form campaign or context, recorded once for the same reason.
+  sourceDetail String?
+  attributedAt DateTime
+
+  // --- Readiness Blueprint -----------------------------------------------------------------
+  blueprintDeliveredOn DateTime?
+  /// The readiness figure at delivery. Stored so an expansion trigger can compare against a
+  /// later one; the components live in the activity trail rather than being flattened here.
+  blueprintReadiness Int?
+
+  reviewCallScheduledFor DateTime?
+
+  /// Drives the 45-day inactivity escalation. Updated by `recordActivity`, never by hand.
+  lastActivityAt DateTime
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  activities  LeadActivity[]
+  corrections AttributionCorrection[]
+  outcome     LeadOutcome?
+
+  @@index([tenantId, stage])
+  @@index([tenantId, lastActivityAt])
+  @@map("leads")
+  @@schema("sales")
+}
+
+/// Append-only trail. Nothing updates or deletes one.
+model LeadActivity {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+
+  leadId String @db.Uuid
+  lead   Lead   @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  kind        String
+  summary     String
+  /// Set when the activity moved the lead between stages, so the trail explains the pipeline
+  /// rather than merely accompanying it.
+  fromStage LeadStage?
+  toStage   LeadStage?
+
+  occurredAt DateTime
+  recordedBy String
+
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, leadId, occurredAt])
+  @@map("lead_activities")
+  @@schema("sales")
+}
+
+/// A correction to attribution, with the original left untouched on the Lead.
+///
+/// The question that has to stay answerable is "who was this attributed to when the fee was
+/// calculated", and overwriting the original destroys the only evidence of it.
+model AttributionCorrection {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+
+  leadId String @db.Uuid
+  lead   Lead   @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  fromReferrerName String?
+  toReferrerName   String?
+  fromSourceChannel String
+  toSourceChannel   String
+
+  /// Required. A correction to a financial fact needs a reason somebody signed.
+  reason      String
+  correctedBy String
+  correctedAt DateTime
+
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, leadId])
+  @@map("attribution_corrections")
+  @@schema("sales")
+}
+
+/// How a lead ended. One per lead - a lead converts once or is lost once.
+model LeadOutcome {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+
+  leadId String @unique @db.Uuid
+  lead   Lead   @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  converted Boolean
+
+  /// Set on conversion. The client record the lead became.
+  clientId String? @db.Uuid
+  /// The engagement started from it, when one was.
+  engagementId String? @db.Uuid
+
+  /// Set when lost. Categorical, so losses can be counted.
+  lostReason LostReason?
+  lostDetail String?
+
+  decidedBy String
+  decidedAt DateTime
+
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, converted])
+  @@map("lead_outcomes")
+  @@schema("sales")
+}
+
+/// A readiness reading taken after the Blueprint.
+///
+/// Its own table rather than a column on Lead: an expansion trigger compares readings across
+/// time, and a single "latest" column would make the comparison a comparison with itself the
+/// moment anybody overwrote it.
+model ReadinessReading {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+
+  leadId String @db.Uuid
+
+  /// 0-100, the same scale as the Blueprint figure so the two are comparable.
+  readiness Int
+  /// What moved, in the words the expansion trigger will quote. A delta with no explanation
+  /// tells an operator to act without telling them what to say.
+  note String
+
+  takenOn DateTime
+  takenBy String
+
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, leadId, takenOn])
+  @@map("readiness_readings")
+  @@schema("sales")
+}
+
+enum RenewalStatus {
+  not_due
+  approaching
+  at_risk
+  renewed
+  lapsed
+
+  @@schema("sales")
 }
