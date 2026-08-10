@@ -18,6 +18,7 @@ import {
   REDACTED,
   assertNoPii,
   hasProvenance,
+  looksLikePii,
   redactPii,
   requireProvenance,
   sourced,
@@ -160,6 +161,30 @@ describe('PII never reaches the Ledger', () => {
 
   it('throws when PII survives into a payload', () => {
     expect(() => assertNoPii({ ssn: '123-45-6789' }, 'test')).toThrow(/PII detected/i);
+  });
+
+  it('does not redact a UUID whose first group happens to be all digits', () => {
+    // Regression guard. Roughly 2.3% of UUIDs have eight leading digits, which matched the
+    // "8-17 consecutive digits" bank-account heuristic. Instance, document and task ids travel
+    // in ledger payloads, so about one in forty was silently replaced with [REDACTED] in an
+    // append-only store that cannot be corrected. It surfaced only as an unrelated Prisma error
+    // in a workflow test.
+    const digitLedUuid = '12345678-90ab-4cde-8f01-234567890abc';
+
+    expect(looksLikePii(digitLedUuid)).toBe(false);
+    expect(redactPii({ instanceId: digitLedUuid })).toEqual({ instanceId: digitLedUuid });
+    expect(() => assertNoPii({ instanceId: digitLedUuid }, 'test')).not.toThrow();
+  });
+
+  it('still catches real PII sitting next to a UUID', () => {
+    // Stripped rather than short-circuited: a string containing both must still be redacted.
+    const mixed = 'instance 12345678-90ab-4cde-8f01-234567890abc for 123-45-6789';
+    expect(looksLikePii(mixed)).toBe(true);
+    expect(redactPii({ note: mixed })).toEqual({ note: REDACTED });
+  });
+
+  it('still catches a bare account-length digit run', () => {
+    expect(looksLikePii('account 4111111111111111')).toBe(true);
   });
 
   it('strips PII on append rather than storing it', async () => {

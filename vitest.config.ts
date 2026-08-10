@@ -21,6 +21,7 @@ const WORKSPACE_PACKAGES = [
   'claims',
   'scanner',
   'deliverables',
+  'vault',
 ] as const;
 
 export default defineConfig({

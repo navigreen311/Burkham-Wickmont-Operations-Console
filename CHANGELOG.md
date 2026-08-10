@@ -7,6 +7,50 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added — Secure Document Vault (`ai-feature/m3-2-secure-document-vault`)
+
+**3.2 Secure Document Vault.** Encrypted storage for the most sensitive data class in the
+portfolio. Everything before this protected decisions, which can be corrected; this protects
+documents, and a leaked tax return cannot be.
+
+- **Envelope encryption, AES-256-GCM** (ADR-0006). A random DEK per document, wrapped by a KEK.
+  GCM authenticates, so tampering fails loudly rather than decrypting to plausible garbage. KEK
+  rotation re-wraps DEKs instead of re-encrypting every document. `KekProvider` is the seam for
+  the HSM §6.2 wants.
+- **The blob store handles ciphertext only.** "The store never receives plaintext" holds even if
+  the store is wrong; "the store encrypts things" would not. Blob keys carry no filename, client
+  name or document kind.
+- **Two independent integrity checks** — the GCM tag catches tampering with the ciphertext, a
+  sha256 of the plaintext catches a blob that decrypts perfectly but is the wrong document.
+- **Least privilege by document class** — government IDs at level 3, tax returns and credit
+  reports at 2, ordinary financial statements at 0.
+- **Access logged before bytes are returned**, refusals included. If the log write fails, the
+  caller gets nothing.
+- **Watermarking on the bytes** — `pdf-lib` stamps viewer identity, timestamp and document id
+  into every exported PDF. Non-PDF exports report `watermarked: false` rather than implying a stamp.
+- **Legal hold** blocks export and deletion while still permitting viewing; a human actor is
+  required to set or release it.
+- **Field-level encryption** for SSN / EIN / account / tax ID, non-deterministic so read access
+  cannot become an equality oracle.
+- 37 new tests (203 total). The encryption-at-rest test reads the actual file from disk; the
+  watermark test inflates content streams and decodes hex text operands.
+
+### Fixed
+
+- **PII redaction was silently destroying UUIDs in the Event Ledger.** The value-shape detector
+  matched "8-17 consecutive digits", which also matches a UUID whose first group happens to be all
+  digits - roughly 2.3% of them. Instance, document and task ids travel in ledger payloads, so
+  about one in forty was replaced with `[REDACTED]` in an append-only store that cannot be
+  corrected, and code reading the id back got that string. Surfaced only as an unrelated Prisma
+  error ("invalid character ... found `[`") in a workflow test. Identifiers are now stripped
+  before shape-matching, so a real SSN beside a UUID is still caught.
+
+**Honest gaps, not silent ones.** No virus scanner exists, so documents land `pending` and are
+unreadable until scanned — defaulting to `clean` would assert a check that never ran. Retention
+rules come from 7.2/7.5, neither built, so deletion without a resolved schedule returns
+`not_built`: over-retention is a liability, but destroying a document a regulator was entitled to
+see is irreversible.
+
 ### Added — Deliverables, approval pipeline and the Compliance Scanner (`ai-feature/m3-deliverables-and-compliance-scanner`)
 
 Category 3 slice A. **3.1** Document & Deliverable Management, **3.4** Deliverable Approval

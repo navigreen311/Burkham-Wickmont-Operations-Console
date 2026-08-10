@@ -16,7 +16,7 @@ generator client {
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
-  schemas  = ["tenancy", "identity", "ledger", "clients", "consent", "firewall", "workflow", "notifications", "deliverables", "claims"]
+  schemas  = ["tenancy", "identity", "ledger", "clients", "consent", "firewall", "workflow", "notifications", "deliverables", "claims", "vault"]
 }
 
 // ---------------------------------------------------------------------------
@@ -433,6 +433,116 @@ enum NotificationStatus {
   cancelled
 
   @@schema("notifications")
+}
+
+// ---------------------------------------------------------------------------
+// 3.2 Secure Document Vault - the most sensitive data class in the portfolio
+// ---------------------------------------------------------------------------
+
+/// The document kinds blueprint 3.2 names. Drives the minimum Authority Level to read.
+enum DocumentKind {
+  bank_statement
+  tax_return
+  government_id
+  entity_document
+  credit_report
+  profit_and_loss
+  balance_sheet
+  debt_schedule
+  lender_application
+  signed_authorization
+  adverse_action_notice
+  other
+
+  @@schema("vault")
+}
+
+/// Virus scanning on upload (blueprint 3.2). `pending` is the honest default: no scanner is
+/// wired, and a document that has not been scanned must not be readable. Defaulting to `clean`
+/// would assert a check that never ran.
+enum ScanStatus {
+  pending
+  clean
+  infected
+  scan_unavailable
+
+  @@schema("vault")
+}
+
+model VaultDocument {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  clientId String @db.Uuid
+
+  kind        DocumentKind
+  filename    String
+  contentType String
+  byteSize    Int
+
+  /// Digest of the PLAINTEXT, verified after decryption. Detects a corrupted or swapped blob
+  /// even when the ciphertext itself decrypts successfully.
+  sha256 String
+
+  /// Where the ciphertext lives in the blob store. Opaque to everything but the store.
+  blobKey String @unique
+
+  /// Envelope encryption. The DEK is random per document and stored only in wrapped form; the
+  /// KEK never leaves the key provider. Rotating the KEK re-wraps these rather than
+  /// re-encrypting every payload.
+  wrappedDek String
+  iv         String
+  authTag    String
+
+  scanStatus ScanStatus @default(pending)
+  scannedAt  DateTime?
+  scanDetail String?
+
+  /// Retention (blueprint 3.2, gated on 7.2/7.5 for the per-state rules). Null means no schedule
+  /// has been resolved yet, which blocks deletion rather than permitting it.
+  retainUntil DateTime?
+
+  /// Legal hold overrides retention and blocks export and deletion outright.
+  legalHold       Boolean   @default(false)
+  legalHoldReason String?
+  legalHoldSetAt  DateTime?
+
+  uploadedBy String   @db.Uuid
+  createdAt  DateTime @default(now())
+  deletedAt  DateTime?
+
+  accessLog VaultAccessLog[]
+
+  @@index([tenantId, clientId])
+  @@index([tenantId, kind])
+  @@map("vault_documents")
+  @@schema("vault")
+}
+
+/// Every access. Blueprint 3.2 requires access logs; §10.5 makes cross-tenant leakage a
+/// zero-tolerance metric, and a refused attempt is as worth recording as a successful read.
+model VaultAccessLog {
+  id         String @id @default(uuid()) @db.Uuid
+  documentId String @db.Uuid
+  tenantId   String @db.Uuid
+
+  actorId   String @db.Uuid
+  actorKind String
+  action    String
+  granted   Boolean
+  reason    String?
+
+  /// Whether the bytes handed over carried a watermark. False is recorded rather than implied,
+  /// because a non-PDF export cannot be stamped.
+  watermarked Boolean @default(false)
+
+  at DateTime @default(now())
+
+  document VaultDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, documentId])
+  @@index([tenantId, actorId])
+  @@map("vault_access_log")
+  @@schema("vault")
 }
 
 // ---------------------------------------------------------------------------
