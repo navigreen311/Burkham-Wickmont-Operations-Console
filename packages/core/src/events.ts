@@ -230,6 +230,9 @@ export const EVENT_TYPES = [
   // "somebody proposed this" from "this is in force".
   'admin.configuration.staged',
   'admin.configuration.changed',
+  // Data Warehouse (11.6). A capture is an event because the series is only trustworthy if the
+  // gaps in it are visible, and a missing snapshot is a missing event.
+  'warehouse.snapshot.captured',
 ] as const;
 
 export type EventType = (typeof EVENT_TYPES)[number];

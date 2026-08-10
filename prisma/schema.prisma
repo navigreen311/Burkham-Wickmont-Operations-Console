@@ -16,7 +16,7 @@ generator client {
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
-  schemas  = ["tenancy", "identity", "ledger", "clients", "consent", "firewall", "workflow", "notifications", "deliverables", "claims", "vault", "intelligence", "lenders", "governance", "graph", "regulatory", "contracts", "billing", "sales", "evidence", "comms", "risk", "partners", "calls", "marketing", "interventure", "admin"]
+  schemas  = ["tenancy", "identity", "ledger", "clients", "consent", "firewall", "workflow", "notifications", "deliverables", "claims", "vault", "intelligence", "lenders", "governance", "graph", "regulatory", "contracts", "billing", "sales", "evidence", "comms", "risk", "partners", "calls", "marketing", "interventure", "admin", "warehouse"]
 }
 
 // ---------------------------------------------------------------------------
@@ -3198,4 +3198,73 @@ model ConfigurationChange {
   @@index([tenantId, appliedAt])
   @@map("configuration_changes")
   @@schema("admin")
+}
+
+// ---------------------------------------------------------------------------
+// 11.6 Data Warehouse & Analytics Layer
+// ---------------------------------------------------------------------------
+
+/// An immutable point-in-time fact set.
+///
+/// The warehouse answers questions about the PAST. A live read tells you where clients stand
+/// today; it cannot tell you where they stood in March, because those clients have moved and the
+/// operational store keeps only the current value. See ADR-0020.
+///
+/// Never updated. Re-running a capture for a date already taken is REFUSED rather than
+/// overwritten - an overwritten snapshot is a rewritten history, and having one is the point.
+model AnalyticsSnapshot {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+
+  /// The date this describes. One snapshot per tenant per date, enforced by the unique index.
+  asOf DateTime @db.Date
+
+  /// Aggregate facts, as captured. Counts and shares only - no client identifiers.
+  facts Json
+
+  /// What could not be captured, and why. Carried so a trend with a gap says where the gap is
+  /// rather than reading as a dip.
+  gaps String[]
+
+  capturedAt DateTime @default(now())
+  capturedBy String   @db.Uuid
+
+  subjects SubjectSnapshot[]
+
+  @@unique([tenantId, asOf])
+  @@index([tenantId, asOf])
+  @@map("analytics_snapshots")
+  @@schema("warehouse")
+}
+
+/// A per-subject row, keyed by PSEUDONYM rather than client id.
+///
+/// Retention here outlives the operational record, which is what blueprint 11.6 means by
+/// "historical retention independent of operational data retention". The subject key is a
+/// pseudonym, NOT anonymisation: somebody holding the operational client list can still
+/// re-identify it. Stating that limit is the honest version - see subjects.ts.
+model SubjectSnapshot {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+
+  snapshotId String            @db.Uuid
+  snapshot   AnalyticsSnapshot @relation(fields: [snapshotId], references: [id], onDelete: Cascade)
+
+  /// Stable across snapshots for the same client, so a cohort can be followed through time.
+  subjectKey String
+
+  /// Cohort membership, decided at capture: the month the client was created.
+  cohort String
+
+  complianceState String
+  /// Whether an engagement was live on the snapshot date.
+  engaged Boolean
+  /// Cents billed to date. A trend over this is the retention curve blueprint 11.6 asks for.
+  billedToDateCents Int
+
+  @@unique([snapshotId, subjectKey])
+  @@index([tenantId, subjectKey])
+  @@index([tenantId, cohort])
+  @@map("subject_snapshots")
+  @@schema("warehouse")
 }
