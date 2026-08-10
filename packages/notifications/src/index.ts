@@ -45,9 +45,13 @@ export interface RaiseInput {
  * Raise an assignment.
  *
  * `summary` reaches the Ledger, so it must stay PII-free. The ledger append redacts
- * defensively, but a summary written as "Chase SSN 123-45-6789 documents" would arrive at a
- * human queue with the PII intact even after the ledger copy was scrubbed — describe the task,
- * never the data.
+ * defensively, but a summary quoting a client's actual SSN, EIN or account number would arrive
+ * at a human queue with the value intact even after the ledger copy was scrubbed — describe the
+ * task, never the data.
+ *
+ * (An earlier version of this comment illustrated the point with a realistic SSN-shaped literal,
+ * and the CI secret-hygiene check rejected it. The check was right: a source file is the wrong
+ * place for one even as an example.)
  */
 export const raise = async (input: RaiseInput): Promise<TaskNotification> => {
   const row = await db().taskNotification.create({
