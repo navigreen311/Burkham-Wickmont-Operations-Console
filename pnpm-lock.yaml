@@ -69,6 +69,9 @@ importers:
       '@bwc/firewall':
         specifier: workspace:*
         version: link:../../packages/firewall
+      '@bwc/http':
+        specifier: workspace:*
+        version: link:../../packages/http
       '@bwc/identity':
         specifier: workspace:*
         version: link:../../packages/identity
@@ -106,6 +109,43 @@ importers:
       tsx:
         specifier: ^4.19.3
         version: 4.23.11
+      typescript:
+        specifier: ^5.8.3
+        version: 5.9.3
+
+  apps/portal-api:
+    dependencies:
+      '@bwc/consent':
+        specifier: workspace:*
+        version: link:../../packages/consent
+      '@bwc/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+      '@bwc/http':
+        specifier: workspace:*
+        version: link:../../packages/http
+      '@bwc/identity':
+        specifier: workspace:*
+        version: link:../../packages/identity
+      '@bwc/portal':
+        specifier: workspace:*
+        version: link:../../packages/portal
+      '@bwc/vault':
+        specifier: workspace:*
+        version: link:../../packages/vault
+      dotenv:
+        specifier: ^16.4.7
+        version: 16.6.1
+      express:
+        specifier: ^5.1.0
+        version: 5.2.1
+      helmet:
+        specifier: ^8.1.0
+        version: 8.3.0
+    devDependencies:
+      '@types/express':
+        specifier: ^5.0.0
+        version: 5.0.6
       typescript:
         specifier: ^5.8.3
         version: 5.9.3
@@ -483,6 +523,22 @@ importers:
         specifier: workspace:*
         version: link:../vault
     devDependencies:
+      typescript:
+        specifier: ^5.8.3
+        version: 5.9.3
+
+  packages/http:
+    dependencies:
+      '@bwc/core':
+        specifier: workspace:*
+        version: link:../core
+      express:
+        specifier: ^5.1.0
+        version: 5.2.1
+    devDependencies:
+      '@types/express':
+        specifier: ^5.0.0
+        version: 5.0.6
       typescript:
         specifier: ^5.8.3
         version: 5.9.3

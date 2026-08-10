@@ -44,6 +44,7 @@ const WORKSPACE_PACKAGES = [
   'warehouse',
   'portal',
   'workbench',
+  'http',
 ] as const;
 
 export default defineConfig({

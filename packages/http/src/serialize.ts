@@ -1,6 +1,11 @@
 /**
  * Outcome -> HTTP. The one place the mapping lives.
  *
+ * Moved out of `apps/api` when the Client Portal got its own process. Two apps serialising the
+ * same union two ways is how `not_built` becomes a 200 on one of them - and the distinction
+ * between "we looked and there is nothing" and "the capability does not exist" survives only if
+ * the transport keeps it.
+ *
  * Design principle 9 requires that `not_built`, `no_data` and `failed` be distinguishable
  * at a glance, and the CapitalForge 501 pattern requires an endpoint that cannot fulfil its
  * contract to refuse with an explicit reason. Both survive only if the transport preserves
