@@ -16,7 +16,7 @@ generator client {
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
-  schemas  = ["tenancy", "identity", "ledger", "clients", "consent", "firewall", "workflow", "notifications", "deliverables", "claims", "vault", "intelligence", "lenders", "governance", "graph", "regulatory", "contracts", "billing", "sales", "evidence", "comms", "risk", "partners", "calls", "marketing", "interventure"]
+  schemas  = ["tenancy", "identity", "ledger", "clients", "consent", "firewall", "workflow", "notifications", "deliverables", "claims", "vault", "intelligence", "lenders", "governance", "graph", "regulatory", "contracts", "billing", "sales", "evidence", "comms", "risk", "partners", "calls", "marketing", "interventure", "admin"]
 }
 
 // ---------------------------------------------------------------------------
@@ -3156,4 +3156,46 @@ model IntercompanyInvoice {
   @@index([tenantId, engagementId])
   @@map("intercompany_invoices")
   @@schema("interventure")
+}
+
+
+// ---------------------------------------------------------------------------
+// 11.7 Admin Configuration Center
+// ---------------------------------------------------------------------------
+
+/// An append-only record of every configuration change.
+///
+/// There is no table of CURRENT values. The effective value is the latest applied change, or the
+/// compiled default when there has never been one - so the audit trail is the store, and nothing
+/// has to keep two copies in step. Rollback writes a NEW row restoring the prior value rather than
+/// deleting anything: an undo that removed the row would answer "what is it now" and lose "what
+/// happened", which is the question an audit asks.
+model ConfigurationChange {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+
+  /// `<package>.<CONSTANT_NAME>`, validated against the registry. A key outside it is refused, so
+  /// a typo cannot create a setting nothing reads.
+  key String
+
+  previousValue Float
+  newValue      Float
+
+  /// Required. A parameter change with no reason is indistinguishable from a mistake.
+  reason    String
+  changedBy String @db.Uuid
+
+  /// True for a high-risk parameter: recorded but not in force until promoted.
+  staged Boolean @default(false)
+  /// Null while staged. `effectiveValue` reads applied changes only, which is what makes staging
+  /// real rather than a label.
+  appliedAt  DateTime?
+  promotedBy String?   @db.Uuid
+
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, key, appliedAt])
+  @@index([tenantId, appliedAt])
+  @@map("configuration_changes")
+  @@schema("admin")
 }

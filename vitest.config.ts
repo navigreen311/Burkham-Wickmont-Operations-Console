@@ -39,6 +39,8 @@ const WORKSPACE_PACKAGES = [
   'marketing',
   'dashboards',
   'interventure',
+  'admin',
+  'observability',
 ] as const;
 
 export default defineConfig({
