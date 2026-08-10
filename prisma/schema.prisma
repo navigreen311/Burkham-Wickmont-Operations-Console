@@ -3268,3 +3268,106 @@ model SubjectSnapshot {
   @@map("subject_snapshots")
   @@schema("warehouse")
 }
+
+// ---------------------------------------------------------------------------
+// 11.1 Identity & Access - client users, for the 11.10 Client Portal
+// ---------------------------------------------------------------------------
+
+/// A person who signs in to the Client Portal.
+///
+/// DELIBERATELY NOT AN `Actor`. An Actor carries an authority level 0-3, and `vault.read` grants
+/// access on tenant + level with NO ownership check - correctly, because an internal analyst reads
+/// many clients' files. `bank_statement` sits at level 0. A client holding a Level 0 Actor row
+/// could therefore read any client's bank statements in the tenant. See ADR-0021.
+model ClientUser {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+
+  /// The one file this user may act on. Not a list: a person who needs two files gets two users,
+  /// so that revoking one cannot silently leave the other.
+  clientId String @db.Uuid
+
+  /// Lowercased at write. Unique per tenant, not globally - the same person may be a client of
+  /// two tenants and those are different relationships.
+  email String
+
+  /// `scrypt$N$r$p$salt$hash`. Never returned, never logged, never in a Ledger payload.
+  passwordHash String
+
+  displayName String
+
+  /// Consecutive failures since the last success. Reset on success, not on a timer.
+  failedAttempts Int @default(0)
+  /// Set when locked. Cleared by a successful sign-in after it has passed.
+  lockedUntil DateTime?
+
+  /// Null until the invitation is accepted. An unenrolled user cannot authenticate.
+  enrolledAt DateTime?
+  lastSignInAt DateTime?
+
+  /// Set when access is withdrawn. Sessions are checked against this on every resolve, so
+  /// disabling takes effect on the next request rather than when a session happens to expire.
+  disabledAt DateTime?
+  disabledReason String?
+
+  createdAt DateTime @default(now())
+
+  sessions ClientSession[]
+  invitations ClientInvitation[]
+
+  @@unique([tenantId, email])
+  @@index([tenantId, clientId])
+  @@map("client_users")
+  @@schema("identity")
+}
+
+/// An invitation to enrol. Enrolment is by invitation, never self-service: a client cannot create
+/// an account and name the file it belongs to.
+model ClientInvitation {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+
+  clientUserId String     @db.Uuid
+  clientUser   ClientUser @relation(fields: [clientUserId], references: [id], onDelete: Cascade)
+
+  /// SHA-256 of the token. The token itself is returned once, at issue, and never stored - a
+  /// leaked database gives an attacker the same thing it gives them for a password: nothing
+  /// directly usable.
+  tokenHash String @unique
+
+  /// Who issued it. A Level 3 human, checked at issue.
+  issuedBy String   @db.Uuid
+  issuedAt DateTime @default(now())
+  expiresAt DateTime
+
+  /// Single use. Set when accepted; a second attempt with the same token is refused.
+  acceptedAt DateTime?
+
+  @@index([tenantId, clientUserId])
+  @@map("client_invitations")
+  @@schema("identity")
+}
+
+/// A signed-in session.
+model ClientSession {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+
+  clientUserId String     @db.Uuid
+  clientUser   ClientUser @relation(fields: [clientUserId], references: [id], onDelete: Cascade)
+
+  /// SHA-256 of the session token. The token is returned once and never stored.
+  tokenHash String @unique
+
+  issuedAt DateTime @default(now())
+  /// Absolute expiry. A session ends at this point however active it has been.
+  expiresAt DateTime
+  /// Moved forward on each resolve, for the idle window. Both expiries are checked every time.
+  lastSeenAt DateTime @default(now())
+
+  revokedAt DateTime?
+
+  @@index([tenantId, clientUserId])
+  @@map("client_sessions")
+  @@schema("identity")
+}

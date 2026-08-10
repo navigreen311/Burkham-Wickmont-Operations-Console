@@ -23,6 +23,7 @@
     "@bwc/core": "workspace:*",
     "@bwc/db": "workspace:*",
     "@bwc/deliverables": "workspace:*",
+    "@bwc/identity": "workspace:*",
     "@bwc/vault": "workspace:*"
   },
   "devDependencies": {

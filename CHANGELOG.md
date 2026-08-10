@@ -7,6 +7,50 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added - Client authentication for the Client Portal (`ai-feature/m11-client-authentication`)
+
+Closes the gap 11.10 shipped with: **nothing authenticated a client user.** See
+[docs/m11-client-authentication.md](docs/m11-client-authentication.md) and ADR-0021.
+
+- **A client user is not an `Actor` with a low authority level** (ADR-0021), and the reason is
+  concrete. `vault.read` checks the document's tenant and the actor's level against
+  `MINIMUM_LEVEL_TO_READ` and performs **no ownership check** - correctly, because an internal
+  analyst reads many clients' files. `MINIMUM_LEVEL_TO_READ` puts `bank_statement` at **level 0**.
+  So a client holding a Level 0 Actor row could read **any client's bank statements in the tenant**,
+  through the vault working exactly as designed for the principal type it was designed for.
+- **`ClientUser` is its own table**, in the `identity` schema because 11.1 owns identity - a separate
+  client-identity package would be the second permission model 11.10 already refused. It has no
+  authority level, and `findActor` cannot resolve it.
+- **`EventActor.kind` gains `'client'`.** A client uploading a statement and a staff member
+  uploading one on their behalf are different acts, and recording both as `human` would blur the
+  line `sign_for_client` - a Level 4 prohibited action - is drawn along.
+- **Enrolment is an invitation, not a signup.** A Level 3 human issues it against a specific client;
+  single-use, expiring, token stored **hashed**. One user, one client file.
+- **Every authentication failure gives one answer.** Unknown email, wrong password, unenrolled and
+  disabled are identical, and a verification runs against a decoy hash when the user does not exist
+  so the timing does not answer what the message refuses to. Lockout after 5 failures for 15
+  minutes; the lockout message differs deliberately, because the person being told just failed
+  against that account five times.
+- **Sessions carry two expiries** - absolute and idle - both checked on every resolve, and
+  `resolveSession` **re-reads the user** rather than trusting sign-in, so disabling takes effect on
+  the next request rather than whenever a session lapses.
+- **scrypt with a length floor and no composition rules**; tokens are 256 bits stored as SHA-256.
+  No credential material reaches a return value, a log, an error or a Ledger payload.
+
+**Known, and named rather than half-done: client document upload still refuses.** `vault.store`
+resolves an internal Actor and a client user deliberately is not one, so the portal refuses rather
+than attributing the upload to somebody else. Wiring a client principal through the vault needs an
+ownership-based path alongside the level-based one, on both `store` and `read`.
+
+**Fixed while building - scrypt's cost parameters collided with a Node default.** scrypt needs
+`128*N*r` bytes; at N=2^15 and r=8 that is exactly 32 MiB, and Node's default `maxmem` is 32 MiB
+checked strictly. It failed at RUNTIME, not compile time, because the two numbers are unrelated and
+happen to meet. `SCRYPT_MAX_MEMORY` is now explicit so the relationship is visible.
+
+**A mutation found a real gap.** Removing the resolve-time user check broke nothing, because
+`disableClientUser` also revokes sessions and the revocation alone caught it. A test now disables a
+user without touching their sessions - the case any future admin path or partial failure produces.
+
 ### Fixed - the effective configuration value was non-deterministic (`ai-feature/fix-configuration-ordering`)
 
 `effectiveValue` ordered configuration changes by `appliedAt` alone. **`appliedAt` collides whenever

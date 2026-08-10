@@ -222,7 +222,7 @@ const toEvent = (row: LedgerRow): LedgerEvent => ({
   tenantId: row.tenantId,
   seq: row.seq,
   type: row.type as EventType,
-  actor: { id: row.actorId, kind: row.actorKind as 'village_agent' | 'human' },
+  actor: { id: row.actorId, kind: row.actorKind as 'village_agent' | 'human' | 'client' },
   ...(row.clientId !== null ? { clientId: row.clientId } : {}),
   ...(row.correlationId !== null ? { correlationId: row.correlationId } : {}),
   payload: (row.payload ?? {}) as Record<string, unknown>,
