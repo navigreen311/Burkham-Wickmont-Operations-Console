@@ -205,6 +205,37 @@ importers:
         specifier: ^5.8.3
         version: 5.9.3
 
+  packages/contracts:
+    dependencies:
+      '@bwc/core':
+        specifier: workspace:*
+        version: link:../core
+      '@bwc/db':
+        specifier: workspace:*
+        version: link:../db
+      '@bwc/deliverables':
+        specifier: workspace:*
+        version: link:../deliverables
+      '@bwc/identity':
+        specifier: workspace:*
+        version: link:../identity
+      '@bwc/ledger':
+        specifier: workspace:*
+        version: link:../ledger
+      '@bwc/placement':
+        specifier: workspace:*
+        version: link:../placement
+      '@bwc/regulatory':
+        specifier: workspace:*
+        version: link:../regulatory
+      '@bwc/scanner':
+        specifier: workspace:*
+        version: link:../scanner
+    devDependencies:
+      typescript:
+        specifier: ^5.8.3
+        version: 5.9.3
+
   packages/core:
     devDependencies:
       typescript:

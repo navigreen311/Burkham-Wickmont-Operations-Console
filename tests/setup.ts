@@ -75,6 +75,11 @@ export const cleanupTenant = async (tenantId: string): Promise<void> => {
   await prisma.researchWorkstream.deleteMany({ where: { tenantId } });
   // Rules, offerings, appetite, outcomes and contacts cascade from the provider.
   await prisma.provider.deleteMany({ where: { tenantId } });
+  // Contracts: generated documents and clauses reference templates and states by key.
+  await prisma.generatedContract.deleteMany({ where: { tenantId } });
+  await prisma.clause.deleteMany({ where: { tenantId } });
+  await prisma.templateReview.deleteMany({ where: { tenantId } });
+  await prisma.contractTemplate.deleteMany({ where: { tenantId } });
   // Regulatory: disclosures cascade from the module; activations and reviews reference a state
   // by code rather than by FK.
   await prisma.stateActivation.deleteMany({ where: { tenantId } });

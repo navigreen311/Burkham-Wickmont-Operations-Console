@@ -119,6 +119,12 @@ export const EVENT_TYPES = [
   'regulatory.seed.published',
   'regulatory.law_change.noticed',
   'regulatory.law_change.addressed',
+  // Contract & Disclosure Builder (7.3). `contract.generated` carries the content hash, so the
+  // Ledger can answer "what did they sign" without trusting the contracts schema.
+  'contract.template.published',
+  'contract.template.reviewed',
+  'contract.clause.published',
+  'contract.generated',
 ] as const;
 
 export type EventType = (typeof EVENT_TYPES)[number];
