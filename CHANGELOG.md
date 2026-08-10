@@ -7,6 +7,43 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added - Compliance Evidence Vault (`ai-feature/m7-1-compliance-evidence-vault`)
+
+**7.1 Compliance Evidence Vault** - regulator-ready file assembly with coverage reporting. See
+[docs/m7-1-compliance-evidence-vault.md](docs/m7-1-compliance-evidence-vault.md).
+
+- **This module owns almost nothing, deliberately.** Every line of blueprint 7.1's data model names
+  a fact another module already holds, so it assembles from live sources. A version that copied
+  them into its own tables would produce a second version of each, drifting from the first - and
+  the copy is the one a regulator would be shown. One table exists: the record that an export
+  happened, which is a fact that lives nowhere else.
+- **The file names what it could not include.** Every source reports a coverage verdict, and
+  `empty` is distinguished from `not_built`: "this client has no complaints" and "we have no
+  complaints module" both produce zero rows, and a reader shown the first when the second is true
+  has been misled by an omission nobody intended. Design principle 9 applied to a whole document.
+- **Three sources are `not_built` and stay in the registry** - Communications Hub, client
+  complaints (with an explicit warning that 5.4's provider complaints are not a substitute), and
+  adverse-action notices.
+- **One failing source does not empty the file.** A failure becomes a coverage entry; abandoning
+  the assembly would make the file unavailable exactly when something is already wrong.
+- **The Ledger integrity result travels with the file**, so its claims can be checked rather than
+  trusted. A broken chain is reported rather than blocking.
+- **The export record carries ids, a purpose and a hash - never the file.** Coverage is stored
+  rather than recomputed, because coverage _at the time_ is the fact a reader needs.
+- **Three owning modules gained a client-scoped read** rather than this one reaching into their
+  schemas: `consent.forClient`, `contracts.contractsForClient`, `billing.engagementsForClient`.
+  Each includes revoked, superseded and cancelled records - a client's file is the history.
+
+**Fixed during the slice:** the content hash covered the whole file including the Ledger integrity
+count, **which the act of exporting increments** - so a file could not match itself a second after
+it was written and reconciliation was useless. The hash now covers the client's evidence, excluding
+`assembledAt` and `ledgerIntegrity`, which are statements about the system rather than the client.
+Coverage stays in: if a `not_built` module gets built, a held file is out of date in a way that
+matters.
+
+**Tests:** 588 pass (14 new). The `not_built` verdict and the failure-isolation guard were
+mutation-verified - disabling either produces 5 failures.
+
 ### Added - Sales Motion & Engagement Tracking (`ai-feature/m1-3-sales-motion`)
 
 **1.3 Sales Motion & Engagement Tracking** - leads, attribution, inactivity escalation, conversion,

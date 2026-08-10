@@ -349,3 +349,34 @@ export const findContract = async (
     issuedAt: row.issuedAt.toISOString(),
   };
 };
+
+/**
+ * Every contract issued to a client, oldest first.
+ *
+ * Added for the Compliance Evidence Vault (7.1). Superseded and current documents both appear:
+ * a client's file is the history of what they signed, not only the latest of it.
+ */
+export const contractsForClient = async (
+  tenantId: string,
+  clientId: string,
+): Promise<readonly GeneratedContractRecord[]> => {
+  const rows = await db().generatedContract.findMany({
+    where: { tenantId, clientId },
+    orderBy: { issuedAt: 'asc' },
+  });
+
+  return rows.map((row) => ({
+    id: row.id,
+    clientId: row.clientId,
+    kind: row.kind as ContractKind,
+    templateKey: row.templateKey,
+    templateVersion: row.templateVersion,
+    state: row.state,
+    stateModuleVersion: row.stateModuleVersion,
+    content: row.content as unknown as ContractDocument,
+    contentHash: row.contentHash,
+    clauseKeys: row.clauseKeys,
+    disclosureKeys: row.disclosureKeys,
+    issuedAt: row.issuedAt.toISOString(),
+  }));
+};

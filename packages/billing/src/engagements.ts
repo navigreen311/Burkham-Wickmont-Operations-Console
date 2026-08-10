@@ -448,3 +448,20 @@ export const balanceOf = async (
     minimumCents: engagement.offer.minimumCents,
   });
 };
+
+/**
+ * Every engagement a client has had, oldest first.
+ *
+ * Added for the Compliance Evidence Vault (7.1), which assembles a client-scoped file across
+ * engagements. Cancelled and completed ones are included: the file is the history.
+ */
+export const engagementsForClient = async (
+  tenantId: string,
+  clientId: string,
+): Promise<readonly EngagementRecord[]> => {
+  const rows = await db().engagement.findMany({
+    where: { tenantId, clientId },
+    orderBy: { startedOn: 'asc' },
+  });
+  return rows.map(toEngagement);
+};

@@ -305,6 +305,40 @@ importers:
         specifier: ^5.8.3
         version: 5.9.3
 
+  packages/evidence:
+    dependencies:
+      '@bwc/billing':
+        specifier: workspace:*
+        version: link:../billing
+      '@bwc/clients':
+        specifier: workspace:*
+        version: link:../clients
+      '@bwc/consent':
+        specifier: workspace:*
+        version: link:../consent
+      '@bwc/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+      '@bwc/core':
+        specifier: workspace:*
+        version: link:../core
+      '@bwc/db':
+        specifier: workspace:*
+        version: link:../db
+      '@bwc/deliverables':
+        specifier: workspace:*
+        version: link:../deliverables
+      '@bwc/ledger':
+        specifier: workspace:*
+        version: link:../ledger
+      '@bwc/vault':
+        specifier: workspace:*
+        version: link:../vault
+    devDependencies:
+      typescript:
+        specifier: ^5.8.3
+        version: 5.9.3
+
   packages/firewall:
     dependencies:
       '@bwc/clients':

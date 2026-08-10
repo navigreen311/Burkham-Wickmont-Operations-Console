@@ -31,6 +31,7 @@ const WORKSPACE_PACKAGES = [
   'contracts',
   'billing',
   'sales',
+  'evidence',
 ] as const;
 
 export default defineConfig({

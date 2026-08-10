@@ -16,7 +16,7 @@ generator client {
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
-  schemas  = ["tenancy", "identity", "ledger", "clients", "consent", "firewall", "workflow", "notifications", "deliverables", "claims", "vault", "intelligence", "lenders", "governance", "graph", "regulatory", "contracts", "billing", "sales"]
+  schemas  = ["tenancy", "identity", "ledger", "clients", "consent", "firewall", "workflow", "notifications", "deliverables", "claims", "vault", "intelligence", "lenders", "governance", "graph", "regulatory", "contracts", "billing", "sales", "evidence"]
 }
 
 // ---------------------------------------------------------------------------
@@ -2204,4 +2204,59 @@ enum RenewalStatus {
   lapsed
 
   @@schema("sales")
+}
+
+// ---------------------------------------------------------------------------
+// 7.1 Compliance Evidence Vault
+//
+// This module owns ALMOST NOTHING. Blueprint 7.1's data model names authorizations,
+// documents, approval logs, complaints, refunds and state transitions - every one of
+// which another module already owns. A table copying them here would produce a second
+// version of every fact, drifting from the first, and the copy is the one a regulator
+// would be shown.
+//
+// So there is one table: the record that an export happened. An export is itself an
+// event with legal significance - who took a copy of a client's file, when, and why -
+// and that fact exists nowhere else.
+// ---------------------------------------------------------------------------
+
+enum EvidenceScope {
+  client
+  engagement
+
+  @@schema("evidence")
+}
+
+model EvidenceExport {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+
+  scope    EvidenceScope
+  clientId String  @db.Uuid
+  /// Set when the scope is an engagement.
+  engagementId String? @db.Uuid
+
+  /// Why the file was produced. Required: "who took a copy of this client's file and why" is
+  /// the question this table exists to answer, and an export with no stated purpose answers
+  /// only half of it.
+  purpose     String
+  requestedBy String
+
+  /// sha256 over the canonical JSON of the assembled file - ADR-0005 again. Lets a file
+  /// produced months ago be checked against what the system would produce now.
+  contentHash String
+
+  /// The coverage map at the time of export: which sources were consulted, and what each
+  /// returned. Stored rather than recomputed, because coverage AT THE TIME is the fact a
+  /// reader needs - what is not built today may be built tomorrow, and the file that went out
+  /// said what it said.
+  coverage Json
+
+  exportedAt DateTime
+
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, clientId, exportedAt])
+  @@map("evidence_exports")
+  @@schema("evidence")
 }

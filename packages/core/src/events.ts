@@ -147,6 +147,9 @@ export const EVENT_TYPES = [
   'sales.lead.converted',
   'sales.lead.closed',
   'sales.readiness.recorded',
+  // Compliance Evidence Vault (7.1). An export is itself an audit artifact: who took a copy of
+  // a client file, when, and why.
+  'evidence.file.exported',
 ] as const;
 
 export type EventType = (typeof EVENT_TYPES)[number];
