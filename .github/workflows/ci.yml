@@ -15,6 +15,10 @@ env:
   # Test-only key. Real environments load this from a secret manager; a signature is only
   # as meaningful as the custody of its key, and a key in a workflow file has none.
   LEDGER_SIGNING_KEY: ci-only-signing-key-not-used-anywhere-else-0123456789
+  # Test-only key-encryption key, same reasoning as above. Field-level encryption (SSN, EIN)
+  # needs one; without it the Entity Graph's write path throws rather than storing plaintext,
+  # which is the correct failure and was how this was noticed.
+  VAULT_KEK: 00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff
   INTEGRATION_MODE: stub
 
 jobs:

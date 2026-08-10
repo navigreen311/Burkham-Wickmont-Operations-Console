@@ -16,7 +16,7 @@ generator client {
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
-  schemas  = ["tenancy", "identity", "ledger", "clients", "consent", "firewall", "workflow", "notifications", "deliverables", "claims", "vault", "intelligence", "lenders", "governance"]
+  schemas  = ["tenancy", "identity", "ledger", "clients", "consent", "firewall", "workflow", "notifications", "deliverables", "claims", "vault", "intelligence", "lenders", "governance", "graph"]
 }
 
 // ---------------------------------------------------------------------------
@@ -1245,4 +1245,174 @@ model ProviderComplaint {
   @@index([tenantId, providerId, receivedAt])
   @@map("provider_complaints")
   @@schema("governance")
+}
+
+// ---------------------------------------------------------------------------
+// 1.2 Client Household / Entity Graph
+//
+// The blueprint's worked example of what goes wrong without this: a client signs a
+// personal guarantee on a facility for their operating company, a second for the
+// real-estate entity that leases them their premises, and a third for a partner's
+// DBA. Each was reasonable alone. Nobody holds the total - including the client -
+// and the first lender to ask "what else do you guarantee?" gets a wrong answer.
+//
+// One edge table with a `kind` discriminant rather than a table per relationship
+// type: the traversals are kind-agnostic, and five tables would make every walk a
+// five-way union. The type safety a table-per-kind would give is recovered by a
+// validity table in code (model.ts), which is itself tested.
+// ---------------------------------------------------------------------------
+
+enum EntityRole {
+  operating
+  holding
+  real_estate
+  dba
+  trust
+  other
+
+  @@schema("graph")
+}
+
+model Entity {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  clientId String @db.Uuid
+
+  legalName String
+  role      EntityRole
+
+  /// Two-letter state code. Drives lender state coverage in 5.3.
+  stateOfFormation String?
+  /// Time in business is derived from this, never stored - a stored figure is wrong
+  /// the day after it is written.
+  formationDate    DateTime?
+  industry         String?
+
+  /// EIN, envelope-encrypted. The plaintext exists only inside a decrypt call.
+  einCiphertext String?
+  /// Display only. Enough to confirm which EIN is on file without holding it.
+  einLast4      String?
+
+  /// What the client told us, with who said it and when. Surfaces as `client_stated`
+  /// provenance - neither a vendor feed nor our assumption.
+  statedAnnualRevenue Decimal?  @db.Decimal(14, 2)
+  statedRevenueBy     String?
+  statedRevenueAt     DateTime?
+  /// A document backing the statement, where one exists.
+  statedRevenueDocRef String?
+
+  /// The entity a funding application is actually for. At most one per client;
+  /// `setPrimaryEntity` clears the others in the same transaction.
+  isPrimary Boolean @default(false)
+
+  notes  String?
+  active Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, clientId, legalName])
+  @@index([tenantId, clientId, isPrimary])
+  @@map("entities")
+  @@schema("graph")
+}
+
+/// An individual with an ownership or guarantor relationship.
+///
+/// Deliberately thin. The graph needs to know who someone is and what they are on the
+/// hook for; it does not need their date of birth, address or contact details, and a
+/// field that exists will eventually be populated.
+model Owner {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  clientId String @db.Uuid
+
+  fullName String
+
+  /// SSN, envelope-encrypted, same discipline as the EIN above.
+  ssnCiphertext String?
+  ssnLast4      String?
+
+  notes  String?
+  active Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, clientId, fullName])
+  @@index([tenantId, clientId])
+  @@map("owners")
+  @@schema("graph")
+}
+
+enum EdgeKind {
+  /// owner -> entity, with a percentage.
+  ownership
+  /// entity -> entity. A holding company controlling an operating company.
+  control
+  /// owner -> entity, or owner -> external facility. The exposure that gets forgotten.
+  guarantee
+  /// entity -> entity. One company guaranteeing another's obligations.
+  cross_guarantee
+  /// entity -> external. An outstanding obligation to a named counterparty.
+  debt
+  /// entity -> entity. Money moving between related companies.
+  intercompany_transfer
+
+  @@schema("graph")
+}
+
+enum NodeKind {
+  owner
+  entity
+  /// A counterparty outside the graph - a lender, a landlord. Named, not linked.
+  external
+
+  @@schema("graph")
+}
+
+model GraphEdge {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  clientId String @db.Uuid
+
+  kind EdgeKind
+
+  fromKind NodeKind
+  fromId   String   @db.Uuid
+
+  toKind NodeKind
+  /// Null when `toKind` is external; `toLabel` names the counterparty instead.
+  toId    String? @db.Uuid
+  toLabel String?
+
+  /// 0-100. Present on ownership and optionally on control.
+  ownershipPercent Decimal? @db.Decimal(6, 3)
+
+  /// Debt outstanding, or the amount of an intercompany transfer.
+  amount Decimal? @db.Decimal(14, 2)
+
+  /// Cap on a guarantee. NULL means unlimited, which is a materially different
+  /// condition rather than a very large cap: unlimited exposure grows with draws the
+  /// guarantor has not yet made.
+  guaranteeLimit Decimal? @db.Decimal(14, 2)
+
+  /// Where we learned this. A relationship the client declared and one inferred from a
+  /// bank feed carry different weight in a conversation with them.
+  provenanceTag String
+  sourceNote    String?
+
+  effectiveFrom DateTime?
+  /// Ended rather than deleted: a guarantee released in March still explains a March
+  /// exposure figure.
+  endedAt       DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, clientId, kind])
+  @@index([tenantId, clientId, fromId])
+  @@index([tenantId, clientId, toId])
+  @@map("graph_edges")
+  @@schema("graph")
 }

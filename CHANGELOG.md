@@ -7,6 +7,61 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added — Client Household / Entity Graph (`ai-feature/m1-2-entity-graph`)
+
+**1.2 Client Household / Entity Graph**, which closes the last `not_built` in the funding path. See
+[docs/m1-2-entity-graph.md](docs/m1-2-entity-graph.md) and
+[ADR-0008](docs/decisions/ADR-0008-relationship-detection-produces-questions.md).
+
+- **The question it answers**: a client guarantees a facility for their operating company, another
+  for the real-estate entity that leases them premises, another for a partner's DBA. Each was
+  reasonable alone; nobody holds the total, including the client. The first lender to ask gets a
+  wrong answer.
+- **Detection produces questions, not conclusions.** Every signal has an innocent explanation that
+  is usually the true one, so a `RelationshipFinding` carries the question to put to the client and
+  has no field in which a verdict could be recorded. The value survives the reframing intact — an
+  underwriter runs the same checks, so the client should hear the question from us first. The
+  common-control threshold is 25%, the FinCEN line a lender's own KYC uses.
+- **The risk rating is categorical with no number at all**, deliberately not following 5.1's
+  precedent: a health score summarises measured quantities, a graph rating summarises structural
+  facts, and a number there would be arithmetic performed on judgements. The band is the **worst**
+  component, not an average — averaging is what lets a cross-guarantee ring be diluted into
+  "elevated" by three tidy components.
+- **Exposure distinguishes a guarantee of an entity from a guarantee of a facility.** The first
+  picks up debt signed after it was given; the second does not. Collapsing them overstates or hides,
+  and both produce a confident number. Limits cap the guarantor's contribution per guarantee;
+  obligations with no recorded amount are counted, not zeroed.
+- **`EDGE_RULES` recovers the type safety a single edge table gives up.** A reversed `ownership`
+  edge produces numbers rather than errors, so every kind's legal endpoints are declared as data a
+  test can iterate.
+- **Cycles are the thing being looked for**, not a hazard to guard against: rings are deduplicated
+  by rotation so one ring is not reported three times.
+- **The derived profile closes 5.3.** Tenure is derived from the formation date every time and
+  counted the way a lender counts. What the graph cannot know stays `null` — a credit score needs an
+  ungated bureau vendor — which is exactly what 5.2's three-valued eligibility was built for.
+- **SSN and EIN never enter a `Graph` value.** Envelope-encrypted at rest, display last-4 only, so
+  no traversal, finding or ledger payload can carry one. `revealSsn`/`revealEin` require a stated
+  purpose and write an access event.
+- **`client_stated` is a new provenance tag in core.** A self-reported revenue is neither a vendor
+  feed nor our assumption, and storing it as either is Decision D's failure in different clothing.
+  `fromProvenance` in `@bwc/lenders` throws on it — a lender rule cannot be client-stated.
+
+**There is no `not_built` left in the funding path.** The assertion in `placement-gate.test.ts` has
+moved twice, each time because a module named in a refusal got built; it is now `no_data`.
+`notBuilt` is no longer imported by `@bwc/placement`.
+
+**Corrected:** an entity with debt and no recorded owner produced no finding, though "who owns this
+company?" is a lender's first question. Surfaced by a test that expected findings and got none.
+
+**Fixed (pre-existing):** `vault-encryption.test.ts` tampered with an auth tag by overwriting its
+first two hex characters with `00`, which is a no-op roughly once in 256 runs. It failed once during
+a full-suite run on unrelated work — the only way a 0.4% flake ever surfaces. The tampered value is
+now derived from the real one.
+
+**Tests:** 430 pass (57 new). The guarantee-cap arithmetic and the SSN payload discipline were
+mutation-verified; the SSN leak was caught twice, once by the payload assertion and once by the
+Ledger's own redactor.
+
 ### Added — Lender Intelligence & Capital Product Governance (`ai-feature/m5-lender-intelligence-and-governance`)
 
 **5.2 Lender Intelligence Database**, **5.4 Capital Product Governance Board**, and the

@@ -10,21 +10,23 @@
  * The gate works, and the Lender Intelligence Database (5.2) and Governance Board (5.4) now
  * exist, so the recommendation lands here - see `recommend.ts` for the ranking itself.
  *
- * One dependency is still missing and is reported rather than papered over. The Console's
- * client record holds a legal name and a compliance state; it does not hold time in
- * business, revenue, industry or an authorized credit score, because the Client Household /
- * Entity Graph (1.2) is not built. So the underwriting profile arrives with the request, and
- * a request without one gets `not_built` naming 1.2 - not a recommendation computed from
- * blanks.
+ * The underwriting profile comes from the Client Household / Entity Graph (1.2), which now
+ * exists: state of formation, time in business derived from the formation date, industry, and
+ * revenue where the client has stated it. A caller may still pass a profile explicitly, which is
+ * how a what-if on a different requested amount is modelled without writing it into the household.
+ *
+ * What the graph cannot know stays null. A personal credit score needs an authorized bureau pull
+ * and that vendor is ungated, so eligibility reports it as unknown rather than assuming a passing
+ * score - which is exactly why 5.2's eligibility has three verdicts rather than two.
  */
 
 import { check as checkConsent } from '@bwc/consent';
 import { append } from '@bwc/ledger';
 import { chain, type StepTrace } from '@bwc/middleware';
-import type { ClientProfile } from '@bwc/lenders';
+import type { CapitalNeed, ClientProfile } from '@bwc/lenders';
+import { deriveProfile, loadGraph } from '@bwc/graph';
 import {
   isUnverified,
-  notBuilt,
   ok,
   type EventActor,
   type Outcome,
@@ -43,10 +45,15 @@ export interface PlacementRequest {
   readonly applicationRef: string;
   readonly correlationId?: string;
   /**
-   * The underwriting profile. Supplied by the caller because 1.2 Entity Graph does not
-   * exist to hold it; absent, the engine refuses rather than evaluating against blanks.
+   * The underwriting profile. Optional: when absent it is derived from the client's Entity
+   * Graph (1.2), which is where these attributes actually live. Supplying one explicitly is
+   * still supported for a what-if - a caller modelling a different requested amount should not
+   * have to write it into the household first.
    */
   readonly profile?: ClientProfile;
+  /** Used when deriving a profile. Ignored when `profile` is supplied, which carries its own. */
+  readonly need?: CapitalNeed;
+  readonly requestedAmount?: number;
   readonly today?: Date;
   readonly limit?: number;
 }
@@ -134,26 +141,37 @@ export const requestRecommendation = async (
     return { result: consent as Outcome<PlacementResult>, trace };
   }
 
-  // The one dependency still missing. The Console holds no underwriting attributes for a
-  // client - 1.2 Entity Graph owns those and is not built - so a request that does not carry
-  // a profile has nothing to evaluate against. Reporting not_built rather than treating the
-  // blanks as zeroes, which would disqualify every provider, or as unknowns that pass, which
-  // would fabricate a recommendation the client cannot act on.
-  if (request.profile === undefined) {
-    const unbuilt = notBuilt(
-      '1.2 Client Household / Entity Graph',
-      'The gate and authorization passed, but no underwriting profile was supplied and the Console does not yet hold one. Pass a profile with the request, or build 1.2.',
-    );
-    await recordOutcome(
-      unbuilt.reason,
-      `Principle 9 - honest refusal; ${unbuilt.module} not built`,
-    );
-    return { result: unbuilt, trace };
+  // The profile used to be `not_built` on 1.2 Entity Graph. That module now exists, so the
+  // profile is derived from the client's household when the caller does not supply one - and a
+  // client with no primary entity designated is `no_data`, because the Console consulted a real
+  // graph and found nobody had said which company is applying. The same transition 5.2 caused.
+  let profile = request.profile;
+  let derivedFrom: string | null = null;
+
+  if (profile === undefined) {
+    const graph = await loadGraph(request.tenantId, request.clientId);
+    const derived = deriveProfile({
+      graph,
+      need: request.need ?? 'working_capital',
+      requestedAmount: request.requestedAmount ?? 0,
+      ...(request.today !== undefined ? { today: request.today } : {}),
+    });
+
+    if (derived.status !== 'ok') {
+      await recordOutcome(
+        derived.status === 'no_data' ? derived.reason : 'profile derivation did not succeed',
+        'Principle 9 - honest empty state; the Entity Graph was consulted and holds no applicant',
+      );
+      return { result: derived as Outcome<PlacementResult>, trace };
+    }
+
+    profile = derived.value.profile;
+    derivedFrom = derived.value.primaryEntityName;
   }
 
   const ranked = await rankCandidates({
     tenantId: request.tenantId,
-    profile: request.profile,
+    profile,
     ...(request.today !== undefined ? { today: request.today } : {}),
     ...(request.limit !== undefined ? { limit: request.limit } : {}),
   });
@@ -180,6 +198,9 @@ export const requestRecommendation = async (
       // Offering ids, not client attributes. The Ledger must never carry the revenue or
       // score the recommendation was computed from.
       offeringIds: ranked.value.recommendations.map((entry) => entry.offeringId),
+      // The entity name, not its attributes. Naming which company was underwritten is what
+      // makes a placement explicable later; the revenue it was underwritten on is not.
+      derivedFromEntity: derivedFrom,
       rejectedCount: ranked.value.rejected.length,
       containsUnverifiedInputs: ranked.value.recommendations.some(
         (entry) => entry.containsUnverifiedInputs,

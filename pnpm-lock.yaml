@@ -290,6 +290,28 @@ importers:
         specifier: ^5.8.3
         version: 5.9.3
 
+  packages/graph:
+    dependencies:
+      '@bwc/core':
+        specifier: workspace:*
+        version: link:../core
+      '@bwc/db':
+        specifier: workspace:*
+        version: link:../db
+      '@bwc/ledger':
+        specifier: workspace:*
+        version: link:../ledger
+      '@bwc/lenders':
+        specifier: workspace:*
+        version: link:../lenders
+      '@bwc/vault':
+        specifier: workspace:*
+        version: link:../vault
+    devDependencies:
+      typescript:
+        specifier: ^5.8.3
+        version: 5.9.3
+
   packages/identity:
     dependencies:
       '@bwc/core':
@@ -428,6 +450,9 @@ importers:
       '@bwc/governance':
         specifier: workspace:*
         version: link:../governance
+      '@bwc/graph':
+        specifier: workspace:*
+        version: link:../graph
       '@bwc/integration':
         specifier: workspace:*
         version: link:../integration

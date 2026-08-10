@@ -98,8 +98,18 @@ describe('tampering fails loudly', () => {
   });
 
   it('refuses when the auth tag has been altered', async () => {
+    // The tampered tag is derived from the real one rather than overwritten with a fixed value.
+    //
+    // This previously replaced the first two hex characters with '00', which is a no-op roughly
+    // once every 256 runs - the auth tag is effectively random, so sometimes it already began
+    // '00', the "tampered" tag was identical, and decryption correctly succeeded. It failed once
+    // in a full-suite run on an unrelated change, which is the only way a 0.4% flake ever
+    // surfaces: as a mysterious red on somebody else's pull request.
     const payload = await encrypt(SECRET, kek);
-    const badTag = { ...payload, authTag: payload.authTag.replace(/^../, '00') };
+    const flipped = payload.authTag[0] === '0' ? '1' : '0';
+    const badTag = { ...payload, authTag: flipped + payload.authTag.slice(1) };
+
+    expect(badTag.authTag).not.toBe(payload.authTag);
     await expect(decrypt(payload.ciphertext, badTag, payload.sha256, kek)).rejects.toThrow();
   });
 

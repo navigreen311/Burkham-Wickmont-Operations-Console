@@ -143,5 +143,15 @@ export const fromProvenance = (provenance: Provenance): StoredProvenance => {
         vendor: provenance.vendor,
         retrievedAt: new Date(provenance.retrievedAt),
       };
+    case 'client_stated':
+      // A lender rule cannot be client-stated. The client is not the source of an issuer's
+      // velocity policy, and coercing this into `unresearched_default` to make the write
+      // succeed would relabel someone's statement as our assumption - the exact confusion
+      // the tag was added to prevent. Throws rather than returning an Outcome: reaching this
+      // is a programming error at the call site, not a runtime condition a caller can recover
+      // from by asking the user.
+      throw new Error(
+        'A client_stated figure cannot be stored as a lender rule or product offering. Client statements belong to the Entity Graph (1.2); lender terms come from the issuer or from a vendor feed.',
+      );
   }
 };

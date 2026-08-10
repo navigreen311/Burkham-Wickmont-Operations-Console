@@ -141,7 +141,7 @@ describe('placement request path', () => {
     }
   });
 
-  it('reports not_built on the missing Entity Graph rather than evaluating against blanks', async () => {
+  it('reports no_data once the Entity Graph exists and holds no applicant', async () => {
     const client = await clientInState('pass');
     await grantConsent({
       tenantId: fx.tenant.id,
@@ -158,17 +158,16 @@ describe('placement request path', () => {
       applicationRef: 'app-authorized',
     });
 
-    // Updated when 5.2 landed. This used to be not_built on the Lender Intelligence
-    // Database; that module now exists, and continuing to name it would be the system
-    // making a false statement about itself.
+    // This assertion has now moved twice, and each move is the same event: a module named in a
+    // `not_built` got built, so continuing to name it would be the system making a false
+    // statement about itself. First it was 5.2 Lender Intelligence Database; then 1.2 Entity
+    // Graph; now the Entity Graph exists and was consulted, and this client simply has no
+    // entity designated as the applicant.
     //
-    // What is still missing is the underwriting profile: 1.2 Entity Graph owns time in
-    // business, revenue and industry, and the Client record holds none of them. Absent a
-    // profile the engine refuses, rather than reading the blanks as zeroes (which
-    // disqualifies every provider) or as passes (which fabricates a recommendation).
-    expect(result.status).toBe('not_built');
-    if (result.status === 'not_built') {
-      expect(result.module).toMatch(/Entity Graph/i);
+    // There is no `not_built` left on the funding path.
+    expect(result.status).toBe('no_data');
+    if (result.status === 'no_data') {
+      expect(result.reason).toMatch(/designate one as primary/i);
     }
   });
 
