@@ -23,6 +23,7 @@ import { db } from '@bwc/db';
 import { append } from '@bwc/ledger';
 import { noData, ok, refused, type Outcome } from '@bwc/core';
 import { checkPassword, hashPassword, verifyPassword } from './credentials.js';
+import { cancelPendingEmailChanges } from './emailChange.js';
 import { activeFactorFor, verifySecondFactor } from './mfa.js';
 import { supersedeOutstanding } from './passwordReset.js';
 
@@ -129,6 +130,15 @@ export const changeClientPassword = async (input: {
     });
 
     return { otherSessionsRevoked: revoked.count, outstandingResetSpent: outstanding > 0 };
+  });
+
+  // Same reasoning as the reset path: a client taking their account back cancels any pending move
+  // of the address their recovery goes to.
+  await cancelPendingEmailChanges({
+    tenantId: input.tenantId,
+    clientUserId: user.id,
+    reason: 'The password was changed.',
+    now,
   });
 
   await append({

@@ -7,6 +7,39 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added - moving the address a client's account lives at (`ai-feature/client-email-change`)
+
+The bigger question #31 named, in one line: **the email address is where a reset link goes.** See
+[docs/m11-email-change.md](docs/m11-email-change.md) and ADR-0027.
+
+- **The strongest of the three credential operations.** Changing a password changes what an attacker
+  must know; changing this changes WHERE RECOVERY GOES, and an attacker who moves it keeps the
+  account after the client resets their password, because the reset arrives in the attacker's inbox.
+- **It takes effect only when the new address answers**, not when the request is made. A change
+  applied at request time moves recovery to whatever was typed, and a typo is then not a typo - it is
+  a lockout the client discovers on the day they need to get back in.
+- **Three decisions run OPPOSITE to change-password, and "be consistent with the last slice" is the
+  tempting wrong answer in all three.** This revokes NO sessions and cancels NO outstanding resets:
+  nothing about authentication changed, so revoking would remove the legitimate owner's access and
+  leave the attacker - who holds the session doing the changing - exactly where they were. A reset in
+  flight went to the OLD address, which an attacker does not have, so it is the owner's way back.
+- **A staff-assisted move is a different fact and a column says which.** #28's staff route hands a
+  token to a human to convey; that does not transfer here, because a token read over the phone proves
+  the PERSON and proves nothing about the address - which is the only thing the token exists to
+  establish. So the staff route hands out no token and stamps `verifiedBy: 'staff_assertion'` beside
+  the `'email'` the self-service path produces.
+- **Recovering the account cancels a pending move** - the interaction that would otherwise be
+  invisible from either feature: an attacker requests a move, the client resets their password, and
+  the attacker presents the token afterwards and takes the recovery channel anyway.
+- **The seam that matters most is the one that is missing.** `notifyPreviousAddress` tells the old
+  address its account has moved, and that notification is how a hijack is noticed at all.
+  `oldAddressNotified` travels out to the caller and into the Ledger as `false` rather than being
+  omitted.
+- The delivery seam is **injectable**, following PR #9's lesson - it is how a provider gets wired in
+  and how a test watches the one place the token legitimately travels to.
+- An address already in use is refused **without saying why**; a consumed row is the history;
+  confirmation is unauthenticated on purpose, because the link is opened from the new mailbox.
+
 ### Added - change password for a signed-in client (`ai-feature/client-password-change`)
 
 Named as out of scope three slices running, each time for the same reason: changing a password you

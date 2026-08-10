@@ -28,12 +28,14 @@ import {
   clientRoom,
   completeReset,
   completeSignInMfa,
+  confirmAddressChange,
   confirmAuthenticator,
   downloadDocument,
   mfaSettings,
   newRecoveryCodes,
   principalFromToken,
   removeAuthenticator,
+  requestAddressChange,
   requestReset,
   sendMessage,
   signDisclosure,
@@ -577,6 +579,76 @@ export const createPortalApp = (deps: PortalAppDeps): Express => {
           newPassword: body.newPassword,
           ...(typeof body.code === 'string' ? { code: body.code } : {}),
         }),
+      );
+    }),
+  );
+
+  /**
+   * Ask to move the address this account lives at.
+   *
+   * The same limiter as changing a password: both are authenticated credential operations whose
+   * cost is a scrypt verification, and a caller who could exhaust one from inside a session could
+   * exhaust the other.
+   */
+  app.post(
+    '/portal/email',
+    limitBy(changeLimiter, 'Too many attempts from this address. Try again shortly.'),
+    express.json({ limit: config.maxJsonBytes }),
+    withPrincipal(async (principal, req, res) => {
+      const body = req.body as { newEmail?: unknown; currentPassword?: unknown; code?: unknown };
+
+      if (typeof body?.newEmail !== 'string' || typeof body?.currentPassword !== 'string') {
+        send(
+          res,
+          refused(
+            'Moving your address needs the new one and your current password.',
+            'Blueprint 11.1 - a credential change needs a credential',
+          ),
+        );
+        return;
+      }
+
+      send(
+        res,
+        await requestAddressChange({
+          principal,
+          newEmail: body.newEmail,
+          currentPassword: body.currentPassword,
+          ...(typeof body.code === 'string' ? { code: body.code } : {}),
+        }),
+      );
+    }),
+  );
+
+  /**
+   * Present the token that arrived at the new address.
+   *
+   * **Unauthenticated by design.** It is answered from the new mailbox, which is not necessarily the
+   * browser holding the session - and requiring the session would mean a client who opened the link
+   * on their phone could not finish. The token is the whole of the authorisation, which is why it is
+   * short-lived, single use, and delivered nowhere else.
+   */
+  app.post(
+    '/portal/email/confirm',
+    limitBy(changeLimiter, 'Too many attempts from this address. Try again shortly.'),
+    express.json({ limit: config.maxJsonBytes }),
+    asyncRoute(async (req, res) => {
+      const body = req.body as { token?: unknown };
+
+      if (typeof body?.token !== 'string') {
+        send(
+          res,
+          refused(
+            'That verification link is not valid. Ask for a new one.',
+            'Blueprint 11.1 - identity and access',
+          ),
+        );
+        return;
+      }
+
+      send(
+        res,
+        await confirmAddressChange({ tenantId: config.tenantId, token: body.token, now: now() }),
       );
     }),
   );

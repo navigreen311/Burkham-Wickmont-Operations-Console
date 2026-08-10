@@ -704,6 +704,69 @@ describe('changing a password over the wire', () => {
   });
 });
 
+describe('moving an address over the wire', () => {
+  const ADDRESS_EMAIL = 'transport-address@example.com';
+
+  beforeAll(async () => {
+    const invited = await inviteClientUser({
+      tenantId: fx.tenant.id,
+      clientId,
+      email: ADDRESS_EMAIL,
+      displayName: 'Address Person',
+      issuedBy: fx.human.id,
+      actor: HUMAN(),
+    });
+    if (invited.status !== 'ok') throw new Error('setup: invite');
+    const enrolled = await enrolClientUser({
+      tenantId: fx.tenant.id,
+      token: invited.value.token,
+      password: PASSWORD,
+      actor: HUMAN(),
+    });
+    if (enrolled.status !== 'ok') throw new Error('setup: enrol');
+  });
+
+  it('needs a session to ask, and reports that nothing could be delivered', async () => {
+    const unauthenticated = await call('/portal/email', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ newEmail: 'somewhere@example.com', currentPassword: PASSWORD }),
+    });
+    expect(unauthenticated.status).toBe(409);
+    expect(unauthenticated.json<{ reason: string }>().reason).toBe('Sign in to continue.');
+
+    const signedIn = await call('/portal/sign-in', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ email: ADDRESS_EMAIL, password: PASSWORD }),
+    });
+
+    const asked = await call('/portal/email', {
+      method: 'POST',
+      cookie: sessionCookie(signedIn),
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ newEmail: 'moved@example.com', currentPassword: PASSWORD }),
+    });
+
+    // 501: the change was recorded as pending and nothing delivered the link.
+    expect(asked.status).toBe(501);
+    expect(asked.json<{ reason: string }>().reason).toContain('does not move');
+  });
+
+  it('confirms WITHOUT a session, because the link is opened from the new mailbox', async () => {
+    // Requiring the session here would mean a client who opened the link on their phone could not
+    // finish. The token is the whole of the authorisation.
+    const reply = await call('/portal/email/confirm', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ token: 'a-token-that-was-never-real' }),
+    });
+
+    expect(reply.status).toBe(409);
+    expect(reply.json<{ reason: string }>().reason).toContain('verification link is not valid');
+  });
+});
+
 describe('rate limiting catches what lockout cannot', () => {
   let sprayServer: Server;
   let sprayBase: string;

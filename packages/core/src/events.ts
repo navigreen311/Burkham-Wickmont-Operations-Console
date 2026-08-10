@@ -250,6 +250,10 @@ export const EVENT_TYPES = [
   // Changing a password you still know is a different act from recovering one you have
   // lost, and reading them as one would hide which happened.
   'identity.client_user.password_changed',
+  // Moving the address is the strongest of the three: it changes where recovery GOES, so
+  // the request and the move are separate events and both name the address.
+  'identity.client_user.email_change_requested',
+  'identity.client_user.email_changed',
   // Multi-factor. A failed challenge and a spent recovery code are both recorded because a run of
   // either against one account is the signal, and neither is visible from a successful sign-in.
   'identity.client_user.mfa_enrolled',

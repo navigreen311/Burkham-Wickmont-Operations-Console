@@ -13,11 +13,15 @@
 import {
   beginMfaEnrolment,
   changeClientPassword,
+  completeEmailChange,
   confirmMfaEnrolment,
   disableMfa,
   mfaStatus,
   regenerateRecoveryCodes,
+  requestEmailChange,
+  type CompletedEmailChange,
   type ConfirmedEnrolment,
+  type EmailChangeAcknowledgement,
   type EnrolmentOffer,
   type MfaStatus,
   type PasswordChanged,
@@ -87,6 +91,40 @@ export const changePassword = async (input: {
     newPassword: input.newPassword,
     ...(input.code !== undefined ? { code: input.code } : {}),
   });
+
+/**
+ * Ask to move the address this account lives at.
+ *
+ * **The strongest thing a client can do to their own account**, because the address is where a reset
+ * link goes. Nothing moves until a token delivered to the new address comes back - a change to an
+ * unreachable address would move recovery to a mailbox nobody reads.
+ */
+export const requestAddressChange = async (input: {
+  principal: ClientPrincipal;
+  newEmail: string;
+  currentPassword: string;
+  code?: string;
+}): Promise<Outcome<EmailChangeAcknowledgement>> =>
+  requestEmailChange({
+    tenantId: input.principal.tenantId,
+    clientUserId: input.principal.actorId,
+    newEmail: input.newEmail,
+    currentPassword: input.currentPassword,
+    ...(input.code !== undefined ? { code: input.code } : {}),
+  });
+
+/**
+ * Present the token that arrived at the new address.
+ *
+ * Unauthenticated by design: it is answered from the new mailbox, which may not be the browser
+ * holding the session. The token is the whole of the authorisation, which is why it is short-lived
+ * and single use.
+ */
+export const confirmAddressChange = async (input: {
+  tenantId: string;
+  token: string;
+  now?: Date;
+}): Promise<Outcome<CompletedEmailChange>> => completeEmailChange(input);
 
 /** A fresh set of recovery codes, retiring the old ones. */
 export const newRecoveryCodes = async (input: {
