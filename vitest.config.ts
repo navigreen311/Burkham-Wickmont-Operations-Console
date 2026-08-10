@@ -27,6 +27,7 @@ const WORKSPACE_PACKAGES = [
   'lenders',
   'governance',
   'graph',
+  'regulatory',
 ] as const;
 
 export default defineConfig({

@@ -17,6 +17,11 @@
  *
  * Steps 4-7 are skipped for actions that declare no client and no client-facing content -
  * skipped explicitly and reported in the trace, never silently.
+ *
+ * Every step now performs a real check. Step 5 was the last to report `not_built`, and with the
+ * Regulatory Engine (7.2) built there is no step in this chain that reports a capability as
+ * missing - which is why `notBuilt` is no longer imported here. Ungated vendors still report it,
+ * from `@bwc/integration`, and that is the remaining honest use of the status.
  */
 
 import { append } from '@bwc/ledger';
@@ -24,10 +29,10 @@ import { decideAuthority, findActor, type Actor } from '@bwc/identity';
 import { assertSameTenant } from '@bwc/tenancy';
 import { find as findClient } from '@bwc/clients';
 import { evaluate as evaluateGate } from '@bwc/firewall';
+import { checkJurisdiction, type RegulatoryClearance } from '@bwc/regulatory';
 import {
   failed,
   isProhibitedAction,
-  notBuilt,
   ok,
   refused,
   type AuthorityActionBlockedPayload,
@@ -63,14 +68,30 @@ export interface ChainRequest {
   /** The ledger event this action writes if it is permitted to proceed. */
   readonly eventType: EventType;
   readonly eventPayload?: Record<string, unknown>;
-  /** Outbound client-facing text, if any. Triggers step 7. */
+  /** Outbound client-facing text, if any. Triggers steps 5 and 7. */
   readonly clientFacingContent?: string;
+  /**
+   * Two-letter state code governing this action. Required alongside client-facing content:
+   * step 5 refuses without it, because "we could not tell which state" and "no state rule
+   * applies" are different statements and only one of them is a check.
+   */
+  readonly jurisdiction?: string;
+  /** Narrows the required disclosures to one product. */
+  readonly productKind?: string;
+  /** When present, step 5 also confirms the Governance Board permits it in this state. */
+  readonly providerId?: string;
   readonly correlationId?: string;
 }
 
 export interface ChainResult {
   readonly actor: Actor;
   readonly trace: readonly StepTrace[];
+  /**
+   * What step 5 cleared, when a client-facing action was in scope. Carries the disclosures the
+   * jurisdiction obliges, so the caller attaches them from the same check that permitted the
+   * action rather than from a second lookup that could disagree with it.
+   */
+  readonly clearance?: RegulatoryClearance;
 }
 
 /**
@@ -194,10 +215,17 @@ export const chain = async (
   }
 
   // --- 5. Regulatory ------------------------------------------------------
-  // 7.2 State-by-State Regulatory Engine is not built. Reporting `not_built` here rather
-  // than passing silently: a pass would assert that state compliance was checked, and no
-  // client-facing action may fire without that check (principle 6). The step is wired and
-  // honest about being empty, which is the distinction principle 9 exists to preserve.
+  // 7.2 State-by-State Regulatory Engine. This step used to report `not_built`; the engine now
+  // exists, so it performs the check the specification demands: "no client-facing action fires
+  // without state compliance checks having passed."
+  //
+  // The jurisdiction arrives as a value rather than being resolved here. The chain could reach
+  // into the Entity Graph for it, and that would put this gate downstream of the lender
+  // catalogue - `@bwc/graph` depends on `@bwc/lenders` - which is the wrong direction for the
+  // module that decides whether anything may happen at all. Forgetting to pass one is safe: it
+  // produces a refusal naming what to pass, not a silent pass.
+  let clearance: RegulatoryClearance | undefined;
+
   if (request.clientFacingContent === undefined) {
     trace.push({
       step: 'regulatory',
@@ -205,14 +233,27 @@ export const chain = async (
       detail: 'no client-facing action in scope',
     });
   } else {
-    return blockAt(
-      'regulatory',
-      notBuilt(
-        '7.2 State-by-State Regulatory Engine',
-        'State compliance cannot be verified because the Regulatory Engine is not built. Principle 6 gates client-facing actions on this check, so the action is refused rather than allowed through unchecked.',
-      ) as Outcome<never>,
-      'regulatory engine not built',
-    );
+    const checked = await checkJurisdiction({
+      tenantId: request.tenantId,
+      state: request.jurisdiction ?? null,
+      ...(request.productKind !== undefined ? { productKind: request.productKind } : {}),
+      ...(request.providerId !== undefined ? { providerId: request.providerId } : {}),
+    });
+
+    if (checked.status !== 'ok') {
+      return blockAt(
+        'regulatory',
+        checked as Outcome<never>,
+        checked.status === 'refused' ? checked.reason : 'state compliance check did not succeed',
+      );
+    }
+
+    clearance = checked.value;
+    trace.push({
+      step: 'regulatory',
+      outcome: 'passed',
+      detail: `${clearance.state} active at module version ${clearance.standing.currentVersion ?? 0}; ${clearance.requiredDisclosures.length} disclosure(s) required`,
+    });
   }
 
   // --- 6. Event emission --------------------------------------------------
@@ -247,5 +288,8 @@ export const chain = async (
     detail: 'no client-facing content in scope',
   });
 
-  return { result: ok({ actor, trace }), trace };
+  return {
+    result: ok({ actor, trace, ...(clearance !== undefined ? { clearance } : {}) }),
+    trace,
+  };
 };

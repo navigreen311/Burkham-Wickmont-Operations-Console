@@ -7,6 +7,7 @@
   },
   "include": ["src/**/*.ts"],
   "references": [
+    { "path": "../regulatory" },
     {
       "path": "../core"
     },
