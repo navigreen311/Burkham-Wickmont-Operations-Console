@@ -7,6 +7,53 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added - Admin Configuration Center and System Health (`ai-feature/m11-admin-and-observability`)
+
+**11.7 Admin Configuration Center** with **11.8 System Health & Observability**. Two of Category
+11's five remaining V1 modules; **11.6 Data Warehouse, 11.10 Client Portal and 11.11 Founder /
+Executive Workbench remain**. See
+[docs/m11-admin-and-observability.md](docs/m11-admin-and-observability.md) and ADR-0019.
+
+- **A configuration surface must not be able to turn a control off** (ADR-0019). Blueprint 11.7
+  lists "authority levels" and "state rules" among the configurable things - taken literally, a
+  screen where somebody sets TCPA quiet hours to 24 hours or adds `guarantee_approval` to the
+  permitted-action list. So every tunable constant is a **parameter** (a policy choice, with
+  declared bounds, the basis for those bounds, an owner, a Level 3 human, a readable reason and an
+  audit trail) or an **invariant** (law, or something the architecture depends on).
+- **Invariants are absent, not permission-gated.** A "Level 4 required" flag would be a permission
+  somebody eventually holds, and the person most likely to hold it is the one under pressure to
+  make a number move. There is no code path that writes them. They are listed as fixed with a
+  `whyFixed` line, because "I couldn't find the setting" and "the setting does not exist because it
+  is the law" are different answers and only one stops somebody looking for a workaround.
+- **Cadences the specification states as minimums become ceilings.** 5.4's quarterly review and
+  8.3's annual recertification may be tightened by a tenant, never loosened; 9.1's 90% compliance
+  target is a floor for the same reason.
+- **There is no table of current values.** The effective value is the latest applied change or the
+  compiled default, so the audit trail IS the store and nothing keeps two copies in step.
+  `rollback` writes a NEW change restoring the prior value - an undo that deleted the row would
+  answer "what is it now" and lose "what happened".
+- **Staging is real, not a label.** A high-risk change is recorded with `appliedAt: null`, and
+  `effectiveValue` reads applied changes only, so the value does not move until promotion. A second
+  approver is deliberately not required: staging makes a change deliberate and visible, and
+  four-eyes approval is something this codebase does elsewhere by name.
+- **`unmonitored` is a state, and it is not green** (ADR-0019). 9.1 established that `null` is not
+  zero; the argument lands harder on a health dashboard, where the default rendering of "no data"
+  is a green tick and the reader is deciding whether to go home. `unmonitored` ranks BETWEEN
+  `degraded` and `healthy` - not worse than degraded, because nobody watching is not evidence of a
+  problem; worse than healthy, because "we are not looking" cannot be reported as "it is fine".
+- **The `healthy` constructor takes a measurement as a required argument**, so a component nobody
+  probed cannot be reported as working - there is no way to build the value. An empty check returns
+  `unmonitored`, because a system nobody checked is not a healthy system. Overall is the WORST
+  component, never an average.
+- **Four components are genuinely measured** from 11.3 and 11.4: queue depth (counting work that is
+  DUE - a follow-up booked for next month is not backlog; **dead letters fail at one**, because a
+  threshold would be a decision that some abandoned work is acceptable), the Ledger hash chain (no
+  degraded case; an EMPTY ledger is `unmonitored`, not intact), workflow failure share (**no
+  activity is `unmonitored`, not clean**), and SLA breaches.
+- **A gated vendor never shows green.** Zero calls is not zero errors, and a healthy Plaid row on a
+  system that has never called Plaid is the most confidently wrong thing the module could produce.
+  Each names the Decision that gates it.
+
 ### Added - Inter-Venture Commerce Hooks (`ai-feature/m10-inter-venture-commerce`)
 
 **10.1 Inter-Venture Commerce Hooks** - Category 10's V1 scope. 10.2 Cross-Portfolio Opportunity

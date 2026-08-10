@@ -225,6 +225,11 @@ export const EVENT_TYPES = [
   'interventure.handoff.declined',
   'interventure.invoice.raised',
   'interventure.invoice.routing_attempted',
+  // Admin Configuration Center (11.7). Blueprint 11.7 asks for an audit trail on every change;
+  // these are the tenant-chain half of it. A staged change is its own type, so a reader can tell
+  // "somebody proposed this" from "this is in force".
+  'admin.configuration.staged',
+  'admin.configuration.changed',
 ] as const;
 
 export type EventType = (typeof EVENT_TYPES)[number];
