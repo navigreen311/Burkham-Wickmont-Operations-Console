@@ -141,7 +141,7 @@ describe('placement request path', () => {
     }
   });
 
-  it('reports not_built rather than inventing a recommendation once everything passes', async () => {
+  it('reports not_built on the missing Entity Graph rather than evaluating against blanks', async () => {
     const client = await clientInState('pass');
     await grantConsent({
       tenantId: fx.tenant.id,
@@ -158,12 +158,54 @@ describe('placement request path', () => {
       applicationRef: 'app-authorized',
     });
 
-    // The gate and the authorization both passed. There is still no Lender Intelligence
-    // Database, so the honest answer is not_built - not an empty recommendation, and not
-    // a plausible default that a client could act on.
+    // Updated when 5.2 landed. This used to be not_built on the Lender Intelligence
+    // Database; that module now exists, and continuing to name it would be the system
+    // making a false statement about itself.
+    //
+    // What is still missing is the underwriting profile: 1.2 Entity Graph owns time in
+    // business, revenue and industry, and the Client record holds none of them. Absent a
+    // profile the engine refuses, rather than reading the blanks as zeroes (which
+    // disqualifies every provider) or as passes (which fabricates a recommendation).
     expect(result.status).toBe('not_built');
     if (result.status === 'not_built') {
-      expect(result.module).toMatch(/Lender Intelligence Database/i);
+      expect(result.module).toMatch(/Entity Graph/i);
+    }
+  });
+
+  it('reports no_data - not not_built - when the catalogue exists and is empty', async () => {
+    // The distinction principle 9 is built on. `not_built` says the capability does not
+    // exist; `no_data` says it does, we consulted it, and there was nothing. Once 5.2
+    // shipped, an empty catalogue stopped being the former and became the latter, and a
+    // client memo that confused the two would misdescribe the state of the business.
+    const client = await clientInState('pass');
+    await grantConsent({
+      tenantId: fx.tenant.id,
+      clientId: client.id,
+      kind: 'application',
+      scope: 'app-empty-catalogue',
+      actor: humanActor(),
+    });
+
+    const { result } = await requestRecommendation({
+      actorId: fx.agent.id,
+      tenantId: fx.tenant.id,
+      clientId: client.id,
+      applicationRef: 'app-empty-catalogue',
+      profile: {
+        clientId: client.id,
+        state: 'TX',
+        timeInBusinessMonths: 36,
+        annualRevenue: 900_000,
+        personalCreditScore: 720,
+        industry: 'Professional Services',
+        need: 'working_capital',
+        requestedAmount: 75_000,
+      },
+    });
+
+    expect(result.status).toBe('no_data');
+    if (result.status === 'no_data') {
+      expect(result.reason).toMatch(/no active product offerings/i);
     }
   });
 

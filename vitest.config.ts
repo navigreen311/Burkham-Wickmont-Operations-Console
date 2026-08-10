@@ -24,6 +24,8 @@ const WORKSPACE_PACKAGES = [
   'vault',
   'intelligence',
   'capital',
+  'lenders',
+  'governance',
 ] as const;
 
 export default defineConfig({

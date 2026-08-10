@@ -78,6 +78,29 @@ export const EVENT_TYPES = [
   // Marketing Claim Library (7.4)
   'claim.published',
   'claim.deprecated',
+  // Lender Intelligence Database (5.2). Rule and offering writes are events because the
+  // specification requires every rule change logged with its source and verification method,
+  // and the Ledger is where that log lives.
+  'lender.provider.registered',
+  'lender.rule.recorded',
+  'lender.offering.recorded',
+  'lender.appetite.observed',
+  'lender.outcome.recorded',
+  'lender.research.opened',
+  'lender.research.advanced',
+  'lender.research.promoted',
+  // Capital Product Governance Board (5.4). Blueprint 5.4 requires an audit trail on every
+  // decision; these are the tenant-chain half of it.
+  'governance.provider.submitted',
+  'governance.provider.approved',
+  'governance.provider.reviewed',
+  'governance.provider.flagged',
+  'governance.provider.suspended',
+  'governance.provider.blacklisted',
+  'governance.provider.reinstated',
+  'governance.complaint.recorded',
+  // Funding Recommendation Engine (5.3), success path.
+  'placement.recommended',
 ] as const;
 
 export type EventType = (typeof EVENT_TYPES)[number];

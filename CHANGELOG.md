@@ -7,6 +7,58 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added — Lender Intelligence & Capital Product Governance (`ai-feature/m5-lender-intelligence-and-governance`)
+
+**5.2 Lender Intelligence Database**, **5.4 Capital Product Governance Board**, and the
+**completion of 5.3 Funding Recommendation Engine**. See
+[docs/m5-lender-intelligence-and-governance.md](docs/m5-lender-intelligence-and-governance.md) and
+[ADR-0007](docs/decisions/ADR-0007-governance-status-lives-outside-the-provider-record.md).
+
+- **5.2 pulled forward from V1.5.** The blueprint defers 5.2 while putting 5.3 and 5.4 in V1 — two
+  V1 modules whose stated function is reading from and writing to it. What Decision D actually
+  defers is credit-union _research scope_, not the existence of a catalogue, so the database comes
+  forward and **the restriction is enforced in code**.
+- **Decision D is enforced at approval, not registration.** Recording what we know about a deferred
+  credit union is the V1.5 research work; deciding agents may place clients there is a different
+  act, and it is the one V1 restricts. `approve()` refuses a non–Navy Federal credit union by name,
+  citing the decision.
+- **Governance status lives in its own schema.** A provider the board has never seen has no
+  governance row, and absence resolves to _not approved_ — the Lender Intelligence Database has no
+  field with which to say otherwise.
+- **Standing is derived at read time, never stored.** A nightly staleness job that stops leaves
+  every stale provider reading as approved with no signal at all; deriving it means a provider
+  reviewed 91 days ago is overdue on every machine, including one switched off for a month. State
+  restrictions are pulled by the Regulatory Engine for the same reason — a push can lag.
+- **Provenance on every rule, structurally.** `recordRule` takes a `Provenance` value, not loose
+  columns, and stores it as queryable columns so _"what are we telling clients that nobody
+  verified?"_ is one query. Rules **supersede rather than overwrite**, in one transaction, and the
+  superseded version keeps its own provenance — it was an assumption at the time.
+- **Eligibility has three verdicts.** `unknown` is its own answer naming the missing field:
+  collapsing it into `ineligible` hides every good provider until a file is complete, and into
+  `eligible` fabricates a recommendation. Ineligible outranks unknown. A null threshold is not a
+  threshold of zero.
+- **Suitability is separate from eligibility**, because the products easiest to qualify for are
+  frequently the worst fit. Poor fits are surfaced as **cautions, never filtered out**.
+- **Approval rate returns `null` below 10 decided applications.** Withdrawals are excluded from the
+  denominator; profile cohorts are coarse so no client becomes a cohort of one.
+- **Complaints are severity-weighted and flag rather than suspend.** One severe complaint reaches
+  the threshold and moves the provider to `under_review`; auto-suspension would let one complaint
+  remove a provider without a human weighing it.
+- **5.3 now recommends.** Its `not_built` named 5.2, which had become a false statement about
+  itself. Rejected alternatives carry the rule that produced them; options below the presentation
+  limit are still counted as considered. `placement.recommended` carries offering ids and never
+  client attributes.
+- **The three empty states are now all reachable and distinct**: `not_built` (1.2 Entity Graph
+  holds no underwriting profile), `no_data` for an empty catalogue, `no_data` with a per-stage tally
+  when nothing survives.
+
+**Corrected:** `no_data` said "none survived" when an incomplete file was the cause, reading as
+_there is nothing for this client_ when providers were one recorded field away. It now names the
+fields to record.
+
+**Tests:** 373 pass (86 new). Decision D and the derived review cadence were mutation-verified —
+disabling either produces 9 failures.
+
 ### Added — Capital Stack & Cost of Capital (`ai-feature/m5-capital-stack-and-cost-of-capital`)
 
 **5.1 Capital Stack & Monitoring** and **5.6 Cost of Capital Calculator** — the two modules that
