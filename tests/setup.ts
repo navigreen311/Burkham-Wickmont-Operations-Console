@@ -79,6 +79,10 @@ export const cleanupTenant = async (tenantId: string): Promise<void> => {
   await prisma.messageTemplate.deleteMany({ where: { tenantId } });
   await prisma.notificationPreference.deleteMany({ where: { tenantId } });
   await prisma.evidenceExport.deleteMany({ where: { tenantId } });
+  // Inter-venture: disclosures and invoices cascade from the relationship.
+  await prisma.ventureRelationship.deleteMany({ where: { tenantId } });
+  await prisma.pricingDeviation.deleteMany({ where: { tenantId } });
+  await prisma.crossPortfolioHandoff.deleteMany({ where: { tenantId } });
   // Calls: obligations cascade from the call record.
   await prisma.callRecord.deleteMany({ where: { tenantId } });
   // Marketing: assets reference campaigns with SetNull, so they go first.

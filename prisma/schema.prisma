@@ -16,7 +16,7 @@ generator client {
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
-  schemas  = ["tenancy", "identity", "ledger", "clients", "consent", "firewall", "workflow", "notifications", "deliverables", "claims", "vault", "intelligence", "lenders", "governance", "graph", "regulatory", "contracts", "billing", "sales", "evidence", "comms", "risk", "partners", "calls", "marketing"]
+  schemas  = ["tenancy", "identity", "ledger", "clients", "consent", "firewall", "workflow", "notifications", "deliverables", "claims", "vault", "intelligence", "lenders", "governance", "graph", "regulatory", "contracts", "billing", "sales", "evidence", "comms", "risk", "partners", "calls", "marketing", "interventure"]
 }
 
 // ---------------------------------------------------------------------------
@@ -2953,4 +2953,207 @@ model ExperimentVariant {
   @@unique([experimentId, key])
   @@map("experiment_variants")
   @@schema("marketing")
+}
+
+// ---------------------------------------------------------------------------
+// 10.1 Inter-Venture Commerce Hooks
+// ---------------------------------------------------------------------------
+
+/// A client that is also a Green Companies venture. Created by automatic detection, never by hand:
+/// tagging by hand puts the control behind the knowledge it exists to supply.
+model VentureRelationship {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  clientId String @db.Uuid
+
+  /// One of the keys in GREEN_COMPANIES. Held as text so the register is a data change.
+  ventureKey  String
+  displayName String
+
+  /// The detection that produced this row, kept verbatim. A relationship somebody later disputes
+  /// is asking what the system saw at the time.
+  detectionBasis String
+
+  /// Derived from venture status at creation and never settable. See ventures.ts.
+  gardnerVisible Boolean
+
+  taggedAt DateTime @default(now())
+
+  disclosures ConflictDisclosure[]
+  invoices    IntercompanyInvoice[]
+
+  @@unique([tenantId, clientId])
+  @@index([tenantId, ventureKey])
+  @@map("venture_relationships")
+  @@schema("interventure")
+}
+
+enum DisclosureState {
+  drafted
+  venture_acknowledged
+  fully_acknowledged
+  withdrawn
+
+  @@schema("interventure")
+}
+
+/// A conflict-of-interest disclosure for one intercompany engagement.
+///
+/// Generating the ARTIFACT is automatic. Completing the DISCLOSURE is not: it needs an
+/// acknowledgement from the venture and one from Gardner, and until both exist the engagement is
+/// refused. A document the conflicted party wrote and filed with itself is a record of a control
+/// that did not happen. See ADR-0018.
+model ConflictDisclosure {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+
+  relationshipId String              @db.Uuid
+  relationship   VentureRelationship @relation(fields: [relationshipId], references: [id], onDelete: Cascade)
+
+  /// The engagement this disclosure covers. One disclosure per engagement, never a standing one:
+  /// a blanket conflict waiver is the thing this module exists to prevent.
+  engagementId String @db.Uuid
+
+  state DisclosureState @default(drafted)
+
+  /// The generated text. Stored as generated so a later template change cannot rewrite what was
+  /// acknowledged - 7.3's frozen-contract rule applied to a disclosure.
+  body        String
+  contentHash String
+
+  generatedAt DateTime @default(now())
+
+  /// The venture's own representative. The party the conflict is against.
+  ventureAcknowledgedBy   String?
+  ventureAcknowledgedAt   DateTime?
+  ventureRepresentative   String?
+
+  /// Gardner governs both sides and is the only party positioned to permit the engagement.
+  gardnerAcknowledgedBy String?   @db.Uuid
+  gardnerAcknowledgedAt DateTime?
+
+  withdrawnAt     DateTime?
+  withdrawnReason String?
+
+  @@unique([tenantId, engagementId])
+  @@index([tenantId, state])
+  @@map("conflict_disclosures")
+  @@schema("interventure")
+}
+
+enum DeviationDirection {
+  discount
+  premium
+
+  @@schema("interventure")
+}
+
+/// A price charged to a venture that is not the published price.
+///
+/// Both directions are recorded and both need approval. A discount to a sibling moves profit out
+/// of Burkham Wickmont; a premium moves it in. A system that questioned only discounts would
+/// police one direction of the same thing.
+model PricingDeviation {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+
+  engagementId String @db.Uuid
+  clientId     String @db.Uuid
+  ventureKey   String
+
+  offerKey       String
+  publishedCents Int
+  chargedCents   Int
+  direction      DeviationDirection
+  /// Basis points of deviation from the published price, so a reviewer can sort by materiality.
+  deviationBasisPoints Int
+
+  /// Why. Required - an unexplained related-party price is the definition of the problem.
+  basis String
+
+  approvedBy String   @db.Uuid
+  approvedAt DateTime @default(now())
+
+  @@index([tenantId, clientId])
+  @@map("pricing_deviations")
+  @@schema("interventure")
+}
+
+enum HandoffState {
+  proposed
+  consented
+  transferred
+  declined
+
+  @@schema("interventure")
+}
+
+/// A Founder Personal Layer handoff to Collingswood.
+///
+/// The data subject here is an INDIVIDUAL, not the business - personal-side complexity means the
+/// founder's own finances. Consent is per handoff and lives in 1.5 as `cross_portfolio_handoff`.
+model CrossPortfolioHandoff {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  clientId String @db.Uuid
+
+  state HandoffState @default(proposed)
+
+  /// What was observed that makes a personal-layer referral appropriate. Required: a handoff with
+  /// no stated reason is a referral fee looking for a justification.
+  observation String
+  /// What would actually be shared. Named at proposal time so the consent is informed.
+  scope String
+
+  proposedBy String   @db.Uuid
+  proposedAt DateTime @default(now())
+
+  /// The 1.5 consent that permitted it. Null until consented.
+  consentId String? @db.Uuid
+
+  transferredAt DateTime?
+  declinedAt    DateTime?
+  declinedReason String?
+
+  @@index([tenantId, clientId, state])
+  @@map("cross_portfolio_handoffs")
+  @@schema("interventure")
+}
+
+enum InvoiceState {
+  drafted
+  routed_pending
+  settled
+
+  @@schema("interventure")
+}
+
+/// An intercompany invoice. Routing to the Gardner-level ledger is a seam - see invoicing.ts.
+model IntercompanyInvoice {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+
+  relationshipId String              @db.Uuid
+  relationship   VentureRelationship @relation(fields: [relationshipId], references: [id], onDelete: Cascade)
+
+  engagementId String @db.Uuid
+
+  amountCents Int
+  description String
+  periodFrom  DateTime
+  periodTo    DateTime
+
+  /// Never `settled` while the Gardner ledger is unbuilt. A settled invoice nobody routed would
+  /// read as money that moved between entities when none did.
+  state InvoiceState @default(drafted)
+
+  /// The Gardner-ledger reference, once one exists.
+  gardnerLedgerReference String?
+
+  raisedAt DateTime @default(now())
+  raisedBy String   @db.Uuid
+
+  @@index([tenantId, engagementId])
+  @@map("intercompany_invoices")
+  @@schema("interventure")
 }

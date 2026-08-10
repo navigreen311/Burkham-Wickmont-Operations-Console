@@ -7,6 +7,51 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added - Inter-Venture Commerce Hooks (`ai-feature/m10-inter-venture-commerce`)
+
+**10.1 Inter-Venture Commerce Hooks** - Category 10's V1 scope. 10.2 Cross-Portfolio Opportunity
+Engine is V1.5. See [docs/m10-inter-venture-commerce.md](docs/m10-inter-venture-commerce.md) and
+ADR-0018.
+
+- **Generating a disclosure is not disclosing** (ADR-0018). Blueprint 10.1's "conflict-of-interest
+  disclosures auto-generated and filed", read as one step, describes the conflicted party writing a
+  document, filing it with itself, and proceeding - a record of a control that did not happen. The
+  **artifact** is generated automatically, because a hand-written conflict disclosure varies with
+  how the writer feels about the conflict. The **disclosure** completes only on acknowledgement by
+  parties that are not us: the venture's own representative and Gardner. `mayProceed` refuses until
+  both exist, and names which is missing.
+- **The acknowledged text is hashed and checked**, because acknowledging means acknowledging a
+  specific document - 7.3's frozen-contract rule applied to a disclosure. The venture's
+  representative is recorded as a **name, not an actor id**: they are on the other side of the
+  transaction, and an actor record would make their acknowledgement look like an internal approval.
+- **Arm's length is the price we charge strangers**, not a price we compute. 1.4's published ladder
+  is what unrelated clients actually pay, which is arm's length by the only definition that survives
+  an audit. **Any deviation needs Gardner approval IN EITHER DIRECTION** - a discount moves profit
+  out of Burkham Wickmont, a premium moves it in, and a system that questioned only discounts would
+  police one direction of the same thing while ignoring the one that flatters our own numbers.
+  `mayCharge` permits an off-ladder price only for the exact approved amount.
+- **A Collingswood handoff needs that individual's own per-handoff consent.** The data subject
+  changes: personal-side complexity means the founder's own finances, not the business's. `scope` is
+  named before the client is asked - consent to "a referral" is not informed - and the consent's
+  scope is compared against the handoff's, because a mismatch is invisible unless somebody compares
+  them. **Consent is re-checked live at transfer**, not trusted from the state field: people change
+  their minds about personal financial information, and the gap between consenting and transferring
+  is exactly where they do it. First use of the `cross_portfolio_handoff` consent kind, which has
+  existed in 1.5 since the walking skeleton.
+- **Detection refuses on ambiguity.** A name containing a token that appears in a venture name
+  without identifying one returns `possible` and refuses until a person confirms. Both wrong answers
+  are expensive in opposite directions: a false tag blocks a stranger behind a conflict process
+  nobody can complete, and a missed one is an undisclosed related-party transaction.
+- **Gardner visibility is derived, never set.** A settable flag would eventually be set on a normal
+  client, at which point the portfolio's common owner is reading the file of somebody with no
+  relationship to them.
+- **Intercompany invoices never reach `settled`.** Routing to the Gardner-level ledger is a
+  `not_built` seam; the invoice moves to `routed_pending` so the queue is visible. A settled invoice
+  nobody routed would read as money that moved between two entities when none did, in two sets of
+  accounts, one of which is not ours.
+- Each venture carries its **own** conflict basis rather than a generic one - Argus performs the
+  security reviews that gate our vendor integrations, and Collingswood receives our handoffs.
+
 ### Added - KPI Dashboards (`ai-feature/m9-kpi-dashboards`)
 
 **9.1 Executive KPI Dashboard** with **9.2 Unit Economics Dashboard** - Category 9's V1 scope. 9.3

@@ -38,6 +38,7 @@ const WORKSPACE_PACKAGES = [
   'calls',
   'marketing',
   'dashboards',
+  'interventure',
 ] as const;
 
 export default defineConfig({
