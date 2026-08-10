@@ -7,6 +7,43 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added — Capital Stack & Cost of Capital (`ai-feature/m5-capital-stack-and-cost-of-capital`)
+
+**5.1 Capital Stack & Monitoring** and **5.6 Cost of Capital Calculator** — the two modules that
+answer what capital a client has and what it is actually costing them. (5.3 needs the Lender
+Intelligence Database and 5.4 governs providers inside it; both belong with 5.2 in a later slice.)
+
+- **The cost engine solves the real cash flows** rather than approximating. A "1.4 factor" sounds
+  like 40%; repaid daily over six months it is an APR well north of 140%, because principal is
+  repaid from day one. Closed-form approximations err in the direction that flatters exactly those
+  products. **Bisection, not Newton–Raphson** — Newton needs a derivative that is easy to get
+  subtly wrong and diverges on precisely the steep curves this module exists to expose.
+- **Details that change the answer:** compounding annualization, 252 banking days for daily
+  cadence, origination fees netted from proceeds rather than added to repayment, `factorRate` and
+  `annualRate` separately named and mutually exclusive, blended cost weighted by outstanding
+  balance, undrawn limits excluded, refinance compared on **total cost** with an explicit caveat
+  when a lower APR carries a higher one.
+- **An uncostable stack returns `null`, never `0`** — zero would read as "this stack is free".
+- **The health score carries its components** and has no constructor that omits them: Decision E's
+  lesson applied without contradicting blueprint 5.1's named score. Over-limit zeroes utilization
+  outright; an uncosted stack scores 50 rather than 100, because an unknown must not read as good
+  news.
+- **Monitoring:** over-limit flagged not clamped; limitless positions excluded from the aggregate
+  utilization denominator; PG exposure aggregated per owner and capped per limited guarantee; promo
+  alerts fire on exact threshold days (90/60/30) rather than every day below them; payment calendar
+  normalizes mixed cadences to a monthly equivalent. Scheduling stays with the Workflow Engine.
+- 40 new tests (287 total), anchored on known answers rather than self-consistency.
+
+### Fixed
+
+- **The IRR solver's NPV tolerance was absolute where it had to be relative.** An absolute
+  threshold is unreachable at double precision on flows of hundreds of thousands and far too loose
+  on a small advance; it now scales to the initial flow. Surfaced by a test assertion that had the
+  same flaw and failed at a relative error of 2e-10.
+- **Under-repayment has a real negative IRR.** The solver documented and a test asserted that no
+  rate existed; both were wrong. The negative rate is returned, because a negative effective APR is
+  a data-quality signal and suppressing it would hide bad inputs behind an empty result.
+
 ### Added — Document Intelligence Pipeline (`ai-feature/m3-3-document-intelligence-pipeline`)
 
 **3.3 Document Intelligence Pipeline. Completes Category 3.**
