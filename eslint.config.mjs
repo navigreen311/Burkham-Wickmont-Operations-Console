@@ -12,6 +12,7 @@ const NODE_GLOBALS = {
   console: 'readonly',
   Buffer: 'readonly',
   fetch: 'readonly',
+  Headers: 'readonly',
   URL: 'readonly',
   setTimeout: 'readonly',
   clearTimeout: 'readonly',
@@ -66,6 +67,7 @@ export default [
     // PII must never reach a log sink.
     files: [
       'apps/api/src/server.ts',
+      'apps/portal-api/src/server.ts',
       'apps/worker/src/main.ts',
       'scripts/**/*.mjs',
       'scripts/**/*.js',

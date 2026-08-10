@@ -7,6 +7,39 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added - the Client Portal transport layer (`ai-feature/portal-transport`)
+
+`apps/portal-api` - HTTP for 11.10, and the last thing standing between the portal and being
+exposed. See [docs/portal-transport.md](docs/portal-transport.md) and ADR-0022.
+
+- **A separate process, because `apps/api` trusts a header.** That app resolves the acting staff
+  member from `x-actor-id`, which its own comment calls "a development seam, not authentication". A
+  public surface in that process is a public surface with that header: a client reaching any
+  internal route would send `x-actor-id: <any Level 3 actor id>` and act as staff. The portal app
+  imports `@bwc/portal`, `@bwc/identity` and `@bwc/vault` and nothing that serves internal
+  capability - **the isolation is structural, because there is no route to get wrong when the code
+  is not in the process.**
+- **Rate limiting is not lockout, and neither substitutes for the other.** 11.1's five-strike
+  lockout protects an ACCOUNT and does nothing against password spraying: ten thousand addresses,
+  one attempt each, no account reaches two failures. Per-IP limiting counts the ATTACKER. The test
+  sprays ten addresses with one attempt each, precisely because lockout would sleep through it. The
+  limiter runs **before the body is parsed**.
+- **The limiter's limitation is stated in its own header:** the window is in process memory, so two
+  instances means twice the limit. Honest for one instance, wrong behind replicas.
+- **Three settings refuse to be guessed and the app throws without them.** `PORTAL_TRUST_PROXY`
+  (unset behind a balancer collapses per-IP limiting into one bucket; **`true` is refused outright**
+  because Express would take the client-written `X-Forwarded-For`), `PORTAL_COOKIE_SECURE`, and
+  `PORTAL_TENANT_ID` - the tenant is deployment configuration, never a request value.
+- **The session is an `httpOnly`, `Secure`, `SameSite=Strict` cookie**, never in the body and never
+  in a URL. Returning the token would hand script the thing `httpOnly` exists to keep from script.
+- **Errors carry no cause**, unlike the internal app: here a stack trace is reconnaissance.
+  `/portal/health` is deliberately empty for the same reason, and a 404 does not enumerate routes.
+- Uploads are **raw bytes** with metadata in the query string; downloads are `attachment` for both
+  view and export, because a PDF rendered inline is one the browser may cache to disk.
+
+**Changed - `serialize.ts` moved from `apps/api` to the new `@bwc/http` package.** Two apps
+serialising the same union two ways is how `not_built` becomes a 200 on one of them.
+
 ### Added - client access to the Vault (`ai-feature/vault-client-access`)
 
 The follow-on ADR-0021 named: `vault.store` and `vault.read` resolve an internal `Actor`, and a

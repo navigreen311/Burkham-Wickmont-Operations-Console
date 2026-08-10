@@ -26,7 +26,7 @@ import { read as readLedger, verifyIntegrity } from '@bwc/ledger';
 import { requestRecommendation } from '@bwc/placement';
 import { VENDOR_GATES, isActivated, mode, outstandingPreconditions } from '@bwc/integration';
 import { failed, isComplianceState, noData, ok, refused, type ComplianceState } from '@bwc/core';
-import { send } from './serialize.js';
+import { send } from '@bwc/http';
 
 /** Development seam. Replaced by Identity & Access (11.1) credential verification. */
 const actorIdOf = (req: Request): string | undefined => {
