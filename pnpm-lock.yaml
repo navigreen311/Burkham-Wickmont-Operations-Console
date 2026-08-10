@@ -751,6 +751,34 @@ importers:
         specifier: ^5.8.3
         version: 5.9.3
 
+  packages/portal:
+    dependencies:
+      '@bwc/billing':
+        specifier: workspace:*
+        version: link:../billing
+      '@bwc/comms':
+        specifier: workspace:*
+        version: link:../comms
+      '@bwc/consent':
+        specifier: workspace:*
+        version: link:../consent
+      '@bwc/core':
+        specifier: workspace:*
+        version: link:../core
+      '@bwc/db':
+        specifier: workspace:*
+        version: link:../db
+      '@bwc/deliverables':
+        specifier: workspace:*
+        version: link:../deliverables
+      '@bwc/vault':
+        specifier: workspace:*
+        version: link:../vault
+    devDependencies:
+      typescript:
+        specifier: ^5.8.3
+        version: 5.9.3
+
   packages/regulatory:
     dependencies:
       '@bwc/core':
@@ -875,6 +903,53 @@ importers:
       pdf-lib:
         specifier: ^1.17.1
         version: 1.17.1
+    devDependencies:
+      typescript:
+        specifier: ^5.8.3
+        version: 5.9.3
+
+  packages/warehouse:
+    dependencies:
+      '@bwc/core':
+        specifier: workspace:*
+        version: link:../core
+      '@bwc/db':
+        specifier: workspace:*
+        version: link:../db
+      '@bwc/ledger':
+        specifier: workspace:*
+        version: link:../ledger
+    devDependencies:
+      typescript:
+        specifier: ^5.8.3
+        version: 5.9.3
+
+  packages/workbench:
+    dependencies:
+      '@bwc/admin':
+        specifier: workspace:*
+        version: link:../admin
+      '@bwc/billing':
+        specifier: workspace:*
+        version: link:../billing
+      '@bwc/calls':
+        specifier: workspace:*
+        version: link:../calls
+      '@bwc/core':
+        specifier: workspace:*
+        version: link:../core
+      '@bwc/dashboards':
+        specifier: workspace:*
+        version: link:../dashboards
+      '@bwc/db':
+        specifier: workspace:*
+        version: link:../db
+      '@bwc/observability':
+        specifier: workspace:*
+        version: link:../observability
+      '@bwc/risk':
+        specifier: workspace:*
+        version: link:../risk
     devDependencies:
       typescript:
         specifier: ^5.8.3

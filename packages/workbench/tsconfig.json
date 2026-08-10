@@ -1,0 +1,35 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "./src",
+    "outDir": "./dist",
+    "tsBuildInfoFile": "./dist/.tsbuildinfo"
+  },
+  "include": ["src/**/*.ts"],
+  "references": [
+    {
+      "path": "../admin"
+    },
+    {
+      "path": "../billing"
+    },
+    {
+      "path": "../calls"
+    },
+    {
+      "path": "../core"
+    },
+    {
+      "path": "../dashboards"
+    },
+    {
+      "path": "../db"
+    },
+    {
+      "path": "../observability"
+    },
+    {
+      "path": "../risk"
+    }
+  ]
+}

@@ -41,6 +41,9 @@ const WORKSPACE_PACKAGES = [
   'interventure',
   'admin',
   'observability',
+  'warehouse',
+  'portal',
+  'workbench',
 ] as const;
 
 export default defineConfig({

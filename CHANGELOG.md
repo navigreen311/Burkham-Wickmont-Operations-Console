@@ -7,6 +7,51 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added - Data Warehouse, Client Portal and Founder Workbench (`ai-feature/m11-warehouse-portal-workbench`)
+
+**11.6 Data Warehouse & Analytics Layer**, **11.10 Client Portal** and **11.11 Founder / Executive
+Workbench** - the last three V1 modules. **With these, all 46 modules in the blueprint's V1 phasing
+are built.** See [docs/m11-warehouse-portal-workbench.md](docs/m11-warehouse-portal-workbench.md)
+and ADR-0020.
+
+- **A warehouse answers about the PAST, not faster about the present** (ADR-0020). ADR-0017 decided
+  the dashboards read live; this does not overturn it, it answers a different question. A live read
+  tells you where clients stand today and cannot tell you where they stood in March, because those
+  clients have moved. **Every read requires a historical period - there is no `current()`**, which
+  is what stops this becoming the stale cache ADR-0017 ruled out, and is asserted structurally by
+  grepping the module's exports.
+- **A snapshot is never updated.** Re-capturing a date is refused: an overwritten snapshot is a
+  rewritten history, and a trend over rewritten points is not a trend. A future `asOf` is refused
+  too - capture records the state as it is when called.
+- **Retention outlives the operational record**, so subject rows carry a keyed-hash PSEUDONYM
+  rather than a client id. `PSEUDONYMISATION_NOTE` states the limit in exportable form: anybody
+  holding both the client list and the derivation key can re-identify every row. **Claiming
+  anonymity would be worse than not doing it**, because the claim is what somebody would rely on
+  when deciding where an extract may go.
+- **The portal decides nothing.** A portal permission model would drift from 3.2's document
+  classes, 11.1's access model and 1.5's consent records - and the drifted copy is the one that
+  would be enforced. So upload goes to 3.2 (which holds the document **unreadable until scanned** -
+  proved by asking the VAULT to read it, not by checking a portal flag), signing to 1.5 (a
+  signature IS a consent record), messaging to 4.1's deliberately-ungated inbound path, and Plaid
+  Link to `not_built` per Decision A.
+- **There is no outbound message path in the portal.** A reply that skipped 4.1's preference gate,
+  the middleware chain and the scanner would be the one piece of client-facing text nobody checked.
+- **A client acts on their own file**, checked against the resolved principal rather than a
+  caller-supplied id. A missing document and someone else's document return the SAME answer -
+  distinguishing them would confirm an id belongs to somebody.
+- **Only delivered deliverables appear**, so what a client reads is what 3.4 approved. **Blocked
+  outbound messages do not appear**: the client never received them, and showing them would be
+  arguing with a client about a preference they set.
+- **A founder decision states what happens if nobody acts.** A workbench listing everything becomes
+  a second inbox, and two inboxes means both get ignored. An item appears only if it requires a
+  Level 3 human, is blocking something, and carries the cost of inaction - plus `resolveIn`,
+  because a decision with no route is an anxiety.
+- Portal and workbench store **nothing**; the test asserts no `portal` or `workbench` schema exists.
+
+**A mutation test found a real gap.** Emptying the Do Not Fund branch's cost-of-inaction changed no
+test, because the fixture had no overdue listing and the branch never ran. The fixture now creates
+one. A surviving mutation is either a missing assertion or a missing case - this was the second.
+
 ### Added - Admin Configuration Center and System Health (`ai-feature/m11-admin-and-observability`)
 
 **11.7 Admin Configuration Center** with **11.8 System Health & Observability**. Two of Category

@@ -1,0 +1,31 @@
+{
+  "name": "@bwc/portal",
+  "version": "0.1.0",
+  "private": true,
+  "description": "11.10 Client Portal (Secure Client Delivery Room).",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@bwc/billing": "workspace:*",
+    "@bwc/comms": "workspace:*",
+    "@bwc/consent": "workspace:*",
+    "@bwc/core": "workspace:*",
+    "@bwc/db": "workspace:*",
+    "@bwc/deliverables": "workspace:*",
+    "@bwc/vault": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.8.3"
+  }
+}
