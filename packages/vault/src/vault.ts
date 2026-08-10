@@ -96,7 +96,11 @@ interface DocumentRow {
   deletedAt: Date | null;
 }
 
-const toDocument = (row: DocumentRow): VaultDocument => ({
+/**
+ * Exported so the client-access path maps rows the same way rather than keeping a second copy.
+ * Two mappings of one row is how a field ends up present on one surface and absent on the other.
+ */
+export const toDocument = (row: DocumentRow): VaultDocument => ({
   id: row.id,
   tenantId: row.tenantId,
   clientId: row.clientId,
@@ -255,7 +259,7 @@ const logAccess = async (
   await append({
     tenantId,
     type: granted ? 'vault.document_accessed' : 'vault.access_refused',
-    actor: { id: actor.id, kind: actor.kind as 'village_agent' | 'human' },
+    actor: { id: actor.id, kind: actor.kind as 'village_agent' | 'human' | 'client' },
     ...(clientId !== null ? { clientId } : {}),
     payload: {
       documentId,

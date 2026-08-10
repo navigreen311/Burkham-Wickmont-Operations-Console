@@ -7,7 +7,6 @@
  */
 
 import { describe, expect, it, beforeAll, afterAll } from 'vitest';
-import { inflateSync } from 'node:zlib';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -31,6 +30,7 @@ import {
   type VaultConfig,
 } from '@bwc/vault';
 import { makeFixture, cleanupTenant, type Fixture } from '../setup.js';
+import { pdfText } from '../helpers/pdf.js';
 
 let fx: Fixture;
 let root: string;
@@ -55,59 +55,6 @@ const makePdf = async (): Promise<Buffer> =>
       positionFigures: [],
     }),
   );
-
-/**
- * Extract readable text from a PDF by inflating its content streams.
- *
- * PDF content streams are Flate-compressed, so the watermark text is genuinely present but not
- * as plaintext bytes. Searching the raw file would fail and tempt a weaker assertion - "the
- * export got bigger" - which would pass just as happily if the added bytes said nothing. The
- * claim under test is that the *viewer's identity is in the document*, so the test decompresses
- * and looks.
- */
-const pdfText = (pdf: Buffer): string => {
-  const raw = pdf.toString('latin1');
-  const parts: string[] = [raw];
-
-  const decodeHexStrings = (content: string): void => {
-    // pdf-lib writes drawn text as a hex string operand: <48656C6C6F> Tj
-    const hexToken = /<([0-9A-Fa-f]+)>/g;
-    let token: RegExpExecArray | null;
-    while ((token = hexToken.exec(content)) !== null) {
-      const hex = token[1];
-      if (hex === undefined || hex.length % 2 !== 0) continue;
-      parts.push(Buffer.from(hex, 'hex').toString('latin1'));
-    }
-  };
-
-  let cursor = 0;
-  for (;;) {
-    const streamAt = raw.indexOf('stream', cursor);
-    if (streamAt === -1) break;
-
-    const end = raw.indexOf('endstream', streamAt);
-    if (end === -1) break;
-
-    // Skip past 'stream' and whatever end-of-line follows it.
-    let start = streamAt + 'stream'.length;
-    while (start < end && (raw.charCodeAt(start) === 13 || raw.charCodeAt(start) === 10)) {
-      start += 1;
-    }
-
-    try {
-      const inflated = inflateSync(Buffer.from(raw.slice(start, end), 'latin1')).toString('latin1');
-      parts.push(inflated);
-      decodeHexStrings(inflated);
-    } catch {
-      // Not a Flate stream. The raw copy above already covers uncompressed content.
-    }
-
-    cursor = end + 'endstream'.length;
-  }
-
-  decodeHexStrings(raw);
-  return parts.join(String.fromCharCode(10));
-};
 
 beforeAll(async () => {
   fx = await makeFixture('vault');

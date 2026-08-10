@@ -10,3 +10,4 @@ export * from './crypto.js';
 export * from './store.js';
 export * from './watermark.js';
 export * from './vault.js';
+export * from './clientAccess.js';

@@ -418,10 +418,13 @@ describe('sessions', () => {
       content: Buffer.from('%PDF-1.4 statement'),
       vaultConfig: vault,
     });
-    // The vault resolves an internal Actor and a client user is deliberately not one, so this
-    // refuses rather than silently attributing the upload to somebody else. Named in the PR as
-    // the follow-on, not papered over here.
-    expect(uploaded.status).toBe('refused');
+    // This asserted `refused` when client authentication first shipped: the vault resolved an
+    // internal Actor and a client user is deliberately not one. 3.2's ownership path now exists,
+    // so a resolved session is sufficient to act - which was the point of resolving one.
+    expect(uploaded.status).toBe('ok');
+    if (uploaded.status !== 'ok') return;
+    // Still unreadable until scanned. That gate is 3.2's and did not move.
+    expect(uploaded.value.scanStatus).toBe('pending');
   });
 
   it('refuses an unknown, expired or idle session identically', async () => {

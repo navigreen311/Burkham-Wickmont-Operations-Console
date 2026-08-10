@@ -68,11 +68,13 @@ lapse.
 
 ## Consequences
 
-**Client document upload does not work yet, and that is a consequence rather than an oversight.**
-`vault.store` resolves an internal `Actor`, and a client user deliberately is not one — so the
-portal's upload refuses rather than attributing the upload to somebody else. Wiring a client
-principal through the vault means an ownership-based path alongside the level-based one, on both
-`store` and `read`. That is real work and it is named rather than half-done.
+**Client document upload and read needed an ownership-based path through the vault.** `vault.store`
+and `vault.read` resolve an internal `Actor`, and a client user deliberately is not one — so when
+this ADR was written the portal's upload refused rather than attributing it to somebody else.
+
+**RESOLVED** by `packages/vault/src/clientAccess.ts`: `storeForClient` and `readForClient`, where
+**ownership replaces the authority level** and every other gate is unchanged. The decision this
+forced is recorded there and amended below.
 
 **The cost parameters collided with a Node default.** scrypt needs `128·N·r` bytes; at N=2^15 and
 r=8 that is exactly 32 MiB, and Node's default `maxmem` is 32 MiB checked strictly. The first run
@@ -96,3 +98,25 @@ is the one that drifts.
 
 **Self-service registration with email verification.** Rejected. Verifying an email proves control
 of an inbox, not that the person is entitled to a client's financial file.
+
+---
+
+## Amendment, 2026-08-11 — the legal-hold question, answered with an assumption
+
+The client vault path had to decide what a legal hold means for a client reading their own
+document. Two sub-questions, and they have different kinds of answer.
+
+**What it blocks.** The same as for staff: **export, not view.** The staff rule's reasoning
+transfers without modification — a hold exists to stop material being destroyed or leaving the
+system, and viewing does neither.
+
+**What the client is told.** Nothing. A litigation-hold notice is frequently confidential, and the
+hold may concern a dispute with the very client asking. So the refusal is truthful, offers a route
+(their Concierge Desk contact), and declines to explain. The real reason goes to the access log,
+where an auditor reads it. This is the same shape as authentication's single answer to every
+failure: the message withholds what the system knows, because saying it _is_ the disclosure.
+
+**This remains an assumption for counsel**, and it is the only one in the client path. That a
+client may view but not download their own document under a hold is the consistent reading of the
+staff rule; it is not a settled legal question. Counsel should confirm before a hold is placed on a
+file whose client has portal access.
