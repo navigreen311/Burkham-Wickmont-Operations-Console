@@ -1,0 +1,31 @@
+{
+  "name": "@bwc/marketing",
+  "version": "0.1.0",
+  "private": true,
+  "description": "4.5 Marketing Ops.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@bwc/claims": "workspace:*",
+    "@bwc/core": "workspace:*",
+    "@bwc/db": "workspace:*",
+    "@bwc/identity": "workspace:*",
+    "@bwc/ledger": "workspace:*",
+    "@bwc/regulatory": "workspace:*",
+    "@bwc/scanner": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.8.3"
+  }
+}

@@ -16,7 +16,7 @@ generator client {
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
-  schemas  = ["tenancy", "identity", "ledger", "clients", "consent", "firewall", "workflow", "notifications", "deliverables", "claims", "vault", "intelligence", "lenders", "governance", "graph", "regulatory", "contracts", "billing", "sales", "evidence", "comms", "risk", "partners"]
+  schemas  = ["tenancy", "identity", "ledger", "clients", "consent", "firewall", "workflow", "notifications", "deliverables", "claims", "vault", "intelligence", "lenders", "governance", "graph", "regulatory", "contracts", "billing", "sales", "evidence", "comms", "risk", "partners", "calls", "marketing"]
 }
 
 // ---------------------------------------------------------------------------
@@ -163,6 +163,9 @@ enum ConsentKind {
   /// 8.1 Partner & Referrer Portal. Consent to work with us is not consent to be reported on to
   /// the partner who made the introduction; this is the authorization that separates the two.
   partner_status_visibility
+  /// 4.3 Call Recording. Required in all-party-consent states, where recording a client without
+  /// their consent is a crime in the state where the client is sitting.
+  call_recording
 
   @@schema("consent")
 }
@@ -2686,4 +2689,268 @@ model PartnerBrandConfig {
   @@index([tenantId, partnerId])
   @@map("partner_brand_configs")
   @@schema("partners")
+}
+
+// ---------------------------------------------------------------------------
+// 4.3 Call Recording, Summaries & Promise Tracking
+// ---------------------------------------------------------------------------
+
+enum CallStatus {
+  consent_refused
+  recording
+  captured
+  analysed
+
+  @@schema("calls")
+}
+
+model CallRecord {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  clientId String @db.Uuid
+
+  status CallStatus @default(recording)
+
+  /// Two-letter state code where the CLIENT is. Ours does not govern the recording rule.
+  jurisdiction String
+  /// Whether the client's own consent was required, and on what basis. Recorded WITH the call
+  /// rather than derived later, because the rule may change and the question a regulator asks is
+  /// what the rule was on the day.
+  clientConsentRequired Boolean
+  consentBasis          String
+
+  purpose   String
+  startedAt DateTime
+  endedAt   DateTime?
+  /// Who was on our side. Not the client - they are identified by clientId.
+  internalParticipants String[]
+
+  /// The VoiceForge reference, when a capture exists. Null while the vendor is ungated.
+  recordingReference String?
+  /// The transcript, once one exists. Null until VoiceForge is gated in.
+  transcript Json?
+  /// Set when analysis ran, so an un-analysed captured call is distinguishable from a clean one.
+  analysedAt DateTime?
+
+  createdAt DateTime @default(now())
+
+  obligations CorrectionObligation[]
+
+  @@index([tenantId, clientId, startedAt])
+  @@index([tenantId, status])
+  @@map("call_records")
+  @@schema("calls")
+}
+
+enum ObligationStatus {
+  open
+  corrected
+  dismissed
+
+  @@schema("calls")
+}
+
+/// A promise made on a call that has to be corrected to the client.
+///
+/// NOT a verdict. The call already happened; there is nothing to block. See ADR-0015.
+model CorrectionObligation {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  clientId String @db.Uuid
+
+  callId String     @db.Uuid
+  call   CallRecord @relation(fields: [callId], references: [id], onDelete: Cascade)
+
+  kind     String
+  severity String
+  /// What was said, as said. A paraphrase is not what the client heard.
+  excerpt      String
+  speaker      String
+  whyItMatters String
+
+  status ObligationStatus @default(open)
+
+  /// Who owes the correction and by when. Both required - an obligation with no owner is a note.
+  owedBy String   @db.Uuid
+  dueAt  DateTime
+
+  /// What was actually said to the client to correct it. Required to close as `corrected`.
+  correctionText String?
+  correctedAt    DateTime?
+  correctedBy    String?   @db.Uuid
+
+  /// Required to close as `dismissed`, and a Level 3 human must do it.
+  dismissalReason String?
+  dismissedAt     DateTime?
+  dismissedBy     String?   @db.Uuid
+
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, status, dueAt])
+  @@index([tenantId, clientId])
+  @@map("correction_obligations")
+  @@schema("calls")
+}
+
+// ---------------------------------------------------------------------------
+// 4.5 Marketing Ops
+// ---------------------------------------------------------------------------
+
+enum CampaignStatus {
+  draft
+  active
+  paused
+  ended
+
+  @@schema("marketing")
+}
+
+model Campaign {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+
+  key    String
+  name   String
+  status CampaignStatus @default(draft)
+
+  /// The value 1.3 records as a lead's sourceChannel. Fixed at creation: 1.3's attribution is
+  /// written once, so a campaign that renamed its channel would orphan every lead it produced.
+  sourceChannel String
+
+  /// States this campaign runs in. Checked against 7.2 before activation - marketing into a
+  /// state we are not activated in is the same exposure as serving a client there.
+  jurisdictions String[]
+
+  startedAt DateTime?
+  endedAt   DateTime?
+  createdAt DateTime  @default(now())
+  createdBy String    @db.Uuid
+
+  assets      MarketingAsset[]
+  experiments Experiment[]
+
+  @@unique([tenantId, key])
+  @@index([tenantId, status])
+  @@map("campaigns")
+  @@schema("marketing")
+}
+
+enum AssetState {
+  draft
+  in_review
+  approved
+  rejected
+  retired
+
+  @@schema("marketing")
+}
+
+model MarketingAsset {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+
+  campaignId String?   @db.Uuid
+  campaign   Campaign? @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+
+  key   String
+  kind  String
+  state AssetState @default(draft)
+  /// The copy itself. Scanned on every transition into review.
+  body  String
+  /// Where it came from: a Forge cascade, a person, a partner.
+  sourceReference String?
+
+  reviewedAt      DateTime?
+  reviewedBy      String?   @db.Uuid
+  rejectionReason String?
+
+  createdAt DateTime @default(now())
+  createdBy String   @db.Uuid
+
+  @@index([tenantId, state])
+  @@map("marketing_assets")
+  @@schema("marketing")
+}
+
+enum ProposalStatus {
+  submitted
+  approved
+  rejected
+
+  @@schema("marketing")
+}
+
+/// A proposed addition to the 7.4 Marketing Claim Library.
+///
+/// Holds text only while it is UNAPPROVED. Approval publishes into 7.4 and the proposal keeps the
+/// resulting claim id - it never becomes a second place approved wording lives.
+model ClaimProposal {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+
+  phrase       String
+  intendedUse  String
+  jurisdiction String?
+  status       ProposalStatus @default(submitted)
+
+  submittedBy String   @db.Uuid
+  submittedAt DateTime @default(now())
+
+  /// Set on approval. The claim in 7.4 that this became.
+  publishedClaimId String?   @db.Uuid
+  decidedBy        String?   @db.Uuid
+  decidedAt        DateTime?
+  decisionReason   String?
+
+  @@index([tenantId, status])
+  @@map("claim_proposals")
+  @@schema("marketing")
+}
+
+model Experiment {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+
+  campaignId String   @db.Uuid
+  campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  key        String
+  hypothesis String
+
+  startedAt DateTime?
+  endedAt   DateTime?
+  /// The variant declared the winner, when one was. Adoption is a separate decision.
+  winningVariantKey String?
+
+  createdAt DateTime @default(now())
+  createdBy String   @db.Uuid
+
+  variants ExperimentVariant[]
+
+  @@unique([tenantId, key])
+  @@map("experiments")
+  @@schema("marketing")
+}
+
+/// Every variant must scan clean BEFORE the experiment runs. A variant that does not is rejected,
+/// not entered as the arm we expect to lose - see ADR-0016.
+model ExperimentVariant {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+
+  experimentId String     @db.Uuid
+  experiment   Experiment @relation(fields: [experimentId], references: [id], onDelete: Cascade)
+
+  key  String
+  body String
+
+  /// The scan that admitted it, recorded at the time. A later library change does not rewrite
+  /// what was true when the variant was registered; `staleVariants` reports the divergence.
+  scannedAt           DateTime
+  scanVerdict         String
+  requiredDisclosures String[]
+
+  @@unique([experimentId, key])
+  @@map("experiment_variants")
+  @@schema("marketing")
 }

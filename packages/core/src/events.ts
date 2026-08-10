@@ -186,6 +186,31 @@ export const EVENT_TYPES = [
   'partner.brand.approved',
   'partner.brand.revoked',
   'partner.client_status.viewed',
+  // Call Recording & Promise Tracking (4.3). `recording.refused` is an event because "we wanted
+  // to record this call and the client's state would not let us" is evidence, the same way a
+  // blocked send is. No transcript text reaches the Ledger; excerpts stay in the obligation row.
+  'calls.recording.started',
+  'calls.recording.refused',
+  'calls.transcript.attached',
+  'calls.analysed',
+  'calls.promise.detected',
+  'calls.promise.corrected',
+  'calls.promise.dismissed',
+  // Marketing Ops (4.5). A claim proposal is the intake 7.4 never had; the approve event carries
+  // the claim id it became, so the Library entry and the review that produced it are linked.
+  'marketing.campaign.created',
+  'marketing.campaign.activated',
+  'marketing.asset.created',
+  'marketing.asset.submitted',
+  'marketing.asset.approved',
+  'marketing.asset.rejected',
+  'marketing.claim.proposed',
+  'marketing.claim.approved',
+  'marketing.claim.rejected',
+  'marketing.experiment.created',
+  'marketing.variant.registered',
+  'marketing.experiment.started',
+  'marketing.experiment.concluded',
 ] as const;
 
 export type EventType = (typeof EVENT_TYPES)[number];

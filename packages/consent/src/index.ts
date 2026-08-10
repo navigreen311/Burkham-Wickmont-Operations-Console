@@ -28,6 +28,9 @@ export const CONSENT_KINDS = [
   // 8.1 Partner & Referrer Portal. A client consents to work with US; that is not consent to be
   // reported on to the accountant who introduced them. This kind is what makes the difference.
   'partner_status_visibility',
+  // 4.3 Call Recording. Required in all-party-consent states, where recording a client without
+  // their consent is a crime in the state where the CLIENT is sitting - not where we are.
+  'call_recording',
 ] as const;
 
 export type ConsentKind = (typeof CONSENT_KINDS)[number];
