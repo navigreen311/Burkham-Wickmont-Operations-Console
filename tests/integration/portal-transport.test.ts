@@ -618,6 +618,92 @@ describe('the second factor over the wire', () => {
   });
 });
 
+describe('changing a password over the wire', () => {
+  const CHANGE_EMAIL = 'transport-change@example.com';
+  const NEW_PASSWORD = 'a-changed-portal-password';
+
+  beforeAll(async () => {
+    const invited = await inviteClientUser({
+      tenantId: fx.tenant.id,
+      clientId,
+      email: CHANGE_EMAIL,
+      displayName: 'Change Person',
+      issuedBy: fx.human.id,
+      actor: HUMAN(),
+    });
+    if (invited.status !== 'ok') throw new Error('setup: invite');
+    const enrolled = await enrolClientUser({
+      tenantId: fx.tenant.id,
+      token: invited.value.token,
+      password: PASSWORD,
+      actor: HUMAN(),
+    });
+    if (enrolled.status !== 'ok') throw new Error('setup: enrol');
+  });
+
+  it('needs a session, and says the same thing as every other unauthenticated call', async () => {
+    const reply = await call('/portal/password', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ currentPassword: PASSWORD, newPassword: NEW_PASSWORD }),
+    });
+
+    expect(reply.status).toBe(409);
+    expect(reply.json<{ reason: string }>().reason).toBe('Sign in to continue.');
+  });
+
+  it('changes the password and leaves the caller signed in', async () => {
+    const signedIn = await call('/portal/sign-in', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ email: CHANGE_EMAIL, password: PASSWORD }),
+    });
+    const cookie = sessionCookie(signedIn);
+
+    const changed = await call('/portal/password', {
+      method: 'POST',
+      cookie,
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ currentPassword: PASSWORD, newPassword: NEW_PASSWORD }),
+    });
+
+    expect(changed.status).toBe(200);
+    expect(
+      changed.json<{ data: { otherSessionsRevoked: number } }>().data.otherSessionsRevoked,
+    ).toBe(0);
+    // Neither password is echoed back.
+    expect(changed.body).not.toContain(NEW_PASSWORD);
+
+    // The caller is still signed in - being logged out of the action you just took is how a button
+    // stops being used.
+    const room = await call('/portal/room', { cookie });
+    expect(room.status).toBe(200);
+
+    const withNew = await call('/portal/sign-in', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ email: CHANGE_EMAIL, password: NEW_PASSWORD }),
+    });
+    expect(withNew.status).toBe(200);
+  });
+
+  it('refuses a body without both passwords', async () => {
+    const signedIn = await call('/portal/sign-in', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ email: CHANGE_EMAIL, password: NEW_PASSWORD }),
+    });
+
+    const reply = await call('/portal/password', {
+      method: 'POST',
+      cookie: sessionCookie(signedIn),
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ newPassword: 'only-the-new-one-here' }),
+    });
+    expect(reply.status).toBe(409);
+  });
+});
+
 describe('rate limiting catches what lockout cannot', () => {
   let sprayServer: Server;
   let sprayBase: string;

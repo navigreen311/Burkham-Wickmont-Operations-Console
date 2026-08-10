@@ -247,6 +247,9 @@ export const EVENT_TYPES = [
   'identity.client_user.password_reset_requested',
   'identity.client_user.password_reset_issued',
   'identity.client_user.password_reset_completed',
+  // Changing a password you still know is a different act from recovering one you have
+  // lost, and reading them as one would hide which happened.
+  'identity.client_user.password_changed',
   // Multi-factor. A failed challenge and a spent recovery code are both recorded because a run of
   // either against one account is the signal, and neither is visible from a successful sign-in.
   'identity.client_user.mfa_enrolled',

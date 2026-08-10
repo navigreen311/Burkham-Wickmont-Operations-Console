@@ -12,6 +12,7 @@
 
 import {
   beginMfaEnrolment,
+  changeClientPassword,
   confirmMfaEnrolment,
   disableMfa,
   mfaStatus,
@@ -19,6 +20,7 @@ import {
   type ConfirmedEnrolment,
   type EnrolmentOffer,
   type MfaStatus,
+  type PasswordChanged,
 } from '@bwc/identity';
 import type { Outcome } from '@bwc/core';
 import type { ClientPrincipal } from './views.js';
@@ -60,6 +62,30 @@ export const removeAuthenticator = async (input: {
     clientUserId: input.principal.actorId,
     password: input.password,
     code: input.code,
+  });
+
+/**
+ * Change a password you still know.
+ *
+ * Different from a reset and deliberately so: the current password is required, a code is required
+ * where a factor exists, and **every other session ends while this one survives** - the caller has
+ * proved who they are, and signing them out of the action they just took teaches people to avoid
+ * the button.
+ */
+export const changePassword = async (input: {
+  principal: ClientPrincipal;
+  currentPassword: string;
+  newPassword: string;
+  code?: string;
+}): Promise<Outcome<PasswordChanged>> =>
+  changeClientPassword({
+    tenantId: input.principal.tenantId,
+    clientUserId: input.principal.actorId,
+    // From the resolved session, never from the request body.
+    sessionId: input.principal.sessionId,
+    currentPassword: input.currentPassword,
+    newPassword: input.newPassword,
+    ...(input.code !== undefined ? { code: input.code } : {}),
   });
 
 /** A fresh set of recovery codes, retiring the old ones. */
