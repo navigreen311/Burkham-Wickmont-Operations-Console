@@ -441,6 +441,55 @@ export const answerMfaChallenge = async (input: {
 };
 
 /**
+ * Check a code against the account's active factor, and spend it.
+ *
+ * The one place a second factor is presented outside the sign-in challenge: removing a factor and
+ * changing a password both need one, and three copies of these ten lines is how one of them stops
+ * spending the step.
+ *
+ * **Spending is the point.** A code that authorised a credential change and could then still open a
+ * session would be a code used twice, which is precisely what `lastUsedStep` exists to prevent.
+ *
+ * A recovery code is accepted in its place - it is the answer for the client whose phone is gone,
+ * which is the commonest reason to be doing either of these things.
+ */
+export const verifySecondFactor = async (input: {
+  tenantId: string;
+  clientUserId: string;
+  code: string;
+  now: Date;
+}): Promise<Outcome<{ usedRecoveryCode: boolean }>> => {
+  const factor = await activeFactorFor(input.tenantId, input.clientUserId);
+  if (!factor) {
+    return refused('This account has no authenticator.', 'Blueprint 11.1 - identity and access');
+  }
+
+  const secret = await readSecret(factor.secretCiphertext);
+  if (secret === null) return failed('The stored authenticator secret could not be read.');
+
+  const verification = verifyTotp({
+    secret,
+    code: input.code,
+    at: input.now,
+    lastUsedStep: factor.lastUsedStep,
+  });
+
+  if (verification.valid) {
+    await db().clientMfaFactor.update({
+      where: { id: factor.id },
+      data: { lastUsedStep: verification.step },
+    });
+    return ok({ usedRecoveryCode: false });
+  }
+
+  if (await spendRecoveryCode(input.tenantId, input.clientUserId, input.code, input.now)) {
+    return ok({ usedRecoveryCode: true });
+  }
+
+  return refused('That code is not correct.', 'Blueprint 11.1 - identity and access');
+};
+
+/**
  * Remove your own authenticator.
  *
  * The password **and** a current code, because either alone is one of the two things the factor
@@ -479,22 +528,13 @@ export const disableMfa = async (input: {
     );
   }
 
-  const secret = await readSecret(factor.secretCiphertext);
-  if (secret === null) return failed('The stored authenticator secret could not be read.');
-
-  const byCode = verifyTotp({
-    secret,
+  const presented = await verifySecondFactor({
+    tenantId: input.tenantId,
+    clientUserId: user.id,
     code: input.code,
-    at: now,
-    lastUsedStep: factor.lastUsedStep,
-  }).valid;
-  const byRecovery = byCode
-    ? false
-    : await spendRecoveryCode(input.tenantId, user.id, input.code, now);
-
-  if (!byCode && !byRecovery) {
-    return refused('That code is not correct.', 'Blueprint 11.1 - identity and access');
-  }
+    now,
+  });
+  if (presented.status !== 'ok') return presented as Outcome<never>;
 
   await db().$transaction(async (tx) => {
     await tx.clientMfaFactor.update({

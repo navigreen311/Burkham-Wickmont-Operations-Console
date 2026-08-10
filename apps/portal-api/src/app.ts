@@ -24,6 +24,7 @@
 import express, { type Express, type NextFunction, type Request, type Response } from 'express';
 import helmet from 'helmet';
 import {
+  changePassword,
   clientRoom,
   completeReset,
   completeSignInMfa,
@@ -61,6 +62,8 @@ export interface PortalAppDeps {
   readonly limiter?: RateLimiter;
   /** The password-reset path counts separately - see `DEFAULT_RESET_WINDOW_SECONDS`. */
   readonly resetLimiter?: RateLimiter;
+  /** And so does the password-change path, which is authenticated but still guessable. */
+  readonly changeLimiter?: RateLimiter;
   readonly now?: () => Date;
 }
 
@@ -185,6 +188,11 @@ export const createPortalApp = (deps: PortalAppDeps): Express => {
   const resetLimiter =
     deps.resetLimiter ??
     buildLimiter('portal.password_reset', config.resetWindowSeconds, config.resetMaxAttempts);
+  // Its own budget again: a client changing a password should not be able to exhaust the sign-in
+  // budget for everybody behind the same address, and vice versa.
+  const changeLimiter =
+    deps.changeLimiter ??
+    buildLimiter('portal.password_change', config.resetWindowSeconds, config.resetMaxAttempts);
 
   /**
    * Per-IP limiting, in front of an unauthenticated route.
@@ -528,6 +536,48 @@ export const createPortalApp = (deps: PortalAppDeps): Express => {
       }
 
       send(res, await removeAuthenticator({ principal, password: body.password, code: body.code }));
+    }),
+  );
+
+  /**
+   * Change a password you still know.
+   *
+   * Behind a session AND rate limited, which no other authenticated route is. The session proves
+   * who is asking; the limit is because a caller who has one can otherwise guess the current
+   * password from inside it, and the per-account lockout does not apply here - it counts sign-ins.
+   * Counting the source instead means a hijacked session cannot become a guessing loop, and cannot
+   * lock the real owner out either.
+   */
+  app.post(
+    '/portal/password',
+    limitBy(
+      changeLimiter,
+      'Too many password-change attempts from this address. Try again shortly.',
+    ),
+    express.json({ limit: config.maxJsonBytes }),
+    withPrincipal(async (principal, req, res) => {
+      const body = req.body as { currentPassword?: unknown; newPassword?: unknown; code?: unknown };
+
+      if (typeof body?.currentPassword !== 'string' || typeof body?.newPassword !== 'string') {
+        send(
+          res,
+          refused(
+            'Changing your password needs the one you have now and the one you want.',
+            'Blueprint 11.1 - a credential change needs a credential',
+          ),
+        );
+        return;
+      }
+
+      send(
+        res,
+        await changePassword({
+          principal,
+          currentPassword: body.currentPassword,
+          newPassword: body.newPassword,
+          ...(typeof body.code === 'string' ? { code: body.code } : {}),
+        }),
+      );
     }),
   );
 

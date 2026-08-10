@@ -407,10 +407,15 @@ export const pendingPasswordResets = async (
 /**
  * Spend every outstanding reset for a user.
  *
- * Called before issuing and again on completion. One live token at a time: two would mean revoking
- * one and leaving the other, which is the same mistake `inviteClientUser` avoids.
+ * Called before issuing, again on completion, and by the password-change path - **exported for that
+ * third caller**, because a client who requested a reset and then changed their password from the
+ * portal instead would otherwise leave a live token in an inbox that sets a password of the
+ * holder's choosing over the one they just chose.
+ *
+ * One live token at a time: two would mean revoking one and leaving the other, which is the same
+ * mistake `inviteClientUser` avoids.
  */
-const supersedeOutstanding = async (
+export const supersedeOutstanding = async (
   tx: Prisma.TransactionClient,
   clientUserId: string,
   now: Date,

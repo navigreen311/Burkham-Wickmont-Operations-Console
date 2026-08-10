@@ -180,6 +180,7 @@ export const principalFromToken = async (input: {
     // The client user's own id. Not a service account: a hundred clients sharing one actor id
     // would make every access record say the same thing.
     actorId: resolved.value.clientUserId,
+    sessionId: resolved.value.sessionId,
   });
 };
 

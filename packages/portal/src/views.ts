@@ -34,6 +34,14 @@ export interface ClientPrincipal {
   readonly clientId: string;
   /** For the access log. A client file read is still a read. */
   readonly actorId: string;
+  /**
+   * The session this principal was resolved from.
+   *
+   * Carried because changing a password ends every session **except this one**, and the alternative
+   * - accepting a session id as a parameter - would let a caller name somebody else's and keep it
+   * alive. It comes from `resolveSession`, so it is the one the cookie actually presented.
+   */
+  readonly sessionId: string;
 }
 
 export interface EngagementView {

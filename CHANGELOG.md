@@ -7,6 +7,39 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added - change password for a signed-in client (`ai-feature/client-password-change`)
+
+Named as out of scope three slices running, each time for the same reason: changing a password you
+know is a different act from recovering one you have lost. See
+[docs/m11-password-change.md](docs/m11-password-change.md) and ADR-0026.
+
+- **A credential change needs a credential** (ADR-0024). The current password is definitional; where
+  a factor is enrolled a current code is required too, because **an attacker holding a session and a
+  shoulder-surfed password is exactly the case a second factor exists for**. The code is SPENT - one
+  that authorised a credential change and could still open a session would be a code used twice.
+- **This revokes every session EXCEPT the caller's; a reset revokes all.** Read side by side these
+  look inconsistent: a reset is completed by whoever holds a token, so the requester might be
+  anybody; here they have proved a session, the current password and a code where one exists.
+  **The difference is not inconsistency - the two paths know different things about who is asking.**
+  Signing the caller out of the action they just took is how a button stops being used. Both
+  behaviours are asserted in one test file so the difference reads as deliberate.
+- **An outstanding reset dies with the change** - the interaction nothing else would have caught. A
+  client who asks for a reset, then remembers their password and changes it from the portal instead,
+  would otherwise leave a live token in an inbox that sets a password of the holder's choosing over
+  the one just chosen. Superseded in the same transaction, and reported back.
+- **Rate limited although it is authenticated**, which no other authenticated route is: per-account
+  lockout counts sign-ins and does not apply here, so a caller holding a session could otherwise
+  guess the current password from inside it. Counting the source means a hijacked session cannot
+  become a guessing loop **and cannot lock the real owner out either**.
+- The lockout clears, for the same reason it clears on a reset. `identity.client_user.password_changed`
+  is its own event - one type for both acts would hide which happened.
+- **No schema.** The same `passwordHash` column and the same session and reset tables.
+
+**Changed - `ClientPrincipal` gained `sessionId`**, from `resolveSession`. The surviving session has
+to be the one the cookie presented: a caller who could name a session id could name somebody else's
+and keep it alive. **`verifySecondFactor` extracted in `@bwc/identity`** and now used by both factor
+removal and this route - three copies of those ten lines is how one of them stops spending the step.
+
 ### Added - a shared rate-limit store (`ai-feature/shared-rate-limit`)
 
 The last of the three gaps the transport slice named. See
