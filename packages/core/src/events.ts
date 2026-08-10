@@ -70,6 +70,11 @@ export const EVENT_TYPES = [
   'vault.legal_hold_released',
   'vault.document_deleted',
   'vault.scan_completed',
+  // Document Intelligence Pipeline (3.3)
+  'intelligence.ingestion_attempted',
+  'intelligence.ingestion_completed',
+  'intelligence.ingestion_unavailable',
+  'intelligence.finding_raised',
   // Marketing Claim Library (7.4)
   'claim.published',
   'claim.deprecated',
