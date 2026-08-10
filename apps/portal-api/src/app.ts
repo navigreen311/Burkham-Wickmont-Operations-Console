@@ -34,6 +34,8 @@ import {
   downloadDocument,
   mfaSettings,
   keysOnAccount,
+  passkeySignInOptions,
+  passwordSignIn,
   newRecoveryCodes,
   principalFromToken,
   removeAuthenticator,
@@ -44,7 +46,9 @@ import {
   signIn,
   signInKeyOptions,
   signOut,
+  signInWithPasskey,
   startKeyRegistration,
+  turnOffPasswordSignIn,
   registerKey,
   startAuthenticatorEnrolment,
   uploadDocument,
@@ -438,6 +442,58 @@ export const createPortalApp = (deps: PortalAppDeps): Express => {
     }),
   );
 
+  /**
+   * Options for signing in with a passkey and nothing else.
+   *
+   * Unauthenticated and account-less. On the sign-in limiter, because it is a sign-in.
+   */
+  app.post(
+    '/portal/sign-in/passkey/options',
+    limitBy(limiter, 'Too many sign-in attempts from this address. Try again shortly.'),
+    asyncRoute(async (_req, res) => {
+      send(res, await passkeySignInOptions({ tenantId: config.tenantId, rp, now: now() }));
+    }),
+  );
+
+  /**
+   * Sign in with a passkey alone.
+   *
+   * **No challenge cookie, because there is no second step.** A discoverable credential asserted
+   * with user verification is possession plus verification in one gesture, so it stands in for the
+   * password and for the challenge that would have followed it.
+   */
+  app.post(
+    '/portal/sign-in/passkey',
+    limitBy(limiter, 'Too many sign-in attempts from this address. Try again shortly.'),
+    express.json({ limit: config.maxJsonBytes }),
+    asyncRoute(async (req, res) => {
+      const body = req.body as { response?: unknown };
+
+      if (typeof body?.response !== 'object' || body.response === null) {
+        send(res, refused('That passkey could not be used.', 'Blueprint 11.1'));
+        return;
+      }
+
+      const result = await signInWithPasskey({
+        tenantId: config.tenantId,
+        response: body.response as Record<string, unknown>,
+        rp,
+        now: now(),
+      });
+
+      if (result.status !== 'ok') {
+        send(res, result);
+        return;
+      }
+
+      setSessionCookie(res, config, result.value.token, new Date(result.value.expiresAt));
+      send(res, {
+        status: 'ok',
+        value: { displayName: result.value.displayName, expiresAt: result.value.expiresAt },
+      });
+    }),
+  );
+
   // --- Password reset ------------------------------------------------------
   //
   // Unauthenticated, and the only route here that produces a credential. Its own limiter, so a
@@ -739,8 +795,60 @@ export const createPortalApp = (deps: PortalAppDeps): Express => {
 
   app.post(
     '/portal/mfa/keys/register',
+    express.json({ limit: config.maxJsonBytes }),
+    withPrincipal(async (principal, req, res) => {
+      const body = (req.body ?? {}) as { discoverable?: unknown };
+      send(
+        res,
+        await startKeyRegistration({ principal, rp, discoverable: body.discoverable === true }),
+      );
+    }),
+  );
+
+  app.get(
+    '/portal/password-sign-in',
     withPrincipal(async (principal, _req, res) => {
-      send(res, await startKeyRegistration({ principal, rp }));
+      send(res, { status: 'ok', value: await passwordSignIn(principal) });
+    }),
+  );
+
+  /**
+   * Turn password sign-in off.
+   *
+   * The act that makes a passkey a security property rather than a convenience. On the
+   * credential-change limiter, and it takes the password AND a passkey assertion.
+   */
+  app.post(
+    '/portal/password-sign-in/disable',
+    limitBy(changeLimiter, 'Too many attempts from this address. Try again shortly.'),
+    express.json({ limit: config.maxJsonBytes }),
+    withPrincipal(async (principal, req, res) => {
+      const body = req.body as { password?: unknown; response?: unknown };
+
+      if (
+        typeof body?.password !== 'string' ||
+        typeof body?.response !== 'object' ||
+        body.response === null
+      ) {
+        send(
+          res,
+          refused(
+            'Turning the password off needs your password and a passkey.',
+            'Blueprint 11.1 - a credential change needs a credential',
+          ),
+        );
+        return;
+      }
+
+      send(
+        res,
+        await turnOffPasswordSignIn({
+          principal,
+          password: body.password,
+          response: body.response as Record<string, unknown>,
+          rp,
+        }),
+      );
     }),
   );
 
@@ -748,7 +856,12 @@ export const createPortalApp = (deps: PortalAppDeps): Express => {
     '/portal/mfa/keys',
     express.json({ limit: config.maxJsonBytes }),
     withPrincipal(async (principal, req, res) => {
-      const body = req.body as { password?: unknown; label?: unknown; response?: unknown };
+      const body = req.body as {
+        password?: unknown;
+        label?: unknown;
+        response?: unknown;
+        discoverable?: unknown;
+      };
 
       if (
         typeof body?.password !== 'string' ||
@@ -774,6 +887,7 @@ export const createPortalApp = (deps: PortalAppDeps): Express => {
           label: body.label,
           response: body.response as Record<string, unknown>,
           rp,
+          discoverable: body.discoverable === true,
         }),
       );
     }),

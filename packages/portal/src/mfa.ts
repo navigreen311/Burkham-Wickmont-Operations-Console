@@ -15,6 +15,8 @@ import {
   beginWebauthnRegistration,
   completeWebauthnRegistration,
   registeredKeys,
+  disablePasswordSignIn,
+  passwordSignInState,
   changeClientPassword,
   completeEmailChange,
   confirmMfaEnrolment,
@@ -141,11 +143,14 @@ export const confirmAddressChange = async (input: {
 export const startKeyRegistration = async (input: {
   principal: ClientPrincipal;
   rp: RelyingParty;
+  /** A passkey that can sign in on its own, rather than a second factor. */
+  discoverable?: boolean;
 }): Promise<Outcome<RegistrationChallenge>> =>
   beginWebauthnRegistration({
     tenantId: input.principal.tenantId,
     clientUserId: input.principal.actorId,
     rp: input.rp,
+    ...(input.discoverable !== undefined ? { discoverable: input.discoverable } : {}),
   });
 
 /** Finish registering a key. Takes the password, as every credential change does. */
@@ -155,12 +160,38 @@ export const registerKey = async (input: {
   label: string;
   response: Record<string, unknown>;
   rp: RelyingParty;
+  discoverable?: boolean;
 }): Promise<Outcome<RegisteredKey>> =>
   completeWebauthnRegistration({
     tenantId: input.principal.tenantId,
     clientUserId: input.principal.actorId,
     password: input.password,
     label: input.label,
+    response: input.response,
+    rp: input.rp,
+    ...(input.discoverable !== undefined ? { discoverable: input.discoverable } : {}),
+  });
+
+/** Whether this account still accepts a password at sign-in, and whether it could stop. */
+export const passwordSignIn = async (principal: ClientPrincipal) =>
+  passwordSignInState(principal.tenantId, principal.actorId);
+
+/**
+ * Turn password sign-in off.
+ *
+ * **The act that makes a passkey a security property rather than a convenience**: an account is as
+ * strong as the weakest method it will accept.
+ */
+export const turnOffPasswordSignIn = async (input: {
+  principal: ClientPrincipal;
+  password: string;
+  response: Record<string, unknown>;
+  rp: RelyingParty;
+}): Promise<Outcome<{ clientUserId: string; discoverableKeys: number }>> =>
+  disablePasswordSignIn({
+    tenantId: input.principal.tenantId,
+    clientUserId: input.principal.actorId,
+    password: input.password,
     response: input.response,
     rp: input.rp,
   });
