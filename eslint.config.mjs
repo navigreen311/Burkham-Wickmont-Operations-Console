@@ -14,6 +14,7 @@ const NODE_GLOBALS = {
   fetch: 'readonly',
   Headers: 'readonly',
   URL: 'readonly',
+  URLSearchParams: 'readonly',
   setTimeout: 'readonly',
   clearTimeout: 'readonly',
 };

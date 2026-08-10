@@ -370,6 +370,12 @@ importers:
         specifier: ^5.8.3
         version: 5.9.3
 
+  packages/crypto:
+    devDependencies:
+      typescript:
+        specifier: ^5.8.3
+        version: 5.9.3
+
   packages/dashboards:
     dependencies:
       '@bwc/billing':
@@ -548,6 +554,9 @@ importers:
       '@bwc/core':
         specifier: workspace:*
         version: link:../core
+      '@bwc/crypto':
+        specifier: workspace:*
+        version: link:../crypto
       '@bwc/db':
         specifier: workspace:*
         version: link:../db
@@ -950,6 +959,9 @@ importers:
       '@bwc/core':
         specifier: workspace:*
         version: link:../core
+      '@bwc/crypto':
+        specifier: workspace:*
+        version: link:../crypto
       '@bwc/db':
         specifier: workspace:*
         version: link:../db

@@ -18,6 +18,7 @@
   },
   "dependencies": {
     "@bwc/core": "workspace:*",
+    "@bwc/crypto": "workspace:*",
     "@bwc/db": "workspace:*",
     "@bwc/ledger": "workspace:*",
     "@bwc/identity": "workspace:*",

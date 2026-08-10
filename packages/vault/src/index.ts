@@ -6,7 +6,10 @@
  * lockout, and an access log that records refusals as carefully as successes.
  */
 
-export * from './crypto.js';
+// Moved to `@bwc/crypto` so 11.1 can encrypt a TOTP secret with the same construction rather
+// than a second copy of it. Re-exported here because the Vault is where every existing caller
+// imports it from, and a move that breaks call sites invites a copy instead.
+export * from '@bwc/crypto';
 export * from './store.js';
 export * from './watermark.js';
 export * from './vault.js';

@@ -3315,6 +3315,9 @@ model ClientUser {
   sessions ClientSession[]
   invitations ClientInvitation[]
   passwordResets ClientPasswordReset[]
+  mfaFactors ClientMfaFactor[]
+  mfaChallenges ClientMfaChallenge[]
+  recoveryCodes ClientRecoveryCode[]
 
   @@unique([tenantId, email])
   @@index([tenantId, clientId])
@@ -3399,6 +3402,111 @@ enum ClientPasswordResetSource {
   self_service
   staff_assisted
 
+  @@schema("identity")
+}
+
+/// A second authentication factor. TOTP today; the model carries a kind because WebAuthn is the
+/// next one and a boolean column would have to be replaced rather than extended.
+model ClientMfaFactor {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+
+  clientUserId String     @db.Uuid
+  clientUser   ClientUser @relation(fields: [clientUserId], references: [id], onDelete: Cascade)
+
+  kind ClientMfaKind @default(totp)
+
+  /// The TOTP shared secret, field-encrypted (`@bwc/crypto`) under a key that is not in this
+  /// database.
+  ///
+  /// Unlike a password hash this MUST be recoverable - codes are computed from it - so the
+  /// protection cannot be a one-way function. A leaked database without the key yields ciphertext;
+  /// a leaked database WITH the key yields working second factors, which is why the key belongs in
+  /// a secret manager and ultimately in the HSM §6.2 wants.
+  secretCiphertext String
+
+  /// Null until a code from the new authenticator has verified. **A factor nobody has proved they
+  /// can use is not a factor; it is a lockout waiting for the next sign-in.**
+  confirmedAt DateTime?
+
+  /// The last time step accepted for this factor. A code at or below it is refused, which is what
+  /// stops an observed code being replayed inside its validity window.
+  lastUsedStep BigInt?
+
+  createdAt DateTime  @default(now())
+  /// Set when withdrawn. Rows are retired rather than deleted: which factor was in force when is a
+  /// question an access review asks.
+  removedAt DateTime?
+  removedBy String?   @db.Uuid
+  /// How a staff member verified the caller before removing a factor on their behalf. Null when the
+  /// client removed their own.
+  removalVerificationBasis String?
+
+  @@index([tenantId, clientUserId])
+  @@map("client_mfa_factors")
+  @@schema("identity")
+}
+
+enum ClientMfaKind {
+  totp
+
+  @@schema("identity")
+}
+
+/// A password accepted, a second factor still outstanding.
+///
+/// **Deliberately not a session.** Issuing a session here and marking it unsatisfied would put the
+/// check on every route, and the route that forgot would be a complete bypass. There is no
+/// half-authenticated session because there is no way to express one.
+model ClientMfaChallenge {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+
+  clientUserId String     @db.Uuid
+  clientUser   ClientUser @relation(fields: [clientUserId], references: [id], onDelete: Cascade)
+
+  /// SHA-256 of the challenge token. Returned once, never stored.
+  tokenHash String @unique
+
+  issuedAt  DateTime @default(now())
+  /// Minutes, not hours. It exists only for as long as it takes to read six digits off a phone.
+  expiresAt DateTime
+
+  /// Wrong codes against THIS challenge. The challenge dies rather than the account: a caller who
+  /// exhausts it is thrown back to the password, which is itself rate limited and lockout-protected.
+  failedAttempts Int @default(0)
+
+  satisfiedAt DateTime?
+  abandonedAt DateTime?
+
+  @@index([tenantId, clientUserId])
+  @@map("client_mfa_challenges")
+  @@schema("identity")
+}
+
+/// A single-use code for the client who no longer has their authenticator.
+///
+/// Without these, a lost phone is a permanent lockout whose only remedy is a phone call to the firm
+/// - which is the social-engineering path ADR-0023 exists to constrain.
+model ClientRecoveryCode {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+
+  clientUserId String     @db.Uuid
+  clientUser   ClientUser @relation(fields: [clientUserId], references: [id], onDelete: Cascade)
+
+  /// SHA-256. These are high-entropy values we generated, so a single hash is the right tool -
+  /// the same reasoning as session and reset tokens, and the opposite of a password.
+  codeHash String @unique
+
+  issuedAt DateTime  @default(now())
+  usedAt   DateTime?
+  /// Set when a new set was issued. Regenerating retires every previous code, so a printout the
+  /// client has replaced cannot still open the account.
+  supersededAt DateTime?
+
+  @@index([tenantId, clientUserId])
+  @@map("client_recovery_codes")
   @@schema("identity")
 }
 

@@ -6,6 +6,7 @@ const pkg = (name: string): string =>
 
 const WORKSPACE_PACKAGES = [
   'core',
+  'crypto',
   'db',
   'ledger',
   'identity',

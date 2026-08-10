@@ -18,7 +18,10 @@
 
 import {
   resolveSession,
+  activeFactorFor,
+  answerMfaChallenge,
   authenticateClientUser,
+  beginMfaChallenge,
   completePasswordReset,
   issueSession,
   requestPasswordReset,
@@ -29,19 +32,36 @@ import {
 import { ok, type Outcome } from '@bwc/core';
 import type { ClientPrincipal } from './views.js';
 
-export interface SignInResult {
+export interface SessionIssued {
+  readonly kind: 'session';
   readonly token: string;
   readonly expiresAt: string;
   readonly displayName: string;
 }
 
+export interface MfaRequired {
+  readonly kind: 'mfa_required';
+  /** A CHALLENGE token. Not a session token, and `principalFromToken` will not resolve it. */
+  readonly challengeToken: string;
+  readonly expiresAt: string;
+}
+
+/**
+ * What a correct password gets you.
+ *
+ * A union rather than a `mfaSatisfied` field, so **every call site is a compile error until it
+ * handles the second factor**. A boolean would have let the transport keep working and quietly
+ * treat a half-authenticated caller as signed in, which is precisely the bug the design is
+ * avoiding.
+ */
+export type SignInResult = SessionIssued | MfaRequired;
+
 /**
  * Sign in.
  *
- * Authenticate, then issue. Two steps rather than one because they fail for different reasons and
- * only the first is on an unauthenticated path - a caller that wanted to authenticate without
- * minting a session (a re-authentication prompt before a sensitive action) should not have to
- * create and discard one.
+ * Authenticate, then either open a challenge or issue a session. **A session is never issued to a
+ * caller who still owes a second factor** - not marked unsatisfied, not issued at all - so there is
+ * no route that has to remember to check.
  *
  * The refusal from `authenticateClientUser` is passed through unchanged. It is deliberately the
  * same sentence for a wrong password, an unknown email, an unenrolled user and a disabled one;
@@ -55,6 +75,21 @@ export const signIn = async (input: {
 }): Promise<Outcome<SignInResult>> => {
   const authenticated = await authenticateClientUser(input);
   if (authenticated.status !== 'ok') return authenticated as Outcome<never>;
+
+  if ((await activeFactorFor(input.tenantId, authenticated.value.clientUserId)) !== null) {
+    const challenge = await beginMfaChallenge({
+      tenantId: input.tenantId,
+      clientUserId: authenticated.value.clientUserId,
+      ...(input.now !== undefined ? { now: input.now } : {}),
+    });
+    if (challenge.status !== 'ok') return challenge as Outcome<never>;
+
+    return ok({
+      kind: 'mfa_required',
+      challengeToken: challenge.value.token,
+      expiresAt: challenge.value.expiresAt,
+    });
+  }
 
   const session = await issueSession({
     tenantId: input.tenantId,
@@ -71,9 +106,56 @@ export const signIn = async (input: {
   if (principal.status !== 'ok') return principal as Outcome<never>;
 
   return ok({
+    kind: 'session',
     token: session.value.token,
     expiresAt: session.value.expiresAt,
     displayName: principal.value.displayName,
+  });
+};
+
+/**
+ * Answer the challenge, and only then get a session.
+ *
+ * The second half of sign-in. `answerMfaChallenge` refuses a spent time step, so a code observed
+ * inside its thirty-second window cannot be replayed here.
+ */
+export const completeSignInMfa = async (input: {
+  tenantId: string;
+  challengeToken: string;
+  code: string;
+  now?: Date;
+}): Promise<
+  Outcome<SessionIssued & { usedRecoveryCode: boolean; recoveryCodesRemaining: number }>
+> => {
+  const answered = await answerMfaChallenge({
+    tenantId: input.tenantId,
+    token: input.challengeToken,
+    code: input.code,
+    ...(input.now !== undefined ? { now: input.now } : {}),
+  });
+  if (answered.status !== 'ok') return answered as Outcome<never>;
+
+  const session = await issueSession({
+    tenantId: input.tenantId,
+    clientUserId: answered.value.clientUserId,
+    ...(input.now !== undefined ? { now: input.now } : {}),
+  });
+  if (session.status !== 'ok') return session as Outcome<never>;
+
+  const principal = await resolveSession({
+    tenantId: input.tenantId,
+    token: session.value.token,
+    ...(input.now !== undefined ? { now: input.now } : {}),
+  });
+  if (principal.status !== 'ok') return principal as Outcome<never>;
+
+  return ok({
+    kind: 'session',
+    token: session.value.token,
+    expiresAt: session.value.expiresAt,
+    displayName: principal.value.displayName,
+    usedRecoveryCode: answered.value.usedRecoveryCode,
+    recoveryCodesRemaining: answered.value.recoveryCodesRemaining,
   });
 };
 

@@ -19,7 +19,7 @@ import { append } from '@bwc/ledger';
 import { findActor } from '@bwc/identity';
 import { assertSameTenant } from '@bwc/tenancy';
 import { failed, noData, ok, refused, type AuthorityLevel, type Outcome } from '@bwc/core';
-import { decrypt, encrypt, sha256, type KekProvider } from './crypto.js';
+import { decrypt, encrypt, sha256, type KekProvider } from '@bwc/crypto';
 import { newBlobKey, type BlobStore } from './store.js';
 import { watermarkPdf, type WatermarkResult } from './watermark.js';
 

@@ -35,7 +35,7 @@
 import { db } from '@bwc/db';
 import { append } from '@bwc/ledger';
 import { failed, noData, ok, refused, type Outcome } from '@bwc/core';
-import { decrypt, encrypt } from './crypto.js';
+import { decrypt, encrypt } from '@bwc/crypto';
 import { newBlobKey } from './store.js';
 import { watermarkPdf, type WatermarkResult } from './watermark.js';
 import {
