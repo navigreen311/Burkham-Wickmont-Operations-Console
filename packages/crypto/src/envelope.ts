@@ -1,5 +1,10 @@
 /**
- * Envelope encryption for the Secure Document Vault - blueprint 3.2, Specification v2 §6.2.
+ * Envelope and field-level encryption - Specification v2 §6.2.
+ *
+ * Written for the Secure Document Vault (3.2) and moved here when 11.1 needed to encrypt a TOTP
+ * secret. **`@bwc/vault` depends on `@bwc/identity`**, so identity could not import the Vault, and
+ * the alternative to moving this was a second AES-GCM routine in a second package. The Vault
+ * re-exports everything here, so no existing caller changed.
  *
  * A random 256-bit **DEK** encrypts each document. The DEK is then encrypted by a **KEK** and
  * stored, wrapped, beside the ciphertext. Two properties follow, and both matter here:
@@ -44,6 +49,10 @@ export interface KekProvider {
 /**
  * KEK from the environment. Adequate for development, and honest about being so: the key sits in
  * a process env var, which is exactly what §6.2 wants replaced by an HSM before production.
+ *
+ * The variable is a constructor argument because the Vault's documents and 11.1's TOTP secrets are
+ * protected by **different** keys. One key for both would mean a compromise of either reaches the
+ * other, and rotating one forces rotating the other.
  */
 export class EnvKekProvider implements KekProvider {
   readonly id = 'env';
@@ -54,7 +63,7 @@ export class EnvKekProvider implements KekProvider {
     const raw = process.env[this.variable];
     if (!raw) {
       throw new Error(
-        `${this.variable} is not set. The Secure Document Vault cannot store client documents without a key-encryption key.`,
+        `${this.variable} is not set. Encrypted storage cannot operate without a key-encryption key.`,
       );
     }
     const key = Buffer.from(raw, 'hex');

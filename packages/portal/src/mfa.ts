@@ -1,0 +1,74 @@
+/**
+ * Managing a second factor from the portal - 11.10 over 11.1.
+ *
+ * Thin, as `signIn` is. The portal decides nothing here either: every rule about what a credential
+ * change costs lives in 11.1, and these functions exist only to bind the acting principal to the
+ * account being changed.
+ *
+ * **That binding is the one rule the portal does enforce**: `principal.actorId` is the client user
+ * resolved from the session cookie, so a caller cannot name somebody else's account. It is the same
+ * rule the document routes follow, and the reason none of these take a client user id.
+ */
+
+import {
+  beginMfaEnrolment,
+  confirmMfaEnrolment,
+  disableMfa,
+  mfaStatus,
+  regenerateRecoveryCodes,
+  type ConfirmedEnrolment,
+  type EnrolmentOffer,
+  type MfaStatus,
+} from '@bwc/identity';
+import type { Outcome } from '@bwc/core';
+import type { ClientPrincipal } from './views.js';
+
+export const mfaSettings = async (principal: ClientPrincipal): Promise<MfaStatus> =>
+  mfaStatus(principal.tenantId, principal.actorId);
+
+/** Start enrolling. Produces a secret that authenticates nothing until a code confirms it. */
+export const startAuthenticatorEnrolment = async (
+  principal: ClientPrincipal,
+): Promise<Outcome<EnrolmentOffer>> =>
+  beginMfaEnrolment({ tenantId: principal.tenantId, clientUserId: principal.actorId });
+
+/**
+ * Finish enrolling.
+ *
+ * Takes the password as well as a code, because a session is not a credential and this changes one.
+ */
+export const confirmAuthenticator = async (input: {
+  principal: ClientPrincipal;
+  password: string;
+  code: string;
+}): Promise<Outcome<ConfirmedEnrolment>> =>
+  confirmMfaEnrolment({
+    tenantId: input.principal.tenantId,
+    clientUserId: input.principal.actorId,
+    password: input.password,
+    code: input.code,
+  });
+
+/** Remove your own authenticator: the password AND a current code, or a recovery code. */
+export const removeAuthenticator = async (input: {
+  principal: ClientPrincipal;
+  password: string;
+  code: string;
+}): Promise<Outcome<{ factorId: string }>> =>
+  disableMfa({
+    tenantId: input.principal.tenantId,
+    clientUserId: input.principal.actorId,
+    password: input.password,
+    code: input.code,
+  });
+
+/** A fresh set of recovery codes, retiring the old ones. */
+export const newRecoveryCodes = async (input: {
+  principal: ClientPrincipal;
+  password: string;
+}): Promise<Outcome<{ recoveryCodes: readonly string[] }>> =>
+  regenerateRecoveryCodes({
+    tenantId: input.principal.tenantId,
+    clientUserId: input.principal.actorId,
+    password: input.password,
+  });

@@ -7,6 +7,48 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added - multi-factor authentication for client users (`ai-feature/client-mfa`)
+
+The second gap the transport slice named, and the larger one. See
+[docs/m11-mfa.md](docs/m11-mfa.md) and ADR-0024.
+
+- **TOTP, because it is the only second factor that can work here.** SMS needs an ungated provider,
+  so it would report `not_built`, and SIM swap is the documented attack against this population.
+  **Email OTP is worse than not doing it**: a second factor delivered to the channel that can reset
+  the first factor is the same factor twice. TOTP needs no vendor - a shared secret and a clock.
+- **The implementation is verified against RFC 6238's own test vectors**, not against itself. An
+  off-by-one in the counter encoding produces six digits that look exactly right and match no
+  authenticator app on earth.
+- **The half-authenticated state is not a session.** The tempting build issues the session cookie
+  after the password and marks it unsatisfied - then every route has to remember, and the one that
+  forgets is a complete bypass. A correct password produces a `ClientMfaChallenge` with its own
+  table and its own cookie; `issueSession` is not reached until a code verifies. `signIn` returns a
+  UNION rather than gaining a boolean, so every call site is a compile error until it handles it.
+- **A session is not a credential.** Confirming an enrolment takes the password; removing a factor
+  takes the password AND a current code. Either alone is one of the two things the factor exists to
+  require.
+- **A factor nobody has proved they can use is not a factor**, it is a lockout waiting for the next
+  sign-in - enrolment does not activate until a code from the new authenticator verifies.
+- **The accepted time step is stored**, so a code observed inside its thirty-second window cannot be
+  replayed and one code cannot open two sessions. Wrong codes are counted against the CHALLENGE,
+  which dies at five: the brute-force defence for six digits is that failing them costs a password
+  attempt, and locking the account instead would make six digits a denial-of-service weapon.
+- **Recovery codes** - eight, shown once, hashed, single use. A recovery code satisfies one sign-in
+  and does NOT disable the factor; its use is a Ledger event, because a run of them is the signal
+  somebody has phished a printout. Removing a factor retires them with it.
+- **The TOTP secret is field-encrypted under `MFA_SECRET_KEY`**, a different key from `VAULT_KEK`.
+  Unlike a password hash it must be recoverable, so the protection cannot be a one-way function.
+  **Enrolment refuses outright when the key is missing** - storing the secret in the clear would be
+  worse, because nobody would know.
+- **Password reset is not an MFA bypass**, asserted rather than assumed: a completed reset issues no
+  session and leaves the factor in place. The two were built a slice apart.
+- A staff-assisted removal needs a Level 3 human and a recorded verification basis, as a staff-issued
+  reset does. It signs nobody in.
+
+**Changed - envelope and field-level encryption moved from `@bwc/vault` to a new `@bwc/crypto`.**
+`@bwc/vault` depends on `@bwc/identity`, so identity could not import it; the Vault re-exports
+everything, so no existing caller moved. The same move `serialize.ts` made into `@bwc/http`.
+
 ### Added - password reset for client users (`ai-feature/client-password-reset`)
 
 The first of the three gaps the transport slice named. See

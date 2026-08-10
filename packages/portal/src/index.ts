@@ -18,5 +18,6 @@
  */
 
 export * from './session.js';
+export * from './mfa.js';
 export * from './views.js';
 export * from './actions.js';

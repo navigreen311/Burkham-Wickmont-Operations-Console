@@ -26,13 +26,19 @@ import helmet from 'helmet';
 import {
   clientRoom,
   completeReset,
+  completeSignInMfa,
+  confirmAuthenticator,
   downloadDocument,
+  mfaSettings,
+  newRecoveryCodes,
   principalFromToken,
+  removeAuthenticator,
   requestReset,
   sendMessage,
   signDisclosure,
   signIn,
   signOut,
+  startAuthenticatorEnrolment,
   uploadDocument,
   type ClientPrincipal,
 } from '@bwc/portal';
@@ -93,6 +99,40 @@ const setSessionCookie = (
     sameSite: 'strict',
     path: '/',
     expires: expiresAt,
+  });
+};
+
+/**
+ * The name of the cookie carrying an unanswered MFA challenge.
+ *
+ * A different cookie from the session, deliberately. One cookie carrying "either a session or a
+ * half-authentication, depending" is the shape that ends with a route reading the wrong one - and
+ * the challenge token is not a session token: `principalFromToken` looks in a different table and
+ * will not resolve it.
+ */
+const challengeCookieName = (config: PortalConfig): string => `${config.cookieName}_mfa`;
+
+const setChallengeCookie = (
+  res: Response,
+  config: PortalConfig,
+  token: string,
+  expiresAt: Date,
+): void => {
+  res.cookie(challengeCookieName(config), token, {
+    httpOnly: true,
+    secure: config.cookieSecure,
+    sameSite: 'strict',
+    path: '/',
+    expires: expiresAt,
+  });
+};
+
+const clearChallengeCookie = (res: Response, config: PortalConfig): void => {
+  res.clearCookie(challengeCookieName(config), {
+    httpOnly: true,
+    secure: config.cookieSecure,
+    sameSite: 'strict',
+    path: '/',
   });
 };
 
@@ -213,12 +253,80 @@ export const createPortalApp = (deps: PortalAppDeps): Express => {
         return;
       }
 
+      if (result.value.kind === 'mfa_required') {
+        // NO session cookie. The password was right and that is not enough, so nothing that any
+        // authenticated route would accept is issued here.
+        setChallengeCookie(
+          res,
+          config,
+          result.value.challengeToken,
+          new Date(result.value.expiresAt),
+        );
+        send(res, {
+          status: 'ok',
+          value: { mfaRequired: true, expiresAt: result.value.expiresAt },
+        });
+        return;
+      }
+
       setSessionCookie(res, config, result.value.token, new Date(result.value.expiresAt));
       // The token is NOT in the body. It is in an httpOnly cookie precisely so script cannot read
       // it, and returning it here would hand it back to script.
       send(res, {
         status: 'ok',
-        value: { displayName: result.value.displayName, expiresAt: result.value.expiresAt },
+        value: {
+          mfaRequired: false,
+          displayName: result.value.displayName,
+          expiresAt: result.value.expiresAt,
+        },
+      });
+    }),
+  );
+
+  /**
+   * The second step.
+   *
+   * On the sign-in limiter rather than a third one: this is the same act, and an attacker who could
+   * open unlimited challenges to get unlimited code attempts would have found the way round the
+   * per-challenge cap.
+   */
+  app.post(
+    '/portal/sign-in/mfa',
+    limitBy(limiter, 'Too many sign-in attempts from this address. Try again shortly.'),
+    express.json({ limit: config.maxJsonBytes }),
+    asyncRoute(async (req, res) => {
+      const body = req.body as { code?: unknown };
+      const challengeToken = tokenFrom(req, challengeCookieName(config));
+
+      if (challengeToken === undefined || typeof body?.code !== 'string') {
+        send(res, refused('That code is not correct.', 'Blueprint 11.1'));
+        return;
+      }
+
+      const result = await completeSignInMfa({
+        tenantId: config.tenantId,
+        challengeToken,
+        code: body.code,
+        now: now(),
+      });
+
+      if (result.status !== 'ok') {
+        send(res, result);
+        return;
+      }
+
+      clearChallengeCookie(res, config);
+      setSessionCookie(res, config, result.value.token, new Date(result.value.expiresAt));
+      send(res, {
+        status: 'ok',
+        value: {
+          displayName: result.value.displayName,
+          expiresAt: result.value.expiresAt,
+          // Surfaced so a client who has just spent one of eight knows how many are left. A count
+          // nobody sees is a count nobody acts on.
+          usedRecoveryCode: result.value.usedRecoveryCode,
+          recoveryCodesRemaining: result.value.recoveryCodesRemaining,
+        },
       });
     }),
   );
@@ -323,6 +431,9 @@ export const createPortalApp = (deps: PortalAppDeps): Express => {
     asyncRoute(async (req, res) => {
       const token = tokenFrom(req, config.cookieName);
       clearSessionCookie(res, config);
+      // An abandoned challenge goes too. Leaving it would mean a browser that walked away
+      // mid-sign-in still carries a half-authentication it can finish later.
+      clearChallengeCookie(res, config);
 
       if (token === undefined) {
         // Signing out without a session is not an error worth reporting to somebody who is, by
@@ -333,6 +444,90 @@ export const createPortalApp = (deps: PortalAppDeps): Express => {
 
       await signOut({ tenantId: config.tenantId, token, now: now() });
       send(res, { status: 'ok', value: { signedOut: true } });
+    }),
+  );
+
+  // --- Managing the second factor ------------------------------------------
+  //
+  // Behind a session, and every one that changes a credential takes the password as well. A session
+  // is not a credential: enrolment or removal from a session alone is enrolment or removal by
+  // whoever stole the session.
+  app.get(
+    '/portal/mfa',
+    withPrincipal(async (principal, _req, res) => {
+      send(res, { status: 'ok', value: await mfaSettings(principal) });
+    }),
+  );
+
+  app.post(
+    '/portal/mfa/enrol',
+    withPrincipal(async (principal, _req, res) => {
+      // The secret leaves here exactly once, to be scanned. After this only the ciphertext exists,
+      // and it authenticates nothing until a code confirms it.
+      send(res, await startAuthenticatorEnrolment(principal));
+    }),
+  );
+
+  app.post(
+    '/portal/mfa/enrol/confirm',
+    express.json({ limit: config.maxJsonBytes }),
+    withPrincipal(async (principal, req, res) => {
+      const body = req.body as { password?: unknown; code?: unknown };
+      if (typeof body?.password !== 'string' || typeof body?.code !== 'string') {
+        send(
+          res,
+          refused(
+            'Confirming an authenticator needs your password and a code from it.',
+            'Blueprint 11.1 - a credential change needs a credential',
+          ),
+        );
+        return;
+      }
+
+      send(
+        res,
+        await confirmAuthenticator({ principal, password: body.password, code: body.code }),
+      );
+    }),
+  );
+
+  app.post(
+    '/portal/mfa/remove',
+    express.json({ limit: config.maxJsonBytes }),
+    withPrincipal(async (principal, req, res) => {
+      const body = req.body as { password?: unknown; code?: unknown };
+      if (typeof body?.password !== 'string' || typeof body?.code !== 'string') {
+        send(
+          res,
+          refused(
+            'Removing an authenticator needs your password and a current code, or a recovery code.',
+            'Blueprint 11.1 - a credential change needs a credential',
+          ),
+        );
+        return;
+      }
+
+      send(res, await removeAuthenticator({ principal, password: body.password, code: body.code }));
+    }),
+  );
+
+  app.post(
+    '/portal/mfa/recovery-codes',
+    express.json({ limit: config.maxJsonBytes }),
+    withPrincipal(async (principal, req, res) => {
+      const body = req.body as { password?: unknown };
+      if (typeof body?.password !== 'string') {
+        send(
+          res,
+          refused(
+            'New recovery codes need your password.',
+            'Blueprint 11.1 - a credential change needs a credential',
+          ),
+        );
+        return;
+      }
+
+      send(res, await newRecoveryCodes({ principal, password: body.password }));
     }),
   );
 

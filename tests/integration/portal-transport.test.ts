@@ -19,7 +19,17 @@ import { mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { create as createClient } from '@bwc/clients';
-import { enrolClientUser, inviteClientUser, issuePasswordReset } from '@bwc/identity';
+import {
+  MFA_SECRET_KEY_VARIABLE,
+  TOTP_STEP_SECONDS,
+  base32Decode,
+  beginMfaEnrolment,
+  confirmMfaEnrolment,
+  enrolClientUser,
+  inviteClientUser,
+  issuePasswordReset,
+  totp,
+} from '@bwc/identity';
 import {
   EnvKekProvider,
   LocalEncryptedStore,
@@ -216,7 +226,9 @@ describe('sign in and the session cookie', () => {
     // The token is NOT in the body. It is httpOnly precisely so script cannot read it, and
     // returning it here would hand it straight back to script.
     const body = reply.json<{ data: Record<string, unknown> }>();
-    expect(Object.keys(body.data)).toEqual(['displayName', 'expiresAt']);
+    expect(Object.keys(body.data)).toEqual(['mfaRequired', 'displayName', 'expiresAt']);
+    // This user has no second factor, so the password was the whole of it.
+    expect(body.data['mfaRequired']).toBe(false);
     expect(reply.body).not.toContain('token');
 
     cookie = sessionCookie(reply);
@@ -451,6 +463,156 @@ describe('password reset over the wire', () => {
     expect(signIn.status).toBe(200);
 
     await new Promise<void>((resolve) => fresh.close(() => resolve()));
+  });
+});
+
+describe('the second factor over the wire', () => {
+  const MFA_EMAIL = 'transport-mfa@example.com';
+  const ENROLLED_AT = new Date('2026-08-13T10:00:00.000Z');
+  /** The server's clock, injected: TOTP is a function of time, so the test has to own it. */
+  const CLOCK = new Date(ENROLLED_AT.getTime() + 5 * TOTP_STEP_SECONDS * 1000);
+
+  let secret: Buffer;
+  let mfaServer: Server;
+  let mfaBase: string;
+
+  const callMfa = async (
+    path: string,
+    init: FetchInit & { cookie?: string } = {},
+  ): Promise<Reply> => {
+    const headers = new Headers(init.headers);
+    if (init.cookie !== undefined) headers.set('cookie', init.cookie);
+    const response = await fetch(`${mfaBase}${path}`, { ...init, headers, redirect: 'manual' });
+    const body = await response.text();
+    return {
+      status: response.status,
+      headers: response.headers,
+      body,
+      json: () => JSON.parse(body),
+    };
+  };
+
+  beforeAll(async () => {
+    process.env[MFA_SECRET_KEY_VARIABLE] ??=
+      '00112233445566778899aabbccddeeff00112233445566778899aabbccddee00';
+
+    const invited = await inviteClientUser({
+      tenantId: fx.tenant.id,
+      clientId,
+      email: MFA_EMAIL,
+      displayName: 'MFA Person',
+      issuedBy: fx.human.id,
+      actor: HUMAN(),
+    });
+    if (invited.status !== 'ok') throw new Error('setup: invite');
+    const enrolled = await enrolClientUser({
+      tenantId: fx.tenant.id,
+      token: invited.value.token,
+      password: PASSWORD,
+      actor: HUMAN(),
+    });
+    if (enrolled.status !== 'ok') throw new Error('setup: enrol');
+
+    const offer = await beginMfaEnrolment({
+      tenantId: fx.tenant.id,
+      clientUserId: enrolled.value.id,
+    });
+    if (offer.status !== 'ok') throw new Error('setup: begin mfa');
+    secret = base32Decode(offer.value.secret) as Buffer;
+
+    const confirmed = await confirmMfaEnrolment({
+      tenantId: fx.tenant.id,
+      clientUserId: enrolled.value.id,
+      password: PASSWORD,
+      code: totp(secret, ENROLLED_AT),
+      now: ENROLLED_AT,
+    });
+    if (confirmed.status !== 'ok') throw new Error('setup: confirm mfa');
+
+    mfaServer = createServer(
+      createPortalApp({ config, vault, limiter, resetLimiter, now: () => CLOCK }),
+    );
+    await new Promise<void>((resolve) => mfaServer.listen(0, '127.0.0.1', resolve));
+    const address = mfaServer.address();
+    if (address === null || typeof address === 'string') throw new Error('setup');
+    mfaBase = `http://127.0.0.1:${address.port}`;
+  });
+
+  afterAll(async () => {
+    await new Promise<void>((resolve) => mfaServer.close(() => resolve()));
+  });
+
+  it('sets a CHALLENGE cookie and no session cookie, and the challenge is not a session', async () => {
+    const reply = await callMfa('/portal/sign-in', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ email: MFA_EMAIL, password: PASSWORD }),
+    });
+
+    expect(reply.status).toBe(200);
+    expect(reply.json<{ data: { mfaRequired: boolean } }>().data.mfaRequired).toBe(true);
+
+    const cookies = reply.headers.getSetCookie();
+    // THE ASSERTION. A correct password issues nothing any authenticated route would take.
+    expect(cookies.some((entry) => entry.startsWith('bwc_portal_session='))).toBe(false);
+    const challenge = cookies.find((entry) => entry.startsWith('bwc_portal_session_mfa='));
+    expect(challenge).toBeDefined();
+    expect(challenge).toMatch(/HttpOnly/i);
+
+    // And presenting the challenge token AS a session gets nowhere: different table, no principal.
+    const value = (challenge as string).split(';')[0]?.split('=')[1] as string;
+    const room = await callMfa('/portal/room', { cookie: `bwc_portal_session=${value}` });
+    expect(room.status).toBe(409);
+  });
+
+  it('swaps the challenge for a session when the code verifies', async () => {
+    const first = await callMfa('/portal/sign-in', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ email: MFA_EMAIL, password: PASSWORD }),
+    });
+    const challengeCookie = (
+      first.headers
+        .getSetCookie()
+        .find((entry) => entry.startsWith('bwc_portal_session_mfa=')) as string
+    ).split(';')[0] as string;
+
+    const wrong = await callMfa('/portal/sign-in/mfa', {
+      method: 'POST',
+      cookie: challengeCookie,
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ code: '000000' }),
+    });
+    expect(wrong.status).toBe(409);
+    expect(wrong.headers.getSetCookie()).toHaveLength(0);
+
+    const done = await callMfa('/portal/sign-in/mfa', {
+      method: 'POST',
+      cookie: challengeCookie,
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ code: totp(secret, CLOCK) }),
+    });
+
+    expect(done.status).toBe(200);
+    const session = done.headers
+      .getSetCookie()
+      .find((entry) => entry.startsWith('bwc_portal_session='));
+    expect(session).toBeDefined();
+
+    const room = await callMfa('/portal/room', {
+      cookie: (session as string).split(';')[0] as string,
+    });
+    expect(room.status).toBe(200);
+  });
+
+  it('refuses the second step without a challenge cookie', async () => {
+    const orphan = await callMfa('/portal/sign-in/mfa', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ code: totp(secret, CLOCK) }),
+    });
+    expect(orphan.status).toBe(409);
+    expect(orphan.json<{ reason: string }>().reason).toBe('That code is not correct.');
   });
 });
 
