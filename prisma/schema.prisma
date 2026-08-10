@@ -16,7 +16,7 @@ generator client {
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
-  schemas  = ["tenancy", "identity", "ledger", "clients", "consent", "firewall"]
+  schemas  = ["tenancy", "identity", "ledger", "clients", "consent", "firewall", "workflow", "notifications"]
 }
 
 // ---------------------------------------------------------------------------
@@ -204,4 +204,198 @@ model ClientFirewallState {
   @@index([tenantId])
   @@map("client_firewall_states")
   @@schema("firewall")
+}
+
+// ---------------------------------------------------------------------------
+// 2.2 Workflow Engine - Decision C makes the Console the runner for all workflows
+// ---------------------------------------------------------------------------
+
+enum PlaybookStatus {
+  draft
+  review
+  active
+  retired
+
+  @@schema("workflow")
+}
+
+model Playbook {
+  id      String         @id @default(uuid()) @db.Uuid
+  key     String
+  version Int
+  phase   Int
+  status  PlaybookStatus @default(draft)
+
+  /// The node graph. Validated on publish; see packages/workflow/src/playbook.ts.
+  definition Json
+
+  publishedAt DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@unique([key, version])
+  @@index([key, status])
+  @@map("playbooks")
+  @@schema("workflow")
+}
+
+enum InstanceStatus {
+  running
+  waiting
+  completed
+  failed
+  cancelled
+
+  @@schema("workflow")
+}
+
+model WorkflowInstance {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  clientId String? @db.Uuid
+
+  /// Version is pinned at start. Publishing a new playbook version must not silently
+  /// re-route an instance already in flight - it would change the rules mid-engagement.
+  playbookKey     String
+  playbookVersion Int
+
+  status        InstanceStatus @default(running)
+  currentNodeKey String?
+
+  /// Accumulated workflow variables. Read by decision predicates. Must stay PII-free -
+  /// it is copied into ledger payloads.
+  context Json @default("{}")
+
+  startedAt   DateTime  @default(now())
+  completedAt DateTime?
+
+  tasks WorkflowTask[]
+
+  @@index([tenantId, status])
+  @@index([tenantId, clientId])
+  @@map("workflow_instances")
+  @@schema("workflow")
+}
+
+enum TaskStatus {
+  pending
+  running
+  waiting
+  succeeded
+  failed
+  dead_letter
+  cancelled
+
+  @@schema("workflow")
+}
+
+enum TaskKind {
+  agent_task
+  human_checkpoint
+  decision
+  wait
+  terminal
+
+  @@schema("workflow")
+}
+
+model WorkflowTask {
+  id         String @id @default(uuid()) @db.Uuid
+  tenantId   String @db.Uuid
+  instanceId String @db.Uuid
+  nodeKey    String
+
+  kind       TaskKind
+  status     TaskStatus @default(pending)
+  department String?
+  priority   Int        @default(0)
+
+  /// When this task becomes eligible to run. A wait state is a row with runAt in the
+  /// future - weeks or months is the same code path as seconds.
+  runAt DateTime @default(now())
+
+  attempts       Int @default(0)
+  maxAttempts    Int @default(3)
+  backoffSeconds Int @default(30)
+
+  /// Claim lease. An expired lease means the worker holding it died; the task returns to
+  /// pending rather than being lost.
+  leaseExpiresAt DateTime?
+  lockedBy       String?
+
+  lastError String?
+  slaDueAt  DateTime?
+  escalatedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  instance WorkflowInstance @relation(fields: [instanceId], references: [id], onDelete: Cascade)
+
+  /// The claim query orders by priority then runAt over pending rows.
+  @@index([status, runAt, priority])
+  @@index([tenantId, instanceId])
+  @@map("workflow_tasks")
+  @@schema("workflow")
+}
+
+model ScheduledWorkflow {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+
+  key         String
+  playbookKey String
+
+  /// Five-field cron. Evaluated by the scheduler slice.
+  cronExpression String
+
+  nextRunAt DateTime
+  lastRunAt DateTime?
+  enabled   Boolean   @default(true)
+
+  createdAt DateTime @default(now())
+
+  @@unique([tenantId, key])
+  @@index([enabled, nextRunAt])
+  @@map("scheduled_workflows")
+  @@schema("workflow")
+}
+
+// ---------------------------------------------------------------------------
+// 11.4 Notification & Task Queue - the substrate the Workflow Engine dispatches through
+// ---------------------------------------------------------------------------
+
+enum NotificationStatus {
+  open
+  acknowledged
+  completed
+  cancelled
+
+  @@schema("notifications")
+}
+
+model TaskNotification {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+
+  /// Which workflow task produced this, when one did. Null for notifications raised
+  /// outside a workflow.
+  workflowTaskId String? @db.Uuid
+  clientId       String? @db.Uuid
+
+  /// Department or human queue this is assigned to.
+  assignedTo String
+  kind       String
+  summary    String
+
+  status   NotificationStatus @default(open)
+  slaDueAt DateTime?
+
+  createdAt      DateTime  @default(now())
+  acknowledgedAt DateTime?
+  completedAt    DateTime?
+
+  @@index([tenantId, assignedTo, status])
+  @@index([tenantId, workflowTaskId])
+  @@map("task_notifications")
+  @@schema("notifications")
 }

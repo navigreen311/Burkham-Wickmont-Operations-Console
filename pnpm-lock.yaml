@@ -235,6 +235,22 @@ importers:
         specifier: ^5.8.3
         version: 5.9.3
 
+  packages/notifications:
+    dependencies:
+      '@bwc/core':
+        specifier: workspace:*
+        version: link:../core
+      '@bwc/db':
+        specifier: workspace:*
+        version: link:../db
+      '@bwc/ledger':
+        specifier: workspace:*
+        version: link:../ledger
+    devDependencies:
+      typescript:
+        specifier: ^5.8.3
+        version: 5.9.3
+
   packages/placement:
     dependencies:
       '@bwc/clients':
@@ -271,6 +287,28 @@ importers:
       '@bwc/db':
         specifier: workspace:*
         version: link:../db
+    devDependencies:
+      typescript:
+        specifier: ^5.8.3
+        version: 5.9.3
+
+  packages/workflow:
+    dependencies:
+      '@bwc/clients':
+        specifier: workspace:*
+        version: link:../clients
+      '@bwc/core':
+        specifier: workspace:*
+        version: link:../core
+      '@bwc/db':
+        specifier: workspace:*
+        version: link:../db
+      '@bwc/ledger':
+        specifier: workspace:*
+        version: link:../ledger
+      '@bwc/notifications':
+        specifier: workspace:*
+        version: link:../notifications
     devDependencies:
       typescript:
         specifier: ^5.8.3

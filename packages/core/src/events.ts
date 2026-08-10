@@ -29,6 +29,24 @@ export const EVENT_TYPES = [
   'authority.action_blocked',
   // Tenant isolation (11.2)
   'tenancy.cross_tenant_access_blocked',
+  // Workflow Engine (2.2) - Decision C. The Engine writes these and listens for others.
+  'workflow.started',
+  'workflow.completed',
+  'workflow.failed',
+  'workflow.cancelled',
+  'workflow.task_dispatched',
+  'workflow.task_succeeded',
+  'workflow.task_failed',
+  'workflow.task_retry_scheduled',
+  'workflow.task_dead_lettered',
+  'workflow.task_lease_reclaimed',
+  'workflow.decision_evaluated',
+  'workflow.wait_started',
+  'workflow.wait_resolved',
+  'workflow.sla_breached',
+  // Notification & Task Queue (11.4)
+  'notification.raised',
+  'notification.completed',
 ] as const;
 
 export type EventType = (typeof EVENT_TYPES)[number];
