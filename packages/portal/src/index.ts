@@ -17,5 +17,6 @@
  * own file, checked against the resolved principal rather than an id the caller supplied.
  */
 
+export * from './session.js';
 export * from './views.js';
 export * from './actions.js';

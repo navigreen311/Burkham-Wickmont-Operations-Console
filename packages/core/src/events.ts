@@ -233,6 +233,15 @@ export const EVENT_TYPES = [
   // Data Warehouse (11.6). A capture is an event because the series is only trustworthy if the
   // gaps in it are visible, and a missing snapshot is a missing event.
   'warehouse.snapshot.captured',
+  // Client portal identity (11.1 for 11.10). Failures are events because a run of them against one
+  // client file is the signal that matters, and it is invisible if only successes are recorded.
+  'identity.client_user.invited',
+  'identity.client_user.enrolled',
+  'identity.client_user.signed_in',
+  'identity.client_user.sign_in_failed',
+  'identity.client_user.sign_in_blocked',
+  'identity.client_user.disabled',
+  'identity.client_session.revoked',
 ] as const;
 
 export type EventType = (typeof EVENT_TYPES)[number];
@@ -240,10 +249,18 @@ export type EventType = (typeof EVENT_TYPES)[number];
 export const isEventType = (value: unknown): value is EventType =>
   typeof value === 'string' && (EVENT_TYPES as readonly string[]).includes(value);
 
-/** Who acted. Every event has an actor; there are no anonymous state changes. */
+/**
+ * Who acted. Every event has an actor; there are no anonymous state changes.
+ *
+ * `client` was added with the Client Portal's authentication. A client uploading a statement and a
+ * staff member uploading one on their behalf are DIFFERENT ACTS, and recording both as `human`
+ * would blur exactly the line `sign_for_client` - a Level 4 prohibited action - is drawn along.
+ *
+ * A `client` actor is never an `Actor` row and holds no authority level. See ADR-0021.
+ */
 export interface EventActor {
   readonly id: string;
-  readonly kind: 'village_agent' | 'human';
+  readonly kind: 'village_agent' | 'human' | 'client';
 }
 
 /**

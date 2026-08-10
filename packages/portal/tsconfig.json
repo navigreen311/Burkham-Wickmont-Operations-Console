@@ -26,6 +26,9 @@
       "path": "../deliverables"
     },
     {
+      "path": "../identity"
+    },
+    {
       "path": "../vault"
     }
   ]
