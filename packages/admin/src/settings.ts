@@ -58,7 +58,12 @@ export const effectiveValue = async (
 
   const latest = await db().configurationChange.findFirst({
     where: { tenantId, key, appliedAt: { not: null } },
-    orderBy: { appliedAt: 'desc' },
+    // Tie-broken by `createdAt`, which is the DATABASE's insertion clock and therefore monotonic.
+    // `appliedAt` can legitimately collide - a rollback recorded at the same logical instant as the
+    // change it undoes is the ordinary case, not a contrived one - and with a single sort key the
+    // winner is whichever row Postgres happens to return. That is how this surfaced: the same test
+    // passed in CI and failed locally, on the same code.
+    orderBy: [{ appliedAt: 'desc' }, { createdAt: 'desc' }],
   });
 
   if (!latest) {
@@ -213,7 +218,9 @@ export const setParameter = async (input: SetInput): Promise<Outcome<Configurati
       // A high-risk change is recorded but not applied. `appliedAt` null is what makes it staged
       // in effect rather than only in name - `effectiveValue` reads applied changes only.
       appliedAt: parameter.highRisk ? null : now,
-      createdAt: now,
+      // `createdAt` is deliberately NOT set from the caller's `now`. It is the audit record's own
+      // insertion time, and a caller-supplied value would let a change be back-dated in the trail
+      // that exists to say when it happened. It is also what breaks the tie above.
     },
   });
 

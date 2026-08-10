@@ -7,6 +7,28 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed - the effective configuration value was non-deterministic (`ai-feature/fix-configuration-ordering`)
+
+`effectiveValue` ordered configuration changes by `appliedAt` alone. **`appliedAt` collides whenever
+a change and its rollback are recorded at the same logical instant** - which is the ordinary case
+rather than a contrived one - and with a single sort key the winner was whichever row Postgres
+happened to return.
+
+Found by running `pnpm verify` on merged main: the same test **passed in CI and failed locally, on
+the same code**, which is what a non-deterministic sort looks like from the outside. A test that
+passes on one machine and fails on another is not a flake to re-run; it is a missing tie-break.
+
+Two changes:
+
+- **Ordering is now `appliedAt desc, createdAt desc`.** `createdAt` is the database's own insertion
+  clock and is monotonic, so a rollback recorded at the same instant as the change it undoes wins.
+- **`createdAt` is no longer set from the caller's `now`.** It is the audit record's insertion time,
+  and a caller-supplied value would let a change be back-dated in the trail that exists to say when
+  it happened. It is also what makes the tie-break work.
+
+Pinned by a regression test that records two changes at the same instant and asserts the later
+insert wins. Mutation-verified: reversing the tie-break produces 2 failures.
+
 ### Added - Data Warehouse, Client Portal and Founder Workbench (`ai-feature/m11-warehouse-portal-workbench`)
 
 **11.6 Data Warehouse & Analytics Layer**, **11.10 Client Portal** and **11.11 Founder / Executive

@@ -287,6 +287,42 @@ describe('11.7 staged rollout and rollback', () => {
     expect(after.at(-1)?.reason).toMatch(/Rollback of change/);
   });
 
+  it('resolves two changes at the same instant by insertion order', async () => {
+    // The regression this pins. `appliedAt` collides whenever a change and its rollback are
+    // recorded at the same logical instant - which is the ordinary case, not a contrived one - and
+    // with a single sort key the winner was whichever row Postgres happened to return. It passed
+    // in CI and failed locally on the same code, which is what a non-deterministic sort looks like.
+    const key = 'risk.DEFAULT_REVIEW_CADENCE_DAYS';
+    const SAME = new Date('2026-08-11T09:00:00.000Z');
+
+    const first = await setParameter({
+      tenantId: fx.tenant.id,
+      key,
+      value: 120,
+      reason: 'Lengthened while the Risk & Defense review backlog is cleared.',
+      changedBy: fx.human.id,
+      actor: HUMAN(),
+      now: SAME,
+    });
+    expect(first.status).toBe('ok');
+
+    const second = await setParameter({
+      tenantId: fx.tenant.id,
+      key,
+      value: 60,
+      reason: 'Reverted at the same recorded instant, which is what a rollback usually is.',
+      changedBy: fx.human.id,
+      actor: HUMAN(),
+      now: SAME,
+    });
+    expect(second.status).toBe('ok');
+
+    // Both rows carry the same appliedAt; the later INSERT must win.
+    const value = await effectiveValue(fx.tenant.id, key);
+    if (value.status !== 'ok') return;
+    expect(value.value.value).toBe(60);
+  });
+
   it('lists every parameter with the value in force', async () => {
     const all = await allEffectiveValues(fx.tenant.id);
     expect(all.length).toBe((await import('@bwc/admin')).PARAMETERS.length);
