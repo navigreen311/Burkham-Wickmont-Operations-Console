@@ -125,6 +125,17 @@ export const EVENT_TYPES = [
   'contract.template.reviewed',
   'contract.clause.published',
   'contract.generated',
+  // Pricing, Billing & Offer Management (1.4). The refund events carry the basis, so a declined
+  // entitlement is visible to anyone reading the chain rather than only to whoever declined it.
+  'billing.offer.published',
+  'billing.engagement.started',
+  'billing.engagement.cancelled',
+  'billing.record.written',
+  'billing.credit.applied',
+  'billing.refund.paid',
+  'billing.refund.declined',
+  'billing.funding_outcome.recorded',
+  'billing.funding_outcome.funded',
 ] as const;
 
 export type EventType = (typeof EVENT_TYPES)[number];

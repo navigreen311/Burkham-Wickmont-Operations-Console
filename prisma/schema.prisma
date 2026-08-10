@@ -16,7 +16,7 @@ generator client {
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
-  schemas  = ["tenancy", "identity", "ledger", "clients", "consent", "firewall", "workflow", "notifications", "deliverables", "claims", "vault", "intelligence", "lenders", "governance", "graph", "regulatory", "contracts"]
+  schemas  = ["tenancy", "identity", "ledger", "clients", "consent", "firewall", "workflow", "notifications", "deliverables", "claims", "vault", "intelligence", "lenders", "governance", "graph", "regulatory", "contracts", "billing"]
 }
 
 // ---------------------------------------------------------------------------
@@ -1762,4 +1762,230 @@ model GeneratedContract {
   @@index([tenantId, state, stateModuleVersion])
   @@map("generated_contracts")
   @@schema("contracts")
+}
+
+// ---------------------------------------------------------------------------
+// 1.4 Pricing, Billing & Offer Management
+//
+// Every amount here is stored as an INTEGER NUMBER OF CENTS, not as a decimal or
+// a float. See packages/billing/src/money.ts for the three concrete failures that
+// motivates - the shortest one being that `paid - earned` in floating point can
+// produce a refund of -0.001, and a negative refund is nonsense.
+//
+// Entitlement to a refund is DERIVED from these records rather than stored. A
+// RefundRecord says what was done about an entitlement, not that one exists.
+// ---------------------------------------------------------------------------
+
+/// A rung on the five-offer ladder. Versioned: what a client agreed to must remain
+/// readable after the offer is repriced.
+model OfferDefinition {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+
+  key     String
+  version Int
+
+  name        String
+  /// Position on the ladder, 1 being the entry rung. Drives upgrade credit.
+  rung        Int
+  description String
+
+  /// All amounts in cents.
+  retainerCents        Int
+  monthlyCents         Int    @default(0)
+  /// Basis points, so 8.5% is 850 exactly. A percentage as a float is a rate nobody agreed.
+  successFeeBasisPoints Int   @default(0)
+  /// The engagement minimum, tracked and reported rather than silently enforced.
+  minimumCents         Int    @default(0)
+
+  /// Months the engagement commits to, for prepay proration and the quality window.
+  committedMonths Int @default(0)
+
+  supersededAt DateTime?
+  createdAt    DateTime  @default(now())
+  createdBy    String
+
+  engagements Engagement[]
+
+  @@unique([tenantId, key, version])
+  @@index([tenantId, key, supersededAt])
+  @@map("offer_definitions")
+  @@schema("billing")
+}
+
+enum EngagementStatus {
+  active
+  completed
+  cancelled
+
+  @@schema("billing")
+}
+
+/// A client on a rung, at a specific offer version.
+model Engagement {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  clientId String @db.Uuid
+
+  offerId String          @db.Uuid
+  offer   OfferDefinition @relation(fields: [offerId], references: [id])
+
+  status EngagementStatus @default(active)
+
+  startedOn DateTime
+  /// The end of the committed window. Prepay proration and the quality window run against it.
+  committedThrough DateTime?
+
+  /// True when the client paid the whole term up front. Deferred revenue: a cancellation part way
+  /// through owes back what was paid for and not received.
+  annualPrepay Boolean @default(false)
+
+  cancelledOn     DateTime?
+  cancelledReason String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  records BillingRecord[]
+
+  @@index([tenantId, clientId, status])
+  @@map("engagements")
+  @@schema("billing")
+}
+
+enum BillingRecordKind {
+  /// What we said the client owes.
+  charge
+  /// What the client actually paid.
+  payment
+  /// Money returned. Paired with a RefundRecord that explains why.
+  refund
+  /// Value carried forward from an earlier engagement.
+  credit_applied
+
+  @@schema("billing")
+}
+
+model BillingRecord {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+
+  engagementId String     @db.Uuid
+  engagement   Engagement @relation(fields: [engagementId], references: [id], onDelete: Cascade)
+
+  kind BillingRecordKind
+
+  /// Cents. Charges and payments are positive; the sign is carried by `kind`, not by the number,
+  /// so a query summing amounts cannot silently net a refund against a charge.
+  amountCents Int
+
+  description String
+  /// For a success fee: the approved credit limit it was computed from. NEVER the requested one -
+  /// blueprint 1.4, the Seek Capital lesson. Null for every other kind of line.
+  approvedCreditLimitCents Int?
+
+  occurredOn DateTime
+
+  createdAt DateTime @default(now())
+  createdBy String
+
+  creditsDrawn CreditApplication[] @relation("SourceRecord")
+
+  @@index([tenantId, engagementId, kind])
+  @@map("billing_records")
+  @@schema("billing")
+}
+
+/// Credit carried from a payment on one engagement onto a later one.
+///
+/// References the SOURCE billing record rather than an engagement total, so the available balance
+/// is derived from what that specific payment has not yet been drawn against. A credit chain that
+/// worked off totals could draw the same payment twice through two different upgrades.
+model CreditApplication {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+
+  /// The payment being drawn against.
+  sourceRecordId String        @db.Uuid
+  sourceRecord   BillingRecord @relation("SourceRecord", fields: [sourceRecordId], references: [id], onDelete: Cascade)
+
+  /// The engagement receiving the credit.
+  toEngagementId String @db.Uuid
+
+  amountCents Int
+  rationale   String
+
+  appliedOn DateTime
+  appliedBy String
+
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, sourceRecordId])
+  @@index([tenantId, toEngagementId])
+  @@map("credit_applications")
+  @@schema("billing")
+}
+
+enum RefundDisposition {
+  paid
+  /// An entitlement somebody decided not to honour. Needs a Level 3 human and a reason.
+  declined
+
+  @@schema("billing")
+}
+
+/// What was DONE about an entitlement. Not a record that one exists - that is derived.
+model RefundRecord {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+
+  engagementId String @db.Uuid
+
+  /// Which objective trigger entitled the client.
+  trigger String
+
+  amountCents Int
+  disposition RefundDisposition
+
+  /// Required when declined. Declining a refund the record says is owed is the decision that
+  /// needs oversight; granting one does not, because it was already owed.
+  declineReason String?
+
+  decidedBy String
+  decidedAt DateTime
+
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, engagementId])
+  @@map("refund_records")
+  @@schema("billing")
+}
+
+/// A funding outcome, to the extent 1.4 needs one: the 60-day approved-but-unfunded trigger has
+/// to know when capital was approved and whether it funded.
+///
+/// A minimal stand-in for 5.5 Funding Outcome Ledger (V1.5), which will subsume it - the same
+/// arrangement 5.2's LenderOutcome has.
+model FundingOutcome {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+
+  engagementId String @db.Uuid
+  clientId     String @db.Uuid
+
+  provider String
+
+  /// The Seek Capital field distinction, carried into billing. A success fee computes from the
+  /// approved figure and there is no column here for what was requested.
+  approvedCreditLimitCents Int
+  approvedOn               DateTime
+
+  fundedOn    DateTime?
+  fundedCents Int?
+
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, engagementId])
+  @@map("funding_outcomes")
+  @@schema("billing")
 }

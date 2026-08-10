@@ -29,6 +29,7 @@ const WORKSPACE_PACKAGES = [
   'graph',
   'regulatory',
   'contracts',
+  'billing',
 ] as const;
 
 export default defineConfig({

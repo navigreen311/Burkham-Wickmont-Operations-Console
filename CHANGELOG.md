@@ -7,6 +7,51 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added — Pricing, Billing & Offer Management (`ai-feature/m1-4-pricing-billing-offers`)
+
+**1.4 Pricing, Billing & Offer Management** — the offer ladder, engagements, the credit chain and
+objective refund triggers. See [docs/m1-4-pricing-billing-offers.md](docs/m1-4-pricing-billing-offers.md)
+and [ADR-0011](docs/decisions/ADR-0011-money-is-cents-and-refunds-are-derived.md).
+
+- **Closes 7.3's last Fact Check row.** The fee exhibit is now built from the engagement record
+  rather than from figures a caller asserts, so the tier and the retainer are the ones actually
+  sold. The Seek Capital lesson now holds on both sides: 7.3 makes it impossible to _state_ a
+  success fee on a requested limit, 1.4 makes it impossible to _charge_ one.
+- **Money is integer cents**, rates are basis points, and `fromDollars` throws on a fraction of a
+  cent rather than truncating. Four failures this makes unreachable: `(0.615).toFixed(2)` is
+  `'0.61'`; 8.5% of $1,040.11 drifts; `paid - earned` can produce a sub-cent or **negative** refund;
+  a hundred subtractions do not return to zero.
+- **Rounding goes to the client** — fees round down, refunds round up, as a named parameter at
+  every call site rather than a convention. At most a cent per line, and no client is overcharged
+  by rounding.
+- **Refund entitlement is derived, and the default is to pay.** Granting a triggered refund needs
+  no approval; **declining one needs a Level 3 human and a recorded reason**, written to the Ledger
+  as well as the refund record. `payRefund` refuses to record a payment the record cannot explain —
+  an ex-gratia payment is legitimate and belongs in a path that says so.
+- **The 60-day trigger fires on day 61**, matched to the fee by its approved credit limit rather
+  than by amount or date, which breaks the moment two approvals land in one engagement.
+- **"Engagement quality failure" is not objective as the blueprint writes it.** Given a measurable
+  definition (committed window ended with no approval obtained) and flagged for review, rather than
+  implementing a judgement call as though it were a fact.
+- **Credit draws on a specific billing record**, so double-crediting is arithmetically impossible
+  rather than procedurally discouraged. Refunded money is not offered as credit, and `applyCredit`
+  refuses rather than clamping — a smaller credit reported as success leaves an unexplained
+  difference on an invoice a client reads.
+- **The sign of a billing line is carried by its kind, not by the number**; a negative charge is
+  refused. The balance names its four components, and `outstanding` never goes negative.
+
+**Corrected:** the module header and plan illustrated the float hazard with "8.5% of $47,300",
+which is exact — as were two further attempts. Writing the assertion caught it. An illustrative
+example in a comment is a claim, and nothing checks a claim in a comment.
+
+> **Observed once, unreproduced:** a single full-suite run failed where four subsequent runs
+> passed. It occurred in one command that restored source files, ran the formatter and ran the
+> tests — and tests resolve to source, so prettier was rewriting files vitest was reading. Recorded
+> rather than passed over, because a green re-run proves nothing on its own.
+
+**Tests:** 546 pass (41 new). The decline gate and the double-credit guard were mutation-verified —
+disabling either produces 3 failures.
+
 ### Added — Contract & Disclosure Builder (`ai-feature/m7-3-contract-disclosure-builder`)
 
 **7.3 Contract & Disclosure Builder** — the documents a client signs. See
