@@ -101,6 +101,16 @@ export const EVENT_TYPES = [
   'governance.complaint.recorded',
   // Funding Recommendation Engine (5.3), success path.
   'placement.recommended',
+  // Client Household / Entity Graph (1.2). The reveal events exist because the question a
+  // regulator asks about an encrypted field is not whether it was encrypted but who read it.
+  'graph.entity.recorded',
+  'graph.owner.recorded',
+  'graph.edge.recorded',
+  'graph.edge.ended',
+  'graph.revenue.stated',
+  'graph.primary_entity.set',
+  'graph.ssn.revealed',
+  'graph.ein.revealed',
 ] as const;
 
 export type EventType = (typeof EVENT_TYPES)[number];

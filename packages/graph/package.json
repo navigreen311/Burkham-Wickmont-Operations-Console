@@ -1,8 +1,8 @@
 {
-  "name": "@bwc/placement",
+  "name": "@bwc/graph",
   "version": "0.1.0",
   "private": true,
-  "description": "5.3 Funding Recommendation Engine. Refusal path for the walking skeleton.",
+  "description": "1.2 Client Household / Entity Graph. Entities, owners, guarantees, exposure and relationship findings.",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -18,15 +18,10 @@
   },
   "dependencies": {
     "@bwc/core": "workspace:*",
+    "@bwc/db": "workspace:*",
     "@bwc/ledger": "workspace:*",
-    "@bwc/clients": "workspace:*",
-    "@bwc/consent": "workspace:*",
-    "@bwc/firewall": "workspace:*",
-    "@bwc/integration": "workspace:*",
-    "@bwc/middleware": "workspace:*",
-    "@bwc/lenders": "workspace:*",
-    "@bwc/governance": "workspace:*",
-    "@bwc/graph": "workspace:*"
+    "@bwc/vault": "workspace:*",
+    "@bwc/lenders": "workspace:*"
   },
   "devDependencies": {
     "typescript": "^5.8.3"

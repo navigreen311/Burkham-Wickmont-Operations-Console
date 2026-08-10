@@ -26,6 +26,7 @@ const WORKSPACE_PACKAGES = [
   'capital',
   'lenders',
   'governance',
+  'graph',
 ] as const;
 
 export default defineConfig({

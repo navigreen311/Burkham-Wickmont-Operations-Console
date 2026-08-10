@@ -52,8 +52,31 @@ export interface VendorFeedProvenance {
   readonly consentReference: string;
 }
 
+/**
+ * A figure the client told us.
+ *
+ * Its own tag because it is none of the others: nobody assumed it, no issuer published it, no
+ * vendor returned it - the client said it. Storing a self-reported revenue under `vendor_feed`
+ * would present it identically to a Plaid-derived one, and under `unresearched_default` would
+ * describe the client's own statement as our assumption. Both are Decision D's failure in
+ * different clothing.
+ *
+ * Legitimate to hold and to act on. A client's stated revenue is often the only figure available
+ * early in an engagement, and it is frequently correct. It just has to be labelled.
+ */
+export interface ClientStatedProvenance {
+  readonly tag: 'client_stated';
+  readonly statedBy: string;
+  readonly statedAt: IsoTimestamp;
+  /** A document backing the statement, where one exists. */
+  readonly documentReference?: string;
+}
+
 export type Provenance =
-  IssuerRuleProvenance | UnresearchedDefaultProvenance | VendorFeedProvenance;
+  | IssuerRuleProvenance
+  | UnresearchedDefaultProvenance
+  | VendorFeedProvenance
+  | ClientStatedProvenance;
 
 export type ProvenanceTag = Provenance['tag'];
 
@@ -61,6 +84,7 @@ export const PROVENANCE_TAGS = [
   'issuer_rule',
   'unresearched_default',
   'vendor_feed',
+  'client_stated',
 ] as const satisfies readonly ProvenanceTag[];
 
 /** A value that cannot exist without knowing where it came from. */
@@ -115,9 +139,21 @@ export const describeProvenance = (provenance: Provenance): string => {
       return `Unresearched default - not verified against the issuer. ${provenance.rationale}`;
     case 'vendor_feed':
       return `${provenance.vendor} feed, retrieved ${provenance.retrievedAt.slice(0, 10)}`;
+    case 'client_stated':
+      return `As stated by ${provenance.statedBy} on ${provenance.statedAt.slice(0, 10)}${
+        provenance.documentReference !== undefined
+          ? `, supported by ${provenance.documentReference}`
+          : ' - not independently verified'
+      }`;
   }
 };
 
-/** True when the figure rests on an assumption a client should be told is an assumption. */
+/**
+ * True when the figure rests on something a client should be told is not independently verified.
+ *
+ * Covers `unresearched_default` (we assumed it) and `client_stated` (they told us). Both are
+ * legitimate to act on and both must be labelled where they surface, including in client-facing
+ * deliverables - which is the whole of Decision D's portfolio-wide provenance discipline.
+ */
 export const isUnverified = (provenance: Provenance): boolean =>
-  provenance.tag === 'unresearched_default';
+  provenance.tag === 'unresearched_default' || provenance.tag === 'client_stated';

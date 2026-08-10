@@ -75,6 +75,11 @@ export const cleanupTenant = async (tenantId: string): Promise<void> => {
   await prisma.researchWorkstream.deleteMany({ where: { tenantId } });
   // Rules, offerings, appetite, outcomes and contacts cascade from the provider.
   await prisma.provider.deleteMany({ where: { tenantId } });
+  // Entity graph: edges reference nodes by id without an FK (they are polymorphic), so the
+  // edges have to go first or they outlive what they describe.
+  await prisma.graphEdge.deleteMany({ where: { tenantId } });
+  await prisma.entity.deleteMany({ where: { tenantId } });
+  await prisma.owner.deleteMany({ where: { tenantId } });
   await prisma.consent.deleteMany({ where: { tenantId } });
   await prisma.clientFirewallState.deleteMany({ where: { tenantId } });
   await prisma.client.deleteMany({ where: { tenantId } });

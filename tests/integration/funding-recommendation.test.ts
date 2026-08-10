@@ -19,6 +19,7 @@ import { read } from '@bwc/ledger';
 import { addOffering, registerProvider, type ClientProfile } from '@bwc/lenders';
 import { approve, blacklist, submitForReview } from '@bwc/governance';
 import { rankCandidates, requestRecommendation } from '@bwc/placement';
+import { recordStatedRevenue, setPrimaryEntity, upsertEntity } from '@bwc/graph';
 import type { Provenance } from '@bwc/core';
 import { cleanupTenant, makeFixture, type Fixture } from '../setup.js';
 
@@ -517,6 +518,113 @@ describe('the full request path', () => {
       expect(serialized).not.toMatch(/1200000|1_200_000/);
       expect(serialized).not.toMatch(/730/);
       expect(serialized).not.toMatch(/annualRevenue|personalCreditScore/);
+    }
+  });
+
+  it('derives the profile from the Entity Graph when the caller supplies none', async () => {
+    // The close of the loop. This request carries no profile at all: state, tenure, industry and
+    // revenue all come from the client's household, which is where they actually live.
+    const client = await createClient(fx.tenant.id, 'Derived Profile Co', actor());
+    await transitionComplianceState({
+      tenantId: fx.tenant.id,
+      clientId: client.id,
+      to: 'pass',
+      reason: 'test fixture',
+      actor: actor(),
+    });
+    await grantConsent({
+      tenantId: fx.tenant.id,
+      clientId: client.id,
+      kind: 'application',
+      scope: 'app-derived',
+      actor: actor(),
+    });
+
+    const entity = await upsertEntity({
+      tenantId: fx.tenant.id,
+      clientId: client.id,
+      legalName: 'Derived Operating LLC',
+      role: 'operating',
+      stateOfFormation: 'TX',
+      formationDate: new Date('2022-02-10T00:00:00.000Z'),
+      industry: 'Professional Services',
+      actor: actor(),
+    });
+    if (entity.status !== 'ok') throw new Error('fixture failed');
+
+    await setPrimaryEntity({
+      tenantId: fx.tenant.id,
+      clientId: client.id,
+      entityId: entity.value.id,
+      actor: actor(),
+    });
+    await recordStatedRevenue({
+      tenantId: fx.tenant.id,
+      clientId: client.id,
+      entityId: entity.value.id,
+      annualRevenue: 1_200_000,
+      statedBy: 'A. Owner',
+      statedAt: new Date('2026-07-01T00:00:00.000Z'),
+      actor: actor(),
+    });
+
+    const { result } = await requestRecommendation({
+      actorId: fx.agent.id,
+      tenantId: fx.tenant.id,
+      clientId: client.id,
+      applicationRef: 'app-derived',
+      need: 'working_capital',
+      requestedAmount: 100_000,
+      today: TODAY,
+    });
+
+    expect(result.status).toBe('ok');
+    if (result.status !== 'ok') return;
+
+    // Meridian requires a 680 personal score, and the graph holds none - the bureau vendor is
+    // ungated - so it resolves to `unknown` rather than passing or failing. Swiftline asks for no
+    // score, so it is the option that survives on a file with no authorized pull. That is the
+    // three-valued eligibility doing exactly the job it was built for.
+    expect(result.value.recommendations.recommendations.length).toBeGreaterThan(0);
+    expect(result.value.recommendations.missingProfileFields).toContain('personal_credit_score');
+
+    const events = await read({ tenantId: fx.tenant.id, type: 'placement.recommended' });
+    const event = events.find((entry) => entry.clientId === client.id);
+    expect(event?.payload['derivedFromEntity']).toBe('Derived Operating LLC');
+  });
+
+  it('reports no_data - not not_built - when no primary entity is designated', async () => {
+    // The transition 5.2 caused, repeating for 1.2. The Entity Graph exists and was consulted;
+    // nobody has said which company is applying.
+    const client = await createClient(fx.tenant.id, 'Undesignated Co', actor());
+    await transitionComplianceState({
+      tenantId: fx.tenant.id,
+      clientId: client.id,
+      to: 'pass',
+      reason: 'test fixture',
+      actor: actor(),
+    });
+    await grantConsent({
+      tenantId: fx.tenant.id,
+      clientId: client.id,
+      kind: 'application',
+      scope: 'app-undesignated',
+      actor: actor(),
+    });
+
+    const { result } = await requestRecommendation({
+      actorId: fx.agent.id,
+      tenantId: fx.tenant.id,
+      clientId: client.id,
+      applicationRef: 'app-undesignated',
+      need: 'working_capital',
+      requestedAmount: 100_000,
+      today: TODAY,
+    });
+
+    expect(result.status).toBe('no_data');
+    if (result.status === 'no_data') {
+      expect(result.reason).toMatch(/designate one as primary/);
     }
   });
 
