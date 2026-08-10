@@ -40,6 +40,8 @@ export interface PortalConfig {
   readonly maxUploadBytes: number;
   readonly signInWindowSeconds: number;
   readonly signInMaxAttempts: number;
+  readonly resetWindowSeconds: number;
+  readonly resetMaxAttempts: number;
 }
 
 export const DEFAULT_MAX_JSON_BYTES = 64 * 1024;
@@ -58,6 +60,20 @@ export const DEFAULT_MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
  */
 export const DEFAULT_SIGN_IN_WINDOW_SECONDS = 300;
 export const DEFAULT_SIGN_IN_MAX_ATTEMPTS = 10;
+
+/**
+ * Password-reset rate limit, on its own counter rather than sharing sign-in's.
+ *
+ * Tighter, because the request path is more expensive than a sign-in attempt in a way that matters:
+ * each one mints a token and sends an email to an address the requester chose, so an unlimited
+ * endpoint is a way to have this firm mail somebody repeatedly.
+ *
+ * Separate rather than shared so the two cannot exhaust each other. A shared bucket would mean an
+ * attacker spraying resets from a shared NAT address locks legitimate clients out of signing in -
+ * which is a denial of service built out of two controls that are each individually correct.
+ */
+export const DEFAULT_RESET_WINDOW_SECONDS = 900;
+export const DEFAULT_RESET_MAX_ATTEMPTS = 5;
 
 const required = (name: string): string => {
   const value = process.env[name];
@@ -136,4 +152,6 @@ export const readConfig = (): PortalConfig => ({
     DEFAULT_SIGN_IN_WINDOW_SECONDS,
   ),
   signInMaxAttempts: optionalInteger('PORTAL_SIGN_IN_MAX_ATTEMPTS', DEFAULT_SIGN_IN_MAX_ATTEMPTS),
+  resetWindowSeconds: optionalInteger('PORTAL_RESET_WINDOW_SECONDS', DEFAULT_RESET_WINDOW_SECONDS),
+  resetMaxAttempts: optionalInteger('PORTAL_RESET_MAX_ATTEMPTS', DEFAULT_RESET_MAX_ATTEMPTS),
 });

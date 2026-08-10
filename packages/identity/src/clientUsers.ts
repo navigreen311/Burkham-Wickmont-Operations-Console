@@ -134,7 +134,10 @@ export const inviteClientUser = async (input: {
 
   if (existing && existing.enrolledAt !== null) {
     return refused(
-      `${email} is already enrolled. Re-inviting an enrolled user would be a password reset, which is a different act with a different threat model and is not built here.`,
+      // An invitation and a reset are different acts with different threat models - one gives
+      // somebody an account, the other gives somebody back an account they already have - so this
+      // path refuses rather than quietly becoming the other one.
+      `${email} is already enrolled. Getting them back in is a password reset: 'requestPasswordReset' if they can receive email, or 'issuePasswordReset' from the Concierge Desk against a recorded verification of who they are.`,
       'Blueprint 11.1 - user records',
     );
   }

@@ -3314,6 +3314,7 @@ model ClientUser {
 
   sessions ClientSession[]
   invitations ClientInvitation[]
+  passwordResets ClientPasswordReset[]
 
   @@unique([tenantId, email])
   @@index([tenantId, clientId])
@@ -3345,6 +3346,59 @@ model ClientInvitation {
 
   @@index([tenantId, clientUserId])
   @@map("client_invitations")
+  @@schema("identity")
+}
+
+/// A pending password reset.
+///
+/// Separate from `ClientInvitation` although the mechanics rhyme, because the two answer different
+/// questions and one field of difference decides which: an invitation is issued to somebody who has
+/// no account yet, and a reset to somebody who has one and cannot get into it. Merging them would
+/// mean one expiry, one issuing rule and one audit story for two acts with different threat models.
+model ClientPasswordReset {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+
+  clientUserId String     @db.Uuid
+  clientUser   ClientUser @relation(fields: [clientUserId], references: [id], onDelete: Cascade)
+
+  /// SHA-256 of the token. The token is handed to the delivery seam or returned once to the
+  /// issuing staff member, and is never stored, logged or put in a Ledger payload.
+  tokenHash String @unique
+
+  /// How the reset was asked for. A self-service request is unauthenticated by definition; a
+  /// staff-assisted one carries a human who is answerable for it.
+  source ClientPasswordResetSource
+
+  /// Null for a self-service request - the same reasoning as 6.4's `listedBy`: automatic in, human
+  /// out, and no invented name in the field a reviewer reads. Set to the Level 3 human otherwise.
+  issuedBy String? @db.Uuid
+
+  /// How a staff member satisfied themselves the caller was the client. Required for a
+  /// staff-assisted reset, because the attack on helpdesk password reset is social engineering
+  /// rather than cryptography.
+  verificationBasis String?
+
+  requestedAt DateTime @default(now())
+  /// Short. An invitation may sit in an inbox for days; a reset is used within minutes of being
+  /// asked for, and every extra hour is an hour a forwarded email stays live.
+  expiresAt DateTime
+
+  /// Single use. Set when the new password is set.
+  consumedAt DateTime?
+  /// Set when a newer reset replaced this one. Two live tokens would mean spending one and leaving
+  /// the other.
+  supersededAt DateTime?
+
+  @@index([tenantId, clientUserId])
+  @@map("client_password_resets")
+  @@schema("identity")
+}
+
+enum ClientPasswordResetSource {
+  self_service
+  staff_assisted
+
   @@schema("identity")
 }
 
