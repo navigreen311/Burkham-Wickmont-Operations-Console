@@ -409,6 +409,9 @@ importers:
       '@bwc/ledger':
         specifier: workspace:*
         version: link:../ledger
+      '@bwc/regulatory':
+        specifier: workspace:*
+        version: link:../regulatory
       '@bwc/tenancy':
         specifier: workspace:*
         version: link:../tenancy
@@ -465,6 +468,28 @@ importers:
       '@bwc/middleware':
         specifier: workspace:*
         version: link:../middleware
+    devDependencies:
+      typescript:
+        specifier: ^5.8.3
+        version: 5.9.3
+
+  packages/regulatory:
+    dependencies:
+      '@bwc/core':
+        specifier: workspace:*
+        version: link:../core
+      '@bwc/db':
+        specifier: workspace:*
+        version: link:../db
+      '@bwc/governance':
+        specifier: workspace:*
+        version: link:../governance
+      '@bwc/identity':
+        specifier: workspace:*
+        version: link:../identity
+      '@bwc/ledger':
+        specifier: workspace:*
+        version: link:../ledger
     devDependencies:
       typescript:
         specifier: ^5.8.3

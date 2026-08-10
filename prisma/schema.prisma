@@ -16,7 +16,7 @@ generator client {
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
-  schemas  = ["tenancy", "identity", "ledger", "clients", "consent", "firewall", "workflow", "notifications", "deliverables", "claims", "vault", "intelligence", "lenders", "governance", "graph"]
+  schemas  = ["tenancy", "identity", "ledger", "clients", "consent", "firewall", "workflow", "notifications", "deliverables", "claims", "vault", "intelligence", "lenders", "governance", "graph", "regulatory"]
 }
 
 // ---------------------------------------------------------------------------
@@ -1415,4 +1415,183 @@ model GraphEdge {
   @@index([tenantId, clientId, toId])
   @@map("graph_edges")
   @@schema("graph")
+}
+
+// ---------------------------------------------------------------------------
+// 7.2 State-by-State Regulatory Engine
+//
+// Specification: "The Regulatory Engine is not a post-hoc check. No client-facing
+// action fires without state compliance checks having passed. State activation
+// itself is gated."
+//
+// The gate is the module. Everything else here is a lookup table, and the gate is
+// what makes the table trustworthy: a state with no activation row is not active,
+// so the safe answer is the structural default rather than a value someone edits.
+// ---------------------------------------------------------------------------
+
+/// Whether a published version changed what the rules SAY or only how they read.
+///
+/// Required on every publish rather than defaulted. A default would be chosen once,
+/// by whoever wrote the call site, and then inherited by every later change - which
+/// is exactly how a material change ships as editorial.
+enum StateChangeKind {
+  material
+  editorial
+
+  @@schema("regulatory")
+}
+
+/// A versioned body of rules for one state.
+///
+/// Superseded rather than overwritten, like lender rules: a module that was current
+/// in March has to remain explicable when it justified a March disclosure.
+model StateModule {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+
+  /// Two-letter state code.
+  state   String
+  version Int
+
+  /// What this module covers, in a sentence counsel can read before the detail.
+  summary String
+
+  /// The statutes and regimes this module is built on. Not decoration: a disclosure
+  /// requirement with no cited basis cannot be reviewed by counsel or defended later.
+  citations String[]
+
+  changeKind StateChangeKind
+  /// Required when `changeKind` is editorial - what makes this change not material.
+  changeRationale String?
+
+  /// Marketing-claim rules scoped to this state, read by the Communication Compliance
+  /// Scanner (4.2) alongside the national library.
+  marketingNotes String?
+
+  supersededAt DateTime?
+  createdAt    DateTime  @default(now())
+  createdBy    String
+
+  disclosures StateDisclosure[]
+
+  @@unique([tenantId, state, version])
+  @@index([tenantId, state, supersededAt])
+  @@map("state_modules")
+  @@schema("regulatory")
+}
+
+/// A disclosure a state requires, for a product or for everything.
+model StateDisclosure {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+
+  moduleId String      @db.Uuid
+  module   StateModule @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+
+  /// The product this applies to. `*` means every product in the state - a sentinel
+  /// rather than NULL, because NULL is distinct from NULL in a unique constraint and
+  /// would permit two "all products" rows for the same disclosure.
+  productKind String @default("*")
+
+  /// A stable identifier, so the same requirement can be tracked across versions.
+  key String
+  /// The text itself, or the substance of what must be disclosed.
+  text String
+  /// Which law obliges it.
+  citation String
+
+  createdAt DateTime @default(now())
+
+  @@unique([moduleId, key, productKind])
+  @@index([tenantId, productKind])
+  @@map("state_disclosures")
+  @@schema("regulatory")
+}
+
+/// A recorded counsel review. The thing without which no state may activate.
+///
+/// Insert-only in practice: nothing in the package updates or deletes these rows,
+/// because "counsel reviewed version 3" stops being true if version 3 changes.
+model CounselReview {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+
+  state         String
+  moduleVersion Int
+
+  /// The human who performed or commissioned the review. Not an agent - `activateState`
+  /// refuses any actor that is not a Level 3 human.
+  reviewedBy String
+  reviewedAt DateTime
+
+  /// Where the review lives - a memo, an engagement letter, a file reference. Required:
+  /// a review nobody can produce is indistinguishable from one that never happened.
+  documentReference String
+
+  /// What counsel concluded, in their words.
+  notes String?
+
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, state, moduleVersion])
+  @@map("counsel_reviews")
+  @@schema("regulatory")
+}
+
+/// One row per state that has ever been activated.
+///
+/// Deliberately NOT a status column. It records which module version was reviewed and
+/// when; whether the state is active *now* is derived by comparing that against the
+/// current module version. A stored flag and a newer module version drift, and the
+/// stored one is the one that would silently be wrong - the same reasoning as
+/// governance standing in 5.4 (ADR-0007).
+model StateActivation {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+
+  state String
+
+  /// The module version counsel reviewed and this activation covers.
+  activatedModuleVersion Int
+  activatedBy            String
+  activatedAt            DateTime
+
+  counselReviewId String @db.Uuid
+
+  /// Set when a state is deliberately withdrawn - not when a module supersedes it.
+  withdrawnAt     DateTime?
+  withdrawnBy     String?
+  withdrawnReason String?
+
+  @@unique([tenantId, state])
+  @@map("state_activations")
+  @@schema("regulatory")
+}
+
+/// The state-law change tracker - blueprint 7.2.
+///
+/// Records that something changed in a state's law, whether or not a module has caught
+/// up. An entry with no resulting module version is the useful case: it is the backlog.
+model StateLawChange {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+
+  state   String
+  summary String
+  /// The statute, bulletin or enforcement action.
+  citation  String
+  noticedAt DateTime
+  noticedBy String
+
+  effectiveOn DateTime?
+
+  /// The module version that incorporated this change, once one does.
+  addressedInVersion Int?
+  addressedAt        DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, state, addressedAt])
+  @@map("state_law_changes")
+  @@schema("regulatory")
 }

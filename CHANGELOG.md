@@ -7,6 +7,53 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added — State-by-State Regulatory Engine (`ai-feature/m7-regulatory-engine`)
+
+**7.2 State-by-State Regulatory Engine**, which makes step 5 of the middleware chain a real check.
+See [docs/m7-2-regulatory-engine.md](docs/m7-2-regulatory-engine.md) and
+[ADR-0009](docs/decisions/ADR-0009-state-activation-requires-a-human-and-a-document.md).
+
+- **There is now no `not_built` in the fixed seven-step chain.** Step 5 was the last, and
+  `notBuilt` is no longer imported by `@bwc/middleware` at all. Ungated vendors still report it
+  from `@bwc/integration`, which remains the honest use of the status.
+- **The activation gate is the module.** A state with no activation row is not active; only a
+  **Level 3 human** can change that; and the level is read from the recorded actor rather than from
+  the `EventActor` the caller supplied, because a gate that believes its caller about whether the
+  caller is allowed through is not a gate.
+- **A counsel review needs a named reviewer, a date and a document reference.** Requiring the
+  document does not make the review good — it makes the claim falsifiable, which is the most a data
+  model can do.
+- **`changeKind` is required on every publish, not defaulted.** Material changes return an
+  activated state to review; editorial ones carry activation forward and need a stated rationale;
+  version 1 cannot be editorial. The rule is "any material version since the one reviewed", so an
+  editorial patch on top of an unreviewed rewrite cannot launder it.
+- **Disclosures carry citations, and the federal baseline is returned alongside the state layer,
+  never instead of it.** An empty list would read as "nothing must be disclosed here", which is
+  never true. `missingDisclosures` matches on an attachment key rather than by searching text: a
+  disclosure that is nearly there is not there.
+- **5.4's state restrictions arrive by pull**, per ADR-0007 — `checkJurisdiction` is the reader
+  that choice was made for. Withdrawing a state likewise takes effect on the next action, with no
+  cache to invalidate and no job whose failure would leave it serving clients.
+- **An undeterminable jurisdiction is a refusal, not a pass.** "We could not tell which state" and
+  "no state rule applies" are different statements, and the value of a pre-action check is that a
+  pass means something was checked.
+- **The seven V1 priority states seed as drafts** citing the statutes the specification names.
+  Where a state's obligations are genuinely uncertain to a non-lawyer the module says so rather
+  than inventing a requirement — an invented rule is worse than a missing one, because it looks
+  reviewed. Nothing seeded can serve a client; the seeding function has no path to activation.
+
+**Corrected:** the first implementation deactivated on _any_ republish, making `changeKind`
+decorative. A test named `leaves activation intact for an editorial change` asserted the opposite —
+agreeing with the code and contradicting its own name. A test whose name disagrees with its
+assertion is a design question, not a typo.
+
+> **Operational note:** a client in a state that has not been activated cannot be served, and this
+> refusal will block real work. That is the intended behaviour. The seeded state modules have not
+> been reviewed by counsel and by construction cannot be used until they are.
+
+**Tests:** 475 pass (41 new). The authority check and the material-change rule were
+mutation-verified — disabling either produces 5 failures.
+
 ### Fixed — PII value-shape detector destroyed identifiers ending in digits (`ai-feature/fix-listener-intermittent`)
 
 Diagnosis and fix for the intermittent flagged during 1.2. **It was not a test defect and not in

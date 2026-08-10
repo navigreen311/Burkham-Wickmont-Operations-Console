@@ -124,7 +124,7 @@ describe('middleware chain order', () => {
     expect(requested.some((event) => event.clientId === client.id)).toBe(true);
   });
 
-  it('refuses client-facing content because the Regulatory Engine is not built', async () => {
+  it('refuses client-facing content when no jurisdiction is supplied', async () => {
     const client = await createClient(fx.tenant.id, 'Comms Co', humanActor());
     await transitionComplianceState({
       tenantId: fx.tenant.id,
@@ -143,9 +143,46 @@ describe('middleware chain order', () => {
       clientFacingContent: 'Your approval is guaranteed.',
     });
 
-    // Principle 6 gates client-facing action on a state compliance check. The Engine does
-    // not exist, so the honest outcome is not_built - not a silent pass.
-    expect(result.status).toBe('not_built');
+    // This assertion used to expect `not_built` on 7.2. The Regulatory Engine now exists, so the
+    // step performs a real check - and refuses, because no jurisdiction was supplied. "We could
+    // not tell which state" is not "no state rule applies", and principle 6's whole value is that
+    // a pass means something was actually checked.
+    //
+    // The step still blocks, which is the property the chain guarantees; only the reason has
+    // become a more accurate one.
+    expect(result.status).toBe('refused');
+    if (result.status === 'refused') {
+      expect(result.reason).toMatch(/state could not be determined/i);
+      expect(result.principle).toMatch(/principle 6/i);
+    }
     expect(trace.find((entry) => entry.step === 'regulatory')?.outcome).toBe('blocked');
+  });
+
+  it('refuses client-facing content for a state that has not been activated', async () => {
+    const client = await createClient(fx.tenant.id, 'Unactivated State Co', humanActor());
+    await transitionComplianceState({
+      tenantId: fx.tenant.id,
+      clientId: client.id,
+      to: 'pass',
+      reason: 'test',
+      actor: humanActor(),
+    });
+
+    const { result } = await chain({
+      actorId: fx.agent.id,
+      tenantId: fx.tenant.id,
+      action: 'draft_recommendation',
+      clientId: client.id,
+      eventType: 'placement.requested',
+      clientFacingContent: 'A perfectly ordinary sentence.',
+      jurisdiction: 'OH',
+    });
+
+    // No module for Ohio, so no counsel has reviewed anything, so nothing goes out. This refusal
+    // will block real work, and that is the intended behaviour rather than a rough edge.
+    expect(result.status).toBe('refused');
+    if (result.status === 'refused') {
+      expect(result.reason).toMatch(/No regulatory module exists for OH/);
+    }
   });
 });

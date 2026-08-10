@@ -111,6 +111,14 @@ export const EVENT_TYPES = [
   'graph.primary_entity.set',
   'graph.ssn.revealed',
   'graph.ein.revealed',
+  // State-by-State Regulatory Engine (7.2). Activation is the event a regulator asks about:
+  // who brought this state online, against which module version, and on whose review.
+  'regulatory.module.published',
+  'regulatory.state.activated',
+  'regulatory.state.withdrawn',
+  'regulatory.seed.published',
+  'regulatory.law_change.noticed',
+  'regulatory.law_change.addressed',
 ] as const;
 
 export type EventType = (typeof EVENT_TYPES)[number];

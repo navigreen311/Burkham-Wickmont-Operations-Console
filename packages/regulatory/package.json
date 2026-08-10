@@ -1,8 +1,8 @@
 {
-  "name": "@bwc/middleware",
+  "name": "@bwc/regulatory",
   "version": "0.1.0",
   "private": true,
-  "description": "The fixed seven-step middleware chain (Specification v2 section 5.5).",
+  "description": "7.2 State-by-State Regulatory Engine. State modules, the counsel-review activation gate, disclosures.",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -18,12 +18,10 @@
   },
   "dependencies": {
     "@bwc/core": "workspace:*",
+    "@bwc/db": "workspace:*",
     "@bwc/ledger": "workspace:*",
     "@bwc/identity": "workspace:*",
-    "@bwc/tenancy": "workspace:*",
-    "@bwc/clients": "workspace:*",
-    "@bwc/firewall": "workspace:*",
-    "@bwc/regulatory": "workspace:*"
+    "@bwc/governance": "workspace:*"
   },
   "devDependencies": {
     "typescript": "^5.8.3"
