@@ -42,7 +42,18 @@ export interface PortalConfig {
   readonly signInMaxAttempts: number;
   readonly resetWindowSeconds: number;
   readonly resetMaxAttempts: number;
+  /**
+   * Where attempt counters live.
+   *
+   * `memory` is correct for exactly one instance and wrong for two: each process would enforce the
+   * configured limit on its own, so three replicas give an attacker three times the budget and a
+   * rolling deploy hands them a clean slate. Neither is visible from inside any one process, which
+   * is why this has no default.
+   */
+  readonly rateLimitStore: RateLimitStore;
 }
+
+export type RateLimitStore = 'memory' | 'shared';
 
 export const DEFAULT_MAX_JSON_BYTES = 64 * 1024;
 export const DEFAULT_MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
@@ -119,6 +130,22 @@ const parseTrustProxy = (raw: string): boolean | number => {
   return hops;
 };
 
+/**
+ * Parse `PORTAL_RATE_LIMIT_STORE`.
+ *
+ * No default, for the same reason `PORTAL_TRUST_PROXY` has none: both are settings whose wrong value
+ * produces a system that looks like it is enforcing a control and is not, and neither failure is
+ * visible from inside the process.
+ */
+const parseRateLimitStore = (raw: string): RateLimitStore => {
+  const value = raw.toLowerCase();
+  if (value === 'memory' || value === 'shared') return value;
+
+  throw new Error(
+    `PORTAL_RATE_LIMIT_STORE must be 'memory' or 'shared'; got '${raw}'. 'memory' counts attempts per process and is correct for a single instance; 'shared' puts the counter in Postgres, which is what more than one instance needs - three replicas counting separately give an attacker three times the limit.`,
+  );
+};
+
 const optionalInteger = (name: string, fallback: number): number => {
   const raw = process.env[name];
   if (raw === undefined || raw.trim() === '') return fallback;
@@ -154,4 +181,5 @@ export const readConfig = (): PortalConfig => ({
   signInMaxAttempts: optionalInteger('PORTAL_SIGN_IN_MAX_ATTEMPTS', DEFAULT_SIGN_IN_MAX_ATTEMPTS),
   resetWindowSeconds: optionalInteger('PORTAL_RESET_WINDOW_SECONDS', DEFAULT_RESET_WINDOW_SECONDS),
   resetMaxAttempts: optionalInteger('PORTAL_RESET_MAX_ATTEMPTS', DEFAULT_RESET_MAX_ATTEMPTS),
+  rateLimitStore: parseRateLimitStore(required('PORTAL_RATE_LIMIT_STORE')),
 });

@@ -22,6 +22,9 @@ env:
   # A DIFFERENT key from VAULT_KEK, deliberately: one key for both would mean a compromise
   # of either reaches the other. Test values, not secrets.
   MFA_SECRET_KEY: 00112233445566778899aabbccddeeff00112233445566778899aabbccddee00
+  # The tests that need the shared store construct it directly; this is for anything
+  # that reads the config.
+  PORTAL_RATE_LIMIT_STORE: memory
   INTEGRATION_MODE: stub
 
 jobs:
