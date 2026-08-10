@@ -121,6 +121,44 @@ describe('Event Ledger chain', () => {
     }
   });
 
+  it('survives concurrent appends to the same tenant, with a contiguous intact chain', async () => {
+    // Regression guard. Appends to one tenant are strictly serial by construction - `seq` is
+    // monotonic and each entry hashes its predecessor - so two concurrent appends must order
+    // somehow. Under `Serializable` alone they ordered by one of them ABORTING, which surfaced
+    // as a thrown PrismaClientKnownRequestError the first time two workers wrote for the same
+    // tenant at once. It passed on a slower machine and failed in CI, which is the wrong way
+    // round for a defect that would hit production the moment a second worker started.
+    const concurrent = await makeFixture('ledger-concurrent');
+    try {
+      const writes = Array.from({ length: 12 }, (_, index) =>
+        append({
+          tenantId: concurrent.tenant.id,
+          type: 'client.created',
+          actor: { id: concurrent.human.id, kind: 'human' },
+          payload: { index },
+        }),
+      );
+
+      // Every write must succeed. A ledger append that throws means a state change happened
+      // with no record of it.
+      const results = await Promise.all(writes);
+      expect(results).toHaveLength(12);
+
+      const events = await read({ tenantId: concurrent.tenant.id });
+      expect(events).toHaveLength(12);
+
+      // Contiguous sequence, no gaps and no duplicates.
+      expect(events.map((event) => event.seq)).toEqual([...Array(12).keys()].map((n) => n + 1));
+
+      // And the hash chain still verifies - ordering under contention must not fork it.
+      const integrity = await verifyIntegrity(concurrent.tenant.id);
+      expect(integrity.intact).toBe(true);
+      expect(integrity.checked).toBe(12);
+    } finally {
+      await cleanupTenant(concurrent.tenant.id);
+    }
+  });
+
   it('assigns seq and signature itself, ignoring anything a caller supplies', async () => {
     const event = await append({
       tenantId: fx.tenant.id,

@@ -35,6 +35,17 @@ outreach, and both instances would look legitimate.
 
 ### Fixed
 
+- **Concurrent Event Ledger appends to the same tenant threw instead of ordering.** `append` ran
+  under `Serializable` with a monotonic per-tenant `seq`, so two appends racing — two workers, or
+  a worker and the API — aborted one with a serialization failure. Surfaced by the concurrent
+  scheduler test on CI's faster machine while passing locally.
+
+  The fix is a per-tenant transaction-scoped advisory lock **plus `ReadCommitted`**. An advisory
+  lock alone was not enough: under `Serializable` the snapshot is fixed at transaction start, so
+  the waiter acquired the lock and still read a tail from before the other commit. A lock
+  serializes entry; it cannot refresh a snapshot. Guarded by a test that fires 12 concurrent
+  appends and asserts a contiguous sequence and an intact chain.
+
 - **Event-waits could never advance.** The listener set a resolved wait back to `pending`, but the
   engine's `wait` handler re-parks any event-wait it claims — so the task ping-ponged between
   `pending` and `waiting` forever and the workflow never progressed, with nothing failing.
