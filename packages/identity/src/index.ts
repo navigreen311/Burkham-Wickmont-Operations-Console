@@ -140,3 +140,4 @@ export * from './passwordChange.js';
 export * from './passwordReset.js';
 export * from './rateLimit.js';
 export * from './sessions.js';
+export * from './webauthn.js';

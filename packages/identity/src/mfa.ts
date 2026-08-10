@@ -87,19 +87,72 @@ export interface MfaChallenge {
   readonly expiresAt: string;
 }
 
-/** Whether a user must present a second factor. Read on the sign-in path. */
-export const activeFactorFor = async (
+export interface ActiveFactor {
+  readonly id: string;
+  readonly kind: string;
+  readonly label: string | null;
+  readonly secretCiphertext: string | null;
+  readonly lastUsedStep: bigint | null;
+  readonly credentialId: string | null;
+  readonly transports: string | null;
+}
+
+/**
+ * Every factor an account holds.
+ *
+ * **More than one is allowed, and that changed with WebAuthn.** One factor was right when the only
+ * factor was an authenticator app; it is wrong for a security key, because a key with no second key
+ * and no app is one lost object away from a lockout whose only remedy is a phone call to the firm.
+ */
+export const activeFactorsFor = async (
+  tenantId: string,
+  clientUserId: string,
+): Promise<readonly ActiveFactor[]> => {
+  const factors = await db().clientMfaFactor.findMany({
+    where: { tenantId, clientUserId, removedAt: null, confirmedAt: { not: null } },
+    orderBy: { confirmedAt: 'asc' },
+  });
+
+  return factors.map((factor) => ({
+    id: factor.id,
+    kind: factor.kind,
+    label: factor.label,
+    secretCiphertext: factor.secretCiphertext,
+    lastUsedStep: factor.lastUsedStep,
+    credentialId: factor.credentialId,
+    transports: factor.transports,
+  }));
+};
+
+/** Whether a user must present a second factor at all. Read on the sign-in path. */
+export const hasActiveFactor = async (tenantId: string, clientUserId: string): Promise<boolean> =>
+  (await activeFactorsFor(tenantId, clientUserId)).length > 0;
+
+/**
+ * The account's authenticator-app factor, if it has one.
+ *
+ * Named for the kind rather than for "the factor", because since WebAuthn there may be several and
+ * only this one has a secret to compute codes from.
+ */
+export const activeTotpFactor = async (
   tenantId: string,
   clientUserId: string,
 ): Promise<{ id: string; secretCiphertext: string; lastUsedStep: bigint | null } | null> => {
   const factor = await db().clientMfaFactor.findFirst({
-    where: { tenantId, clientUserId, removedAt: null, confirmedAt: { not: null } },
+    where: {
+      tenantId,
+      clientUserId,
+      kind: 'totp',
+      removedAt: null,
+      confirmedAt: { not: null },
+      secretCiphertext: { not: null },
+    },
     orderBy: { confirmedAt: 'desc' },
   });
   return factor
     ? {
         id: factor.id,
-        secretCiphertext: factor.secretCiphertext,
+        secretCiphertext: factor.secretCiphertext as string,
         lastUsedStep: factor.lastUsedStep,
       }
     : null;
@@ -107,7 +160,7 @@ export const activeFactorFor = async (
 
 export const mfaStatus = async (tenantId: string, clientUserId: string): Promise<MfaStatus> => {
   const [active, pending, codes] = await Promise.all([
-    activeFactorFor(tenantId, clientUserId),
+    activeFactorsFor(tenantId, clientUserId),
     db().clientMfaFactor.count({
       where: { tenantId, clientUserId, removedAt: null, confirmedAt: null },
     }),
@@ -117,7 +170,7 @@ export const mfaStatus = async (tenantId: string, clientUserId: string): Promise
   ]);
 
   return {
-    enrolled: active !== null,
+    enrolled: active.length > 0,
     pendingEnrolment: pending > 0,
     recoveryCodesRemaining: codes,
   };
@@ -148,9 +201,12 @@ export const beginMfaEnrolment = async (input: {
     );
   }
 
-  if ((await activeFactorFor(input.tenantId, user.id)) !== null) {
+  if ((await activeTotpFactor(input.tenantId, user.id)) !== null) {
+    // One authenticator APP. A security key alongside it is allowed and encouraged - it is what
+    // stops a lost phone being a lockout - but two apps holding two secrets for one account is a
+    // second thing to keep in sync for no gain.
     return refused(
-      'This account already has an authenticator. Remove the existing one first - which needs the password and a current code, so that adding a second cannot be done from a stolen session alone.',
+      'This account already has an authenticator app. Remove the existing one first - which needs the password and a current code, so that adding a second cannot be done from a stolen session alone.',
       'Blueprint 11.1 - identity and access',
     );
   }
@@ -231,7 +287,9 @@ export const confirmMfaEnrolment = async (input: {
     },
     orderBy: { createdAt: 'desc' },
   });
-  if (!pending) {
+  // `secretCiphertext` is nullable since WebAuthn, which has no shared secret. A pending factor
+  // without one is not an authenticator app waiting to be confirmed.
+  if (!pending || pending.secretCiphertext === null) {
     return refused(
       'There is no authenticator waiting to be confirmed. Start again.',
       'Blueprint 11.1 - identity and access',
@@ -365,7 +423,7 @@ export const answerMfaChallenge = async (input: {
   // still a gap.
   if (user.enrolledAt === null || user.disabledAt !== null) return generic;
 
-  const factor = await activeFactorFor(input.tenantId, user.id);
+  const factor = await activeTotpFactor(input.tenantId, user.id);
   if (!factor) return generic;
 
   const secret = await readSecret(factor.secretCiphertext);
@@ -459,7 +517,7 @@ export const verifySecondFactor = async (input: {
   code: string;
   now: Date;
 }): Promise<Outcome<{ usedRecoveryCode: boolean }>> => {
-  const factor = await activeFactorFor(input.tenantId, input.clientUserId);
+  const factor = await activeTotpFactor(input.tenantId, input.clientUserId);
   if (!factor) {
     return refused('This account has no authenticator.', 'Blueprint 11.1 - identity and access');
   }
@@ -487,6 +545,70 @@ export const verifySecondFactor = async (input: {
   }
 
   return refused('That code is not correct.', 'Blueprint 11.1 - identity and access');
+};
+
+/**
+ * Who an unanswered sign-in challenge belongs to, without answering it.
+ *
+ * The WebAuthn path needs this: to offer the right credentials it has to know whose account is
+ * being signed into, and the only thing the caller holds at that point is the challenge token.
+ * Deliberately does NOT satisfy anything - naming the user is not proof of anything about them.
+ */
+export const clientUserForMfaChallenge = async (input: {
+  tenantId: string;
+  token: string;
+  now?: Date;
+}): Promise<Outcome<{ clientUserId: string }>> => {
+  const now = input.now ?? new Date();
+  const generic = refused('That code is not correct.', 'Blueprint 11.1 - identity and access');
+
+  const challenge = await db().clientMfaChallenge.findFirst({
+    where: { tenantId: input.tenantId, tokenHash: await hashToken(input.token) },
+  });
+
+  if (!challenge) return generic;
+  if (challenge.satisfiedAt !== null || challenge.abandonedAt !== null) return generic;
+  if (challenge.expiresAt.getTime() <= now.getTime()) return generic;
+  if (challenge.failedAttempts >= MFA_MAX_CHALLENGE_ATTEMPTS) return generic;
+
+  return ok({ clientUserId: challenge.clientUserId });
+};
+
+/**
+ * Mark a sign-in challenge answered.
+ *
+ * Used by the WebAuthn path once an assertion has verified. Separate from `answerMfaChallenge`
+ * because the composition lives in `@bwc/portal`: this module cannot import the WebAuthn verifier
+ * without a cycle, and a cycle broken by a dynamic import is a cycle nobody sees.
+ *
+ * The update is conditional on the challenge still being unanswered, so two assertions racing for
+ * one challenge produce one session.
+ */
+export const satisfyMfaChallenge = async (input: {
+  tenantId: string;
+  token: string;
+  now?: Date;
+}): Promise<Outcome<{ clientUserId: string }>> => {
+  const now = input.now ?? new Date();
+  const generic = refused('That code is not correct.', 'Blueprint 11.1 - identity and access');
+
+  const challenge = await db().clientMfaChallenge.findFirst({
+    where: { tenantId: input.tenantId, tokenHash: await hashToken(input.token) },
+  });
+  if (!challenge) return generic;
+
+  const satisfied = await db().clientMfaChallenge.updateMany({
+    where: {
+      id: challenge.id,
+      satisfiedAt: null,
+      abandonedAt: null,
+      expiresAt: { gt: now },
+    },
+    data: { satisfiedAt: now },
+  });
+  if (satisfied.count !== 1) return generic;
+
+  return ok({ clientUserId: challenge.clientUserId });
 };
 
 /**
@@ -520,7 +642,7 @@ export const disableMfa = async (input: {
     );
   }
 
-  const factor = await activeFactorFor(input.tenantId, user.id);
+  const factor = await activeTotpFactor(input.tenantId, user.id);
   if (!factor) {
     return refused(
       'This account has no authenticator to remove.',
@@ -604,7 +726,7 @@ export const removeMfaForClient = async (input: {
   });
   if (!user) return noData(`No client user ${input.clientUserId} is on record.`);
 
-  const factor = await activeFactorFor(input.tenantId, user.id);
+  const factor = await activeTotpFactor(input.tenantId, user.id);
   if (!factor) {
     return refused(
       'This account has no authenticator to remove.',
@@ -670,7 +792,7 @@ export const regenerateRecoveryCodes = async (input: {
     );
   }
 
-  if ((await activeFactorFor(input.tenantId, user.id)) === null) {
+  if (!(await hasActiveFactor(input.tenantId, user.id))) {
     return refused(
       'Recovery codes exist to get past an authenticator, and this account has none.',
       'Blueprint 11.1 - identity and access',

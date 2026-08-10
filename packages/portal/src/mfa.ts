@@ -12,6 +12,9 @@
 
 import {
   beginMfaEnrolment,
+  beginWebauthnRegistration,
+  completeWebauthnRegistration,
+  registeredKeys,
   changeClientPassword,
   completeEmailChange,
   confirmMfaEnrolment,
@@ -23,6 +26,9 @@ import {
   type ConfirmedEnrolment,
   type EmailChangeAcknowledgement,
   type EnrolmentOffer,
+  type RegisteredKey,
+  type RegistrationChallenge,
+  type RelyingParty,
   type MfaStatus,
   type PasswordChanged,
 } from '@bwc/identity';
@@ -125,6 +131,43 @@ export const confirmAddressChange = async (input: {
   token: string;
   now?: Date;
 }): Promise<Outcome<CompletedEmailChange>> => completeEmailChange(input);
+
+/**
+ * Options for registering a security key.
+ *
+ * The stronger second factor: bound to the origin, so a phishing proxy cannot relay it the way it
+ * relays six digits.
+ */
+export const startKeyRegistration = async (input: {
+  principal: ClientPrincipal;
+  rp: RelyingParty;
+}): Promise<Outcome<RegistrationChallenge>> =>
+  beginWebauthnRegistration({
+    tenantId: input.principal.tenantId,
+    clientUserId: input.principal.actorId,
+    rp: input.rp,
+  });
+
+/** Finish registering a key. Takes the password, as every credential change does. */
+export const registerKey = async (input: {
+  principal: ClientPrincipal;
+  password: string;
+  label: string;
+  response: Record<string, unknown>;
+  rp: RelyingParty;
+}): Promise<Outcome<RegisteredKey>> =>
+  completeWebauthnRegistration({
+    tenantId: input.principal.tenantId,
+    clientUserId: input.principal.actorId,
+    password: input.password,
+    label: input.label,
+    response: input.response,
+    rp: input.rp,
+  });
+
+/** The keys on this account, for a settings screen. */
+export const keysOnAccount = async (principal: ClientPrincipal) =>
+  registeredKeys(principal.tenantId, principal.actorId);
 
 /** A fresh set of recovery codes, retiring the old ones. */
 export const newRecoveryCodes = async (input: {

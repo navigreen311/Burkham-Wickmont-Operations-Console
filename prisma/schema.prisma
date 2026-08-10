@@ -3319,6 +3319,7 @@ model ClientUser {
   mfaChallenges ClientMfaChallenge[]
   recoveryCodes ClientRecoveryCode[]
   emailChanges ClientEmailChange[]
+  webauthnChallenges ClientWebauthnChallenge[]
 
   @@unique([tenantId, email])
   @@index([tenantId, clientId])
@@ -3418,13 +3419,33 @@ model ClientMfaFactor {
   kind ClientMfaKind @default(totp)
 
   /// The TOTP shared secret, field-encrypted (`@bwc/crypto`) under a key that is not in this
-  /// database.
+  /// database. **Null for a WebAuthn factor**, which has no shared secret at all - that is the
+  /// point of it, and the reason a leaked database yields nothing usable for one.
   ///
-  /// Unlike a password hash this MUST be recoverable - codes are computed from it - so the
+  /// Unlike a password hash a TOTP secret MUST be recoverable - codes are computed from it - so the
   /// protection cannot be a one-way function. A leaked database without the key yields ciphertext;
   /// a leaked database WITH the key yields working second factors, which is why the key belongs in
   /// a secret manager and ultimately in the HSM §6.2 wants.
-  secretCiphertext String
+  secretCiphertext String?
+
+  /// The credential id the authenticator returned, base64url. Unique, so one security key cannot be
+  /// registered twice or against two accounts.
+  credentialId String? @unique
+  /// The credential's public key, base64url. **Public**: a leaked database gives an attacker the
+  /// thing that verifies a signature, not the thing that produces one.
+  publicKey String?
+  /// The authenticator's signature counter at the last accepted assertion.
+  ///
+  /// A value that does not advance means two authenticators are answering for one credential - a
+  /// clone. Enforced only once a credential has shown it uses a counter: many authenticators do not
+  /// implement one and always report zero, and refusing that would reject every passkey in
+  /// existence.
+  signCount Int?
+  /// Comma-separated transport hints from the browser, for a nicer prompt next time.
+  transports String?
+  /// What the client calls it. Two keys are indistinguishable without one, and a factor a client
+  /// cannot identify is one they will not dare remove.
+  label String?
 
   /// Null until a code from the new authenticator has verified. **A factor nobody has proved they
   /// can use is not a factor; it is a lockout waiting for the next sign-in.**
@@ -3450,6 +3471,41 @@ model ClientMfaFactor {
 
 enum ClientMfaKind {
   totp
+  /// A security key or platform authenticator. Bound to the ORIGIN, which is what makes it
+  /// phishing-resistant in a way TOTP is not.
+  webauthn
+
+  @@schema("identity")
+}
+
+/// A challenge issued for a WebAuthn ceremony, registration or authentication.
+///
+/// Server-generated, stored, single use and short-lived. A challenge the client could choose, or
+/// reuse, is a replayable signature - the whole ceremony rests on the value being ours and being
+/// spent.
+model ClientWebauthnChallenge {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+
+  clientUserId String     @db.Uuid
+  clientUser   ClientUser @relation(fields: [clientUserId], references: [id], onDelete: Cascade)
+
+  /// base64url, as the browser will echo it back.
+  challenge String @unique
+  ceremony  ClientWebauthnCeremony
+
+  issuedAt  DateTime @default(now())
+  expiresAt DateTime
+  consumedAt DateTime?
+
+  @@index([tenantId, clientUserId])
+  @@map("client_webauthn_challenges")
+  @@schema("identity")
+}
+
+enum ClientWebauthnCeremony {
+  registration
+  authentication
 
   @@schema("identity")
 }

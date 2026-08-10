@@ -51,6 +51,17 @@ export interface PortalConfig {
    * is why this has no default.
    */
   readonly rateLimitStore: RateLimitStore;
+  /**
+   * The WebAuthn relying party.
+   *
+   * `rpId` is the domain a credential is scoped to; `origin` is the exact URL a browser must have
+   * been on. **Neither may come from a request.** An RP ID a caller chooses is a caller choosing the
+   * scope of the credential, and an origin a caller chooses is the phishing resistance switched off
+   * by the party it exists to stop - which is the entire reason to prefer a key over six digits.
+   */
+  readonly rpId: string;
+  readonly rpName: string;
+  readonly origin: string;
 }
 
 export type RateLimitStore = 'memory' | 'shared';
@@ -146,6 +157,30 @@ const parseRateLimitStore = (raw: string): RateLimitStore => {
   );
 };
 
+/**
+ * Parse `PORTAL_ORIGIN`.
+ *
+ * An exact origin - scheme, host and port, no path. A trailing path would never match what a
+ * browser reports, and the mismatch would show up as every key failing rather than as a
+ * configuration error.
+ */
+const parseOrigin = (raw: string): string => {
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    throw new Error(
+      `PORTAL_ORIGIN must be an absolute URL such as https://portal.example.com; got '${raw}'.`,
+    );
+  }
+  if (url.pathname !== '/' || url.search !== '' || url.hash !== '') {
+    throw new Error(
+      `PORTAL_ORIGIN must be an origin with no path, such as https://portal.example.com; got '${raw}'.`,
+    );
+  }
+  return url.origin;
+};
+
 const optionalInteger = (name: string, fallback: number): number => {
   const raw = process.env[name];
   if (raw === undefined || raw.trim() === '') return fallback;
@@ -182,4 +217,7 @@ export const readConfig = (): PortalConfig => ({
   resetWindowSeconds: optionalInteger('PORTAL_RESET_WINDOW_SECONDS', DEFAULT_RESET_WINDOW_SECONDS),
   resetMaxAttempts: optionalInteger('PORTAL_RESET_MAX_ATTEMPTS', DEFAULT_RESET_MAX_ATTEMPTS),
   rateLimitStore: parseRateLimitStore(required('PORTAL_RATE_LIMIT_STORE')),
+  rpId: required('PORTAL_RP_ID'),
+  rpName: process.env['PORTAL_RP_NAME']?.trim() || 'Burkham Wickmont',
+  origin: parseOrigin(required('PORTAL_ORIGIN')),
 });

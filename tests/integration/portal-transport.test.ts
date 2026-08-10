@@ -133,6 +133,9 @@ beforeAll(async () => {
     resetMaxAttempts: 1000,
     // Per process here: these tests drive one server and inject their own limiters.
     rateLimitStore: 'memory',
+    rpId: 'localhost',
+    rpName: 'Burkham Wickmont',
+    origin: 'http://localhost',
   };
 
   server = createServer(createPortalApp({ config, vault, limiter, resetLimiter }));

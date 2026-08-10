@@ -25,6 +25,8 @@ env:
   # The tests that need the shared store construct it directly; this is for anything
   # that reads the config.
   PORTAL_RATE_LIMIT_STORE: memory
+  PORTAL_RP_ID: localhost
+  PORTAL_ORIGIN: http://localhost
   INTEGRATION_MODE: stub
 
 jobs:

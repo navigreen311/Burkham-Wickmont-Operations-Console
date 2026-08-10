@@ -29,7 +29,7 @@ import { append } from '@bwc/ledger';
 import { noData, notBuilt, ok, refused, type EventActor, type Outcome } from '@bwc/core';
 import { findActor } from './index.js';
 import { hashToken, newToken, verifyPassword } from './credentials.js';
-import { activeFactorFor, verifySecondFactor } from './mfa.js';
+import { hasActiveFactor, verifySecondFactor } from './mfa.js';
 
 /** How long a verification token is good for. Same reasoning as a reset: minutes, not days. */
 export const EMAIL_CHANGE_MINUTES = 60;
@@ -166,7 +166,7 @@ export const requestEmailChange = async (input: {
     );
   }
 
-  if ((await activeFactorFor(input.tenantId, user.id)) !== null) {
+  if (await hasActiveFactor(input.tenantId, user.id)) {
     const presented = await verifySecondFactor({
       tenantId: input.tenantId,
       clientUserId: user.id,
