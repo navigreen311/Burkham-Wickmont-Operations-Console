@@ -136,6 +136,17 @@ export const EVENT_TYPES = [
   'billing.refund.declined',
   'billing.funding_outcome.recorded',
   'billing.funding_outcome.funded',
+  // Sales Motion & Engagement Tracking (1.3). The attribution events carry both sides of a
+  // correction, because a payout dispute asks what changed and who changed it.
+  'sales.lead.created',
+  'sales.lead.qualified',
+  'sales.blueprint.delivered',
+  'sales.review_call.scheduled',
+  'sales.lead.escalated',
+  'sales.attribution.corrected',
+  'sales.lead.converted',
+  'sales.lead.closed',
+  'sales.readiness.recorded',
 ] as const;
 
 export type EventType = (typeof EVENT_TYPES)[number];

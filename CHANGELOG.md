@@ -7,6 +7,44 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added - Sales Motion & Engagement Tracking (`ai-feature/m1-3-sales-motion`)
+
+**1.3 Sales Motion & Engagement Tracking** - leads, attribution, inactivity escalation, conversion,
+expansion. See [docs/m1-3-sales-motion.md](docs/m1-3-sales-motion.md).
+
+**Category 1's V1 modules are now complete** (1.1, 1.2, 1.3, 1.4, 1.5).
+
+- **Attribution is a financial fact**, so it is written once at creation and this package exposes
+  no path that updates it. A correction is a separate row with the original intact - a payout
+  dispute asks "who was this attributed to when the fee was calculated", and overwriting destroys
+  the only evidence. **First touch, not last**, stated rather than picked silently. Correcting
+  requires a Level 3 human and a reason.
+- **`sourceChannel` is required, not defaulted.** "Unknown" would be indistinguishable from a real
+  answer the moment anyone ran a channel report.
+- **Conversion cannot outrun compliance.** It creates a client through 1.1, which starts in
+  `pending_assessment` - the state the gate refuses - and that is **tested** rather than asserted,
+  because the day somebody adds a second path to a client record is the day a comment stops being
+  true and nothing notices.
+- **Inactivity is derived, not scheduled** (fifth appearance of that reasoning). Stale on day 46;
+  `lastActivityAt` moves only forward, so a back-dated note cannot make an escalation disappear.
+  The escalation raises a 2.4 task and is idempotent - a version that re-raised every pass would
+  queue the same lead daily until somebody stopped reading the queue.
+- **Expansion signals are prompts, not instructions.** Each carries what moved and by how much;
+  `readiness_improved` and `blueprint_aged` are reported separately because they call for different
+  conversations. Readiness readings live in their own table, since comparing across time against an
+  overwritten column is a comparison with itself.
+- **`at_risk` is separated from `lapsed`** - the difference is whether anybody is still in time to
+  have the conversation.
+- **Loss reasons are categorical**, and conversion rate returns `null` below 10 decided leads: a
+  channel report ranking partners on three leads each would send a marketing budget onto noise.
+
+**Fixed:** conversion created the client _before_ validating the offer, so a bad offer key left an
+orphan client and a retry created a second. **A function whose refusal path leaves a partial write
+is not refusing.** Caught by a test named for the property the code was failing to honour.
+
+**Tests:** 574 pass (28 new). The inactivity clock guard and the double-conversion guard were
+mutation-verified - disabling either produces 2 failures.
+
 ### Added — Pricing, Billing & Offer Management (`ai-feature/m1-4-pricing-billing-offers`)
 
 **1.4 Pricing, Billing & Offer Management** — the offer ladder, engagements, the credit chain and
