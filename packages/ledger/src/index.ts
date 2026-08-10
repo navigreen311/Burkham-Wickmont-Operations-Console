@@ -77,14 +77,31 @@ const sign = (canonical: string): string =>
   createHmac('sha256', signingKey()).update(canonical).digest('hex');
 
 /**
+ * Advisory-lock namespace for ledger appends. The two-argument form keys on (namespace, key) so
+ * this cannot collide with any other advisory lock the application takes later.
+ */
+const LEDGER_LOCK_NAMESPACE = 4242;
+
+/** Postgres serialization failure and deadlock. Both are documented as retryable. */
+const RETRYABLE_PG_CODES = new Set(['40001', '40P01']);
+
+const isRetryable = (error: unknown): boolean => {
+  const code = (error as { code?: unknown })?.code;
+  // Prisma surfaces a serialization failure as P2034 and also passes through the SQLSTATE.
+  if (code === 'P2034') return true;
+  const meta = (error as { meta?: { code?: unknown } })?.meta;
+  return typeof meta?.code === 'string' && RETRYABLE_PG_CODES.has(meta.code);
+};
+
+const MAX_APPEND_ATTEMPTS = 5;
+
+/**
  * Append an event. The only write path into the Ledger.
  *
- * `seq`, `prevHash`, `signature` and `createdAt` are assigned here and cannot be supplied
- * by the caller - a caller-supplied sequence would let a module rewrite its own history.
+ * `seq`, `prevHash`, `signature` and `createdAt` are assigned here and cannot be supplied by the
+ * caller - a caller-supplied sequence would let a module rewrite its own history.
  *
- * Serializable isolation, because two concurrent appends reading the same tail would both
- * compute the same `seq`. The unique constraint on (tenantId, seq) turns that race into a
- * failed transaction rather than a forked chain.
+ * Concurrency handling is explained on the transaction below; it is the subtle part.
  */
 export const append = async (input: LedgerEventInput): Promise<LedgerEvent> => {
   const safePayload = redactPii(input.payload) as Record<string, unknown>;
@@ -92,48 +109,97 @@ export const append = async (input: LedgerEventInput): Promise<LedgerEvent> => {
 
   const prisma = db();
 
-  const row = await prisma.$transaction(
-    async (tx) => {
-      const tail = await tx.ledgerEvent.findFirst({
-        where: { tenantId: input.tenantId },
-        orderBy: { seq: 'desc' },
-        select: { seq: true, signature: true },
-      });
+  /**
+   * Appends to one tenant are strictly serial by construction: `seq` is monotonic per tenant and
+   * each entry hashes its predecessor's signature. Two concurrent appends therefore *must* order
+   * somehow, and under `Serializable` alone they order by one of them aborting with a
+   * serialization failure - which surfaced as a thrown `PrismaClientKnownRequestError` the first
+   * time two workers wrote for the same tenant at once.
+   *
+   * A per-tenant transaction-scoped advisory lock makes that ordering explicit: the second
+   * appender waits rather than aborting, and the lock releases with the transaction. This turns a
+   * conflict into a short queue instead of wasted work plus an exception the caller cannot
+   * usefully handle.
+   *
+   * **Read Committed, deliberately - not Serializable.** The first attempt at this fix kept
+   * `Serializable` underneath the lock as a belt-and-braces backstop, and it still failed. Under
+   * Serializable the snapshot is fixed when the transaction begins, so the appender that waits on
+   * the lock acquires it *and then reads a tail from before the other transaction committed*. It
+   * computes the same `seq`, and aborts. A lock can serialize entry; it cannot refresh a snapshot.
+   *
+   * Read Committed re-reads at each statement, so after the lock is acquired the tail query sees
+   * the row the previous appender just wrote. The advisory lock supplies the mutual exclusion and
+   * Read Committed supplies the fresh read; Serializable was providing neither and preventing the
+   * second.
+   *
+   * The retry below is a backstop for anything outside this path. A ledger append that fails is
+   * not a recoverable condition for the caller - it means a state change happened with no record
+   * of it.
+   */
+  const attempt = async () =>
+    prisma.$transaction(
+      async (tx) => {
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(${LEDGER_LOCK_NAMESPACE}::int, hashtext(${input.tenantId}))`;
 
-      const seq = (tail?.seq ?? 0) + 1;
-      const prevHash = tail?.signature ?? GENESIS_HASH;
+        const tail = await tx.ledgerEvent.findFirst({
+          where: { tenantId: input.tenantId },
+          orderBy: { seq: 'desc' },
+          select: { seq: true, signature: true },
+        });
 
-      const signature = sign(
-        canonicalize({
-          tenantId: input.tenantId,
-          seq,
-          type: input.type,
-          actorId: input.actor.id,
-          clientId: input.clientId ?? null,
-          payload: safePayload,
-          prevHash,
-        }),
-      );
+        const seq = (tail?.seq ?? 0) + 1;
+        const prevHash = tail?.signature ?? GENESIS_HASH;
 
-      return tx.ledgerEvent.create({
-        data: {
-          tenantId: input.tenantId,
-          seq,
-          type: input.type,
-          actorId: input.actor.id,
-          actorKind: input.actor.kind,
-          clientId: input.clientId ?? null,
-          correlationId: input.correlationId ?? null,
-          payload: safePayload as object,
-          prevHash,
-          signature,
-        },
-      });
-    },
-    { isolationLevel: 'Serializable' },
+        const signature = sign(
+          canonicalize({
+            tenantId: input.tenantId,
+            seq,
+            type: input.type,
+            actorId: input.actor.id,
+            clientId: input.clientId ?? null,
+            payload: safePayload,
+            prevHash,
+          }),
+        );
+
+        return tx.ledgerEvent.create({
+          data: {
+            tenantId: input.tenantId,
+            seq,
+            type: input.type,
+            actorId: input.actor.id,
+            actorKind: input.actor.kind,
+            clientId: input.clientId ?? null,
+            correlationId: input.correlationId ?? null,
+            payload: safePayload as object,
+            prevHash,
+            signature,
+          },
+        });
+      },
+      { isolationLevel: 'ReadCommitted' },
+    );
+
+  let lastError: unknown;
+
+  for (let tries = 1; tries <= MAX_APPEND_ATTEMPTS; tries += 1) {
+    try {
+      return toEvent(await attempt());
+    } catch (error) {
+      if (!isRetryable(error)) throw error;
+      lastError = error;
+      // Short escalating backoff. The advisory lock makes contention rare, so this exists for
+      // the residue rather than as the primary mechanism - a long backoff here would delay a
+      // ledger write, and everything else waits on it.
+      await new Promise((resolve) => setTimeout(resolve, 5 * tries));
+    }
+  }
+
+  throw new Error(
+    `Ledger append failed after ${MAX_APPEND_ATTEMPTS} attempts (${input.type}). A state change without a ledger entry is not recoverable: ${
+      lastError instanceof Error ? lastError.message : String(lastError)
+    }`,
   );
-
-  return toEvent(row);
 };
 
 interface LedgerRow {

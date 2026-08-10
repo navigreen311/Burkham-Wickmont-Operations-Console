@@ -157,6 +157,16 @@ Every feature or significant change follows this sequence:
   (`packages/workflow/src/queue.ts`). This silently broke the task-queue claim query; guarded by
   `tests/invariants/raw-sql-timestamps.test.ts`, which asserts raw SQL and Prisma see the same
   rows rather than asserting a fixed count.
+- **A lock serializes entry; it cannot refresh a snapshot.** Under `Serializable`, the snapshot is
+  fixed when the transaction begins — so a transaction that waits on a lock acquires it and _then
+  reads state from before the other transaction committed_. The Event Ledger append hit exactly
+  this: a per-tenant advisory lock plus `Serializable` still aborted, because the waiter recomputed
+  the same `seq` from a stale tail. Read-modify-write under a lock needs `ReadCommitted`, which
+  re-reads per statement. See `packages/ledger/src/index.ts`.
+- **Concurrency defects hide on slower machines.** The ledger's concurrent-append failure passed
+  locally and failed in CI, which is the wrong way round — CI was right and the local pass was the
+  false signal. When a test exercises concurrency, run it on the fastest machine available and
+  twice, and prefer asserting the _invariant_ (contiguous sequence, chain verifies) over a count.
 - **Injectable clocks must reach every entry point, not most of them.** `start()` defaulted to
   `new Date()` internally while every other engine function took `now`, so an instance created
   under a test clock got wall-clock SLA deadlines. If a module takes a clock, take it everywhere

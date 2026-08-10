@@ -21,7 +21,8 @@
     "@bwc/db": "workspace:*",
     "@bwc/ledger": "workspace:*",
     "@bwc/clients": "workspace:*",
-    "@bwc/notifications": "workspace:*"
+    "@bwc/notifications": "workspace:*",
+    "cron-parser": "^5.8.1"
   },
   "devDependencies": {
     "typescript": "^5.8.3"

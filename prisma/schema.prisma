@@ -345,8 +345,13 @@ model ScheduledWorkflow {
   key         String
   playbookKey String
 
-  /// Five-field cron. Evaluated by the scheduler slice.
+  /// Five-field cron, evaluated by cron-parser.
   cronExpression String
+
+  /// IANA zone the cron expression is read in. "Monthly on the 1st at 9am" is meaningless
+  /// without one, and defaulting silently to UTC would land every Capital Command Brief at
+  /// 1am or 2am Pacific depending on the season.
+  timezone String @default("UTC")
 
   nextRunAt DateTime
   lastRunAt DateTime?
@@ -357,6 +362,63 @@ model ScheduledWorkflow {
   @@unique([tenantId, key])
   @@index([enabled, nextRunAt])
   @@map("scheduled_workflows")
+  @@schema("workflow")
+}
+
+/// Starts a workflow when a matching Event Ledger event is written - the event-listener half
+/// of Specification v2 section 5.3.
+model WorkflowTrigger {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+
+  eventType   String
+  playbookKey String
+
+  /// Optional declarative predicate (the playbook language) evaluated against the event
+  /// payload and the client. Null means fire on every event of this type.
+  condition Json?
+
+  enabled   Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  firings WorkflowTriggerFiring[]
+
+  @@unique([tenantId, eventType, playbookKey])
+  @@index([tenantId, eventType, enabled])
+  @@map("workflow_triggers")
+  @@schema("workflow")
+}
+
+/// Idempotency record: this trigger has already handled this ledger event.
+///
+/// The unique constraint is the mechanism, not the cursor. A crash between starting an instance
+/// and advancing the listener cursor replays the event; the insert conflicts and nothing starts
+/// twice. A duplicated workflow here means duplicated client outreach.
+model WorkflowTriggerFiring {
+  id             String @id @default(uuid()) @db.Uuid
+  triggerId      String @db.Uuid
+  ledgerEventId  String @db.Uuid
+  instanceId     String? @db.Uuid
+
+  firedAt DateTime @default(now())
+
+  trigger WorkflowTrigger @relation(fields: [triggerId], references: [id], onDelete: Cascade)
+
+  @@unique([triggerId, ledgerEventId])
+  @@map("workflow_trigger_firings")
+  @@schema("workflow")
+}
+
+/// How far a consumer has read the per-tenant Event Ledger sequence.
+model LedgerCursor {
+  tenantId String @db.Uuid
+  consumer String
+
+  lastSeq   Int      @default(0)
+  updatedAt DateTime @updatedAt @default(now())
+
+  @@id([tenantId, consumer])
+  @@map("ledger_cursors")
   @@schema("workflow")
 }
 

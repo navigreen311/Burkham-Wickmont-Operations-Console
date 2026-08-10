@@ -13,9 +13,10 @@ import { db } from '@bwc/db';
 import { append } from '@bwc/ledger';
 import { find as findClient } from '@bwc/clients';
 import { raise as raiseNotification } from '@bwc/notifications';
-import { failed, noData, ok, type EventActor, type Outcome } from '@bwc/core';
+import { failed, noData, ok, refused, type EventActor, type Outcome } from '@bwc/core';
 import { evaluate, type EvaluationScope } from './predicate.js';
 import { validate, type PlaybookDefinition, type PlaybookNode } from './playbook.js';
+import { definitionFor, definitionForInstance, latestActive } from './definition.js';
 import {
   breachedSlas,
   claim,
@@ -88,23 +89,6 @@ export const publishPlaybook = async (input: PublishInput): Promise<Outcome<{ id
   });
 
   return ok({ id: row.id });
-};
-
-const latestActive = async (
-  key: string,
-): Promise<{ version: number; definition: PlaybookDefinition } | null> => {
-  const row = await db().playbook.findFirst({
-    where: { key, status: 'active' },
-    orderBy: { version: 'desc' },
-  });
-  return row
-    ? { version: row.version, definition: row.definition as unknown as PlaybookDefinition }
-    : null;
-};
-
-const definitionFor = async (key: string, version: number): Promise<PlaybookDefinition | null> => {
-  const row = await db().playbook.findUnique({ where: { key_version: { key, version } } });
-  return row ? (row.definition as unknown as PlaybookDefinition) : null;
 };
 
 // --- Instances ------------------------------------------------------------
@@ -592,6 +576,60 @@ const recordFailure = async (
     actor,
     payload: { instanceId: task.instanceId, nodeKey: task.nodeKey, reason: error },
   });
+};
+
+/**
+ * Resume a `wait` node that was parked awaiting a named event, because that event has arrived.
+ *
+ * Called by the Event Ledger listener. The listener knows *that* the wait is satisfied; only the
+ * engine knows what comes next in the graph, so advancement stays here.
+ *
+ * The earlier shape of this was for the listener to flip the task back to `pending` and let the
+ * worker pick it up. That does not work: the worker's `wait` handler re-parks any event-wait it
+ * claims, since from its point of view the event has not arrived. The task ping-ponged between
+ * `pending` and `waiting` forever and the workflow never advanced - with nothing failing.
+ */
+export const resolveEventWait = async (
+  tenantId: string,
+  taskId: string,
+  actor: EventActor,
+  now: Date = new Date(),
+): Promise<Outcome<WorkflowInstance>> => {
+  // Guarded on `waiting`, so two concurrent listener passes cannot both resume it.
+  const claimed = await db().workflowTask.updateMany({
+    where: { id: taskId, tenantId, status: 'waiting' },
+    data: { status: 'running', updatedAt: now },
+  });
+  if (claimed.count === 0) {
+    return refused(
+      'Task is not awaiting an event.',
+      'Blueprint 2.2 - task state transitions are explicit',
+    );
+  }
+
+  const task = await db().workflowTask.findFirst({ where: { id: taskId, tenantId } });
+  if (!task) return failed('Workflow task vanished mid-resume.');
+
+  const instance = await findInstance(task.instanceId);
+  if (!instance) return failed('Workflow instance no longer exists.');
+
+  const definition = await definitionForInstance(instance);
+  const node = definition?.nodes[task.nodeKey];
+  if (!definition || !node || node.kind !== 'wait') {
+    return failed(`Node '${task.nodeKey}' is not a wait node.`);
+  }
+
+  await advanceTo(
+    { ...task, kind: 'wait' } as QueuedTask,
+    instance,
+    definition,
+    node.next,
+    actor,
+    now,
+  );
+
+  const updated = await findInstance(instance.id);
+  return updated ? ok(updated) : failed('Instance vanished mid-resume.');
 };
 
 // --- External completion --------------------------------------------------
