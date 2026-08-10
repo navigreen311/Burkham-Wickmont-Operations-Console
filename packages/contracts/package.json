@@ -1,0 +1,32 @@
+{
+  "name": "@bwc/contracts",
+  "version": "0.1.0",
+  "private": true,
+  "description": "7.3 Contract & Disclosure Builder. Templates, jurisdiction-aware clauses, fee exhibit, generation.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@bwc/core": "workspace:*",
+    "@bwc/db": "workspace:*",
+    "@bwc/ledger": "workspace:*",
+    "@bwc/identity": "workspace:*",
+    "@bwc/regulatory": "workspace:*",
+    "@bwc/scanner": "workspace:*",
+    "@bwc/deliverables": "workspace:*",
+    "@bwc/placement": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.8.3"
+  }
+}

@@ -28,6 +28,7 @@ const WORKSPACE_PACKAGES = [
   'governance',
   'graph',
   'regulatory',
+  'contracts',
 ] as const;
 
 export default defineConfig({

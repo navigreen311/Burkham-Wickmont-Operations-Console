@@ -7,6 +7,51 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added — Contract & Disclosure Builder (`ai-feature/m7-3-contract-disclosure-builder`)
+
+**7.3 Contract & Disclosure Builder** — the documents a client signs. See
+[docs/m7-3-contract-disclosure-builder.md](docs/m7-3-contract-disclosure-builder.md) and
+[ADR-0010](docs/decisions/ADR-0010-an-issued-contract-is-frozen.md).
+
+- **An issued contract is frozen.** Blueprint 7.3 lists "auto-updates when Regulatory Engine flags
+  rule changes"; read literally that reaches into signed agreements and changes their terms. A
+  signed agreement is the only evidence of what was agreed. "Auto-update" is implemented as the
+  content of the **next** document plus a **derived staleness report** over what was issued —
+  nothing rewrites one.
+- **Staleness is deliberately stricter than 7.2's gate.** A state stays online through an editorial
+  module change; a document generated against any superseded version is flagged, editorial
+  included — but the report says which kind it was. A report that cannot tell "the law changed"
+  from "we fixed a typo" gets ignored wholesale.
+- **Generation is gated three ways**: the Regulatory Engine activation gate, counsel review of the
+  exact template version, and clause resolution. A template naming a clause that does not resolve
+  is a **refusal** — generating without it produces an agreement silently missing a term.
+- **Banned language is a refusal, not a finding.** The same phrase that is a compliance finding in
+  a marketing email is a _term of the contract_ in a signed agreement. `requires_disclosure` is
+  checked against what the document actually carries rather than taken at face value.
+- **The fee exhibit has nowhere to put a requested limit.** `FeeExhibitInput` carries no
+  applied-for field and the computation goes through `successFeeBasis`, which takes a single
+  numeric argument — so there is no second figure for the arithmetic to reach for. With no
+  approval the fee is **contingent, not estimated**: an estimate in a fee exhibit reads as a price.
+- **Disclosure wording has one home.** `not_a_lender` and `no_guarantee` are inserted by key from
+  7.2's federal baseline. A second copy would not become wrong so much as become ambiguous.
+- **An empty clause scope means "applies to all", not "applies to none"** — read the other way, an
+  omitted field silently drops a required term from every document. A state-scoped clause beats a
+  global one of the same key, because two versions of one term in a document is worse than the
+  wrong version.
+- **Unresolved placeholders stay visible.** `{{clientLegalName}}` in a contract is obviously broken
+  and gets caught; an empty gap looks like a formatting slip and gets signed.
+- **Template review mirrors 7.2's discipline rather than sharing its code** — different subject,
+  different blocking effect, and sharing would couple state activation to template publishing. The
+  trigger to extract is a third reviewable artifact type, recorded so the decision reads as made
+  rather than missed.
+
+> **No contract language ships in this slice.** 7.2's state modules could be scaffolded from
+> published statutes; a service agreement is drafting, and drafting a contract is not something to
+> scaffold from a specification.
+
+**Tests:** 505 pass (30 new). The template-review gate and the fee basis were mutation-verified —
+disabling either produces 3 failures.
+
 ### Added — State-by-State Regulatory Engine (`ai-feature/m7-regulatory-engine`)
 
 **7.2 State-by-State Regulatory Engine**, which makes step 5 of the middleware chain a real check.

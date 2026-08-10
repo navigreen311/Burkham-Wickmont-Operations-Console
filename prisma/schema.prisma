@@ -16,7 +16,7 @@ generator client {
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
-  schemas  = ["tenancy", "identity", "ledger", "clients", "consent", "firewall", "workflow", "notifications", "deliverables", "claims", "vault", "intelligence", "lenders", "governance", "graph", "regulatory"]
+  schemas  = ["tenancy", "identity", "ledger", "clients", "consent", "firewall", "workflow", "notifications", "deliverables", "claims", "vault", "intelligence", "lenders", "governance", "graph", "regulatory", "contracts"]
 }
 
 // ---------------------------------------------------------------------------
@@ -1594,4 +1594,172 @@ model StateLawChange {
   @@index([tenantId, state, addressedAt])
   @@map("state_law_changes")
   @@schema("regulatory")
+}
+
+// ---------------------------------------------------------------------------
+// 7.3 Contract & Disclosure Builder
+//
+// The documents a client signs. Two properties shape every table here.
+//
+// A GENERATED CONTRACT IS FROZEN. Blueprint 7.3 lists "auto-updates when
+// Regulatory Engine flags rule changes", and the careless reading of that
+// sentence is the most dangerous thing in this module: a document a client
+// signed must never change afterwards. What updates is what is generated NEXT,
+// and a derived staleness report over what was already issued.
+//
+// TEMPLATE REVIEW MIRRORS 7.2 rather than sharing its code. Two similar things
+// are not yet a pattern - see docs/m7-3-contract-disclosure-builder.md for the
+// trigger to extract.
+// ---------------------------------------------------------------------------
+
+enum ContractKind {
+  service_agreement
+  fee_exhibit
+  application_authorization
+  bureau_pull_authorization
+  plaid_connection_authorization
+  refund_policy
+  partner_disclosure
+  product_disclosure
+
+  @@schema("contracts")
+}
+
+enum TemplateChangeKind {
+  material
+  editorial
+
+  @@schema("contracts")
+}
+
+model ContractTemplate {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+
+  /// Stable identifier across versions.
+  key     String
+  version Int
+  kind    ContractKind
+
+  title String
+
+  /// Ordered sections, each a heading and body. The structure is the artifact; rendering to
+  /// PDF belongs to 3.1 and a font substitution must not change the evidence.
+  sections Json
+
+  changeKind TemplateChangeKind
+  /// Required when editorial - what makes this change not material.
+  changeRationale String?
+
+  supersededAt DateTime?
+  createdAt    DateTime  @default(now())
+  createdBy    String
+
+  @@unique([tenantId, key, version])
+  @@index([tenantId, key, supersededAt])
+  @@map("contract_templates")
+  @@schema("contracts")
+}
+
+/// The counsel review that permits a template version to generate.
+///
+/// Keyed on (key, version) rather than on the template row id: the review is of the WORDS at a
+/// version, and pointing at a row would let a row edit silently carry a review forward.
+model TemplateReview {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+
+  templateKey     String
+  templateVersion Int
+
+  reviewedBy String
+  reviewedAt DateTime
+  /// Where the review lives. Required, for the same reason as a state's counsel review: a review
+  /// nobody can produce is indistinguishable from one that never happened.
+  documentReference String
+  notes             String?
+
+  createdAt DateTime @default(now())
+
+  @@unique([tenantId, templateKey, templateVersion])
+  @@map("template_reviews")
+  @@schema("contracts")
+}
+
+/// A clause that may be inserted, scoped by jurisdiction, offer tier and channel.
+///
+/// Versioned and superseded rather than edited: a clause that was in force in March has to remain
+/// readable when it explains a March agreement.
+model Clause {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+
+  key     String
+  version Int
+
+  text String
+  /// Why this clause exists - a statute, a policy decision, a partner agreement.
+  citation String
+
+  /// `*` for every jurisdiction, or a two-letter state code. A sentinel rather than NULL: NULL is
+  /// distinct from NULL in a unique constraint and would permit two "global" clauses of one key.
+  jurisdiction String @default("*")
+
+  /// Empty means every tier / every channel. Restricting to none would be expressed by not
+  /// publishing the clause at all.
+  appliesToTiers    String[]
+  appliesToChannels String[]
+
+  supersededAt DateTime?
+  createdAt    DateTime  @default(now())
+  createdBy    String
+
+  @@unique([tenantId, key, jurisdiction, version])
+  @@index([tenantId, jurisdiction, supersededAt])
+  @@map("clauses")
+  @@schema("contracts")
+}
+
+/// A document that was issued. Immutable by intent: nothing in the package updates one.
+///
+/// It pins every input that produced it - template version, state module version, the clause and
+/// disclosure keys inserted - so "what exactly did they sign, and on what basis" is answerable
+/// years later without reconstructing the world as it was.
+model GeneratedContract {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  clientId String @db.Uuid
+
+  kind ContractKind
+
+  templateKey     String
+  templateVersion Int
+
+  /// The jurisdiction it was generated for, and the Regulatory Engine module version in force at
+  /// the time. The pair is what makes staleness computable later.
+  state              String
+  stateModuleVersion Int
+
+  offerTier String?
+  channel   String?
+
+  /// The content model. This, not a rendering, is the artifact - ADR-0005 applied to a document
+  /// that creates legal obligations rather than one that merely informs.
+  content Json
+  /// sha256 over the canonical JSON of `content`.
+  contentHash String
+
+  /// What was inserted, so an auditor can see the composition without parsing the content.
+  clauseKeys     String[]
+  disclosureKeys String[]
+
+  generatedBy String
+  issuedAt    DateTime
+
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, clientId, kind])
+  @@index([tenantId, state, stateModuleVersion])
+  @@map("generated_contracts")
+  @@schema("contracts")
 }
