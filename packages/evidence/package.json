@@ -25,7 +25,8 @@
     "@bwc/vault": "workspace:*",
     "@bwc/deliverables": "workspace:*",
     "@bwc/contracts": "workspace:*",
-    "@bwc/billing": "workspace:*"
+    "@bwc/billing": "workspace:*",
+    "@bwc/comms": "workspace:*"
   },
   "devDependencies": {
     "typescript": "^5.8.3"

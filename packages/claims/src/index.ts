@@ -225,6 +225,17 @@ export const FOUNDING_CLAIMS: readonly Omit<
     rationale: 'Verb form of "guaranteed approval"; same reasoning.',
   },
   {
+    phrase: 'approval is guaranteed',
+    disposition: 'banned',
+    rationale:
+      'Inverted form of "guaranteed approval", and the one a person writes naturally in a sentence. Found while building 4.1: a message reading "Your approval is guaranteed once you sign" passed the scanner cleanly, because the library held only the noun-phrase order. The scanner is exact-phrase by design - substring matching would flag "no guarantee of approval" - so covering a paraphrase means adding it here, which is what the Compliance Review Board owns this list for.',
+  },
+  {
+    phrase: 'approval guaranteed',
+    disposition: 'banned',
+    rationale: 'Reversed form of the same claim; same reasoning as the entry above.',
+  },
+  {
     phrase: 'no risk',
     disposition: 'banned',
     rationale:

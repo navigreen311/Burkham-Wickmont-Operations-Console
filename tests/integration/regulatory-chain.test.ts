@@ -13,6 +13,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { create as createClient, transitionComplianceState } from '@bwc/clients';
 import { chain } from '@bwc/middleware';
 import { registerProvider } from '@bwc/lenders';
+import { seedFoundingClaims } from '@bwc/claims';
 import { approve } from '@bwc/governance';
 import {
   FEDERAL_BASELINE,
@@ -28,6 +29,11 @@ let clientId: string;
 
 beforeAll(async () => {
   fx = await makeFixture('reg-chain');
+
+  // Step 7 of the chain now runs the Communication Compliance Scanner, and the Scanner refuses
+  // rather than certifying content clean against an empty library - "we checked nothing and found
+  // nothing" is not a pass. So the library has to exist before any client-facing action can pass.
+  await seedFoundingClaims(fx.tenant.id, 'compliance@burkhamwickmont.test', human());
 
   const client = await createClient(fx.tenant.id, 'Regulated Co', human());
   clientId = client.id;
