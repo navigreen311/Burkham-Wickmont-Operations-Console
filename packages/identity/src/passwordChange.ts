@@ -24,7 +24,7 @@ import { append } from '@bwc/ledger';
 import { noData, ok, refused, type Outcome } from '@bwc/core';
 import { checkPassword, hashPassword, verifyPassword } from './credentials.js';
 import { cancelPendingEmailChanges } from './emailChange.js';
-import { activeFactorFor, verifySecondFactor } from './mfa.js';
+import { hasActiveFactor, verifySecondFactor } from './mfa.js';
 import { supersedeOutstanding } from './passwordReset.js';
 
 export interface PasswordChanged {
@@ -95,7 +95,7 @@ export const changeClientPassword = async (input: {
 
   // Where a factor is enrolled it is one of the credentials this account has, so a change needs it.
   // Where none is, there is no code to ask for and asking would be a refusal nobody can satisfy.
-  if ((await activeFactorFor(input.tenantId, user.id)) !== null) {
+  if (await hasActiveFactor(input.tenantId, user.id)) {
     const presented = await verifySecondFactor({
       tenantId: input.tenantId,
       clientUserId: user.id,

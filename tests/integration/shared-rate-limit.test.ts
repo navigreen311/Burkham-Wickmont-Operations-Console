@@ -55,6 +55,9 @@ beforeAll(async () => {
     resetWindowSeconds: 900,
     resetMaxAttempts: 5,
     rateLimitStore: 'shared',
+    rpId: 'localhost',
+    rpName: 'Burkham Wickmont',
+    origin: 'http://localhost',
   };
 });
 

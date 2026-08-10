@@ -7,6 +7,43 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added - WebAuthn as a second factor (`ai-feature/client-webauthn`)
+
+ADR-0024 named this as the stronger answer and did not build it, because there was no browser UI to
+register from. There still is not, and **a UI cannot be written against an endpoint that does not
+exist.** See [docs/m11-webauthn.md](docs/m11-webauthn.md) and ADR-0028.
+
+- **The reason is phishing resistance, not "stronger crypto".** A proxy site takes a password and a
+  TOTP code and presents both to the real portal inside the code's thirty-second window - and
+  everything 11.1 does about replay is downstream of a code typed into the wrong site, so none of it
+  helps. A WebAuthn signature covers **the origin the browser was actually on**, so an assertion
+  produced at the proxy says the proxy and is refused.
+- **A reviewed library here and hand-rolled TOTP there are the same principle.** The strength of
+  `totp.ts` is not that it is small; it is that RFC 6238 publishes vectors, so an off-by-one cannot
+  hide. WebAuthn has no equivalent, and a verifier tested only by the signer written beside it agrees
+  with itself and proves nothing. So `@simplewebauthn/server`, with a **software authenticator** in
+  the test so the library is the external reference.
+- **The relying party is deployment configuration.** `PORTAL_RP_ID` and `PORTAL_ORIGIN`, required,
+  no defaults: an origin a caller could supply is the phishing resistance switched off by the party
+  it exists to stop, and that deployment passes every test.
+- **More than one factor per account.** A key with no second key and no app is one lost object away
+  from a lockout whose remedy is a phone call to the firm. A key and an app, or two keys; still only
+  one authenticator app.
+- **A key stores no secret.** `secretCiphertext` is null and the column it fills is a PUBLIC key - a
+  leaked database yields what verifies a signature, never what produces one.
+- **The signature counter is enforced by the verifier, and zero is not a violation** - every passkey
+  and every Touch ID credential always reports zero. **A surviving mutation showed this module's own
+  check was dead code**, sitting after the verifier's where it could never run; it now classifies the
+  refusal so a clone produces a signal rather than looking like a mistyped touch.
+- Registration and confirmation are one step, unlike TOTP's two: the ceremony IS the proof that the
+  authenticator works. Attestation `none`; user verification `preferred`; every key is named.
+- **Scope is sign-in.** Password change, address change and factor removal still take a code - a TOTP
+  code or a recovery code - because making them take an assertion means a two-step challenge exchange
+  each, which is named rather than half-done.
+
+**Changed - `activeFactorFor` becomes `activeFactorsFor`**, with `hasActiveFactor` and
+`activeTotpFactor` beside it. One factor per account was right when the only factor was an app.
+
 ### Added - moving the address a client's account lives at (`ai-feature/client-email-change`)
 
 The bigger question #31 named, in one line: **the email address is where a reset link goes.** See

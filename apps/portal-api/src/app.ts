@@ -28,10 +28,12 @@ import {
   clientRoom,
   completeReset,
   completeSignInMfa,
+  completeSignInWithKey,
   confirmAddressChange,
   confirmAuthenticator,
   downloadDocument,
   mfaSettings,
+  keysOnAccount,
   newRecoveryCodes,
   principalFromToken,
   removeAuthenticator,
@@ -40,7 +42,10 @@ import {
   sendMessage,
   signDisclosure,
   signIn,
+  signInKeyOptions,
   signOut,
+  startKeyRegistration,
+  registerKey,
   startAuthenticatorEnrolment,
   uploadDocument,
   type ClientPrincipal,
@@ -173,6 +178,8 @@ const asyncRoute =
 export const createPortalApp = (deps: PortalAppDeps): Express => {
   const config = deps.config ?? readConfig();
   const now = deps.now ?? ((): Date => new Date());
+  /** From configuration, never from a request. See `PortalConfig.rpId`. */
+  const rp = { id: config.rpId, name: config.rpName, origin: config.origin };
   /**
    * One factory, chosen by configuration rather than by the call site.
    *
@@ -357,6 +364,76 @@ export const createPortalApp = (deps: PortalAppDeps): Express => {
           usedRecoveryCode: result.value.usedRecoveryCode,
           recoveryCodesRemaining: result.value.recoveryCodesRemaining,
         },
+      });
+    }),
+  );
+
+  /**
+   * The credentials this half-authenticated caller may answer with.
+   *
+   * On the sign-in limiter, and reached with the challenge cookie alone - which is all a caller who
+   * has passed the password and no more can hold.
+   */
+  app.post(
+    '/portal/sign-in/key/options',
+    limitBy(limiter, 'Too many sign-in attempts from this address. Try again shortly.'),
+    asyncRoute(async (req, res) => {
+      const challengeToken = tokenFrom(req, challengeCookieName(config));
+      if (challengeToken === undefined) {
+        send(res, refused('That code is not correct.', 'Blueprint 11.1'));
+        return;
+      }
+
+      send(
+        res,
+        await signInKeyOptions({ tenantId: config.tenantId, challengeToken, rp, now: now() }),
+      );
+    }),
+  );
+
+  /**
+   * Answer the sign-in challenge with a security key.
+   *
+   * The assertion carries the origin it was produced at, and `@bwc/identity` checks it against the
+   * one this deployment is configured with. A proxy that relayed the ceremony gets a signature that
+   * says the proxy's origin, and that signature is refused here - which is the property TOTP cannot
+   * offer at all.
+   */
+  app.post(
+    '/portal/sign-in/key',
+    limitBy(limiter, 'Too many sign-in attempts from this address. Try again shortly.'),
+    express.json({ limit: config.maxJsonBytes }),
+    asyncRoute(async (req, res) => {
+      const body = req.body as { response?: unknown };
+      const challengeToken = tokenFrom(req, challengeCookieName(config));
+
+      if (
+        challengeToken === undefined ||
+        typeof body?.response !== 'object' ||
+        body.response === null
+      ) {
+        send(res, refused('That security key could not be used.', 'Blueprint 11.1'));
+        return;
+      }
+
+      const result = await completeSignInWithKey({
+        tenantId: config.tenantId,
+        challengeToken,
+        response: body.response as Record<string, unknown>,
+        rp,
+        now: now(),
+      });
+
+      if (result.status !== 'ok') {
+        send(res, result);
+        return;
+      }
+
+      clearChallengeCookie(res, config);
+      setSessionCookie(res, config, result.value.token, new Date(result.value.expiresAt));
+      send(res, {
+        status: 'ok',
+        value: { displayName: result.value.displayName, expiresAt: result.value.expiresAt },
       });
     }),
   );
@@ -649,6 +726,55 @@ export const createPortalApp = (deps: PortalAppDeps): Express => {
       send(
         res,
         await confirmAddressChange({ tenantId: config.tenantId, token: body.token, now: now() }),
+      );
+    }),
+  );
+
+  app.get(
+    '/portal/mfa/keys',
+    withPrincipal(async (principal, _req, res) => {
+      send(res, { status: 'ok', value: await keysOnAccount(principal) });
+    }),
+  );
+
+  app.post(
+    '/portal/mfa/keys/register',
+    withPrincipal(async (principal, _req, res) => {
+      send(res, await startKeyRegistration({ principal, rp }));
+    }),
+  );
+
+  app.post(
+    '/portal/mfa/keys',
+    express.json({ limit: config.maxJsonBytes }),
+    withPrincipal(async (principal, req, res) => {
+      const body = req.body as { password?: unknown; label?: unknown; response?: unknown };
+
+      if (
+        typeof body?.password !== 'string' ||
+        typeof body?.label !== 'string' ||
+        typeof body?.response !== 'object' ||
+        body.response === null
+      ) {
+        send(
+          res,
+          refused(
+            'Registering a key needs your password, a name for the key, and the browser response.',
+            'Blueprint 11.1 - a credential change needs a credential',
+          ),
+        );
+        return;
+      }
+
+      send(
+        res,
+        await registerKey({
+          principal,
+          password: body.password,
+          label: body.label,
+          response: body.response as Record<string, unknown>,
+          rp,
+        }),
       );
     }),
   );

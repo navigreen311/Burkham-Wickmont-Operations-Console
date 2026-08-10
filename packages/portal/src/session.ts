@@ -18,7 +18,11 @@
 
 import {
   resolveSession,
-  activeFactorFor,
+  beginWebauthnAuthentication,
+  clientUserForMfaChallenge,
+  hasActiveFactor,
+  satisfyMfaChallenge,
+  verifyWebauthnAssertion,
   answerMfaChallenge,
   authenticateClientUser,
   beginMfaChallenge,
@@ -26,7 +30,9 @@ import {
   issueSession,
   requestPasswordReset,
   revokeSession,
+  type AuthenticationChallenge,
   type CompletedPasswordReset,
+  type RelyingParty,
   type PasswordResetAcknowledgement,
 } from '@bwc/identity';
 import { ok, type Outcome } from '@bwc/core';
@@ -76,7 +82,7 @@ export const signIn = async (input: {
   const authenticated = await authenticateClientUser(input);
   if (authenticated.status !== 'ok') return authenticated as Outcome<never>;
 
-  if ((await activeFactorFor(input.tenantId, authenticated.value.clientUserId)) !== null) {
+  if (await hasActiveFactor(input.tenantId, authenticated.value.clientUserId)) {
     const challenge = await beginMfaChallenge({
       tenantId: input.tenantId,
       clientUserId: authenticated.value.clientUserId,
@@ -181,6 +187,101 @@ export const principalFromToken = async (input: {
     // would make every access record say the same thing.
     actorId: resolved.value.clientUserId,
     sessionId: resolved.value.sessionId,
+  });
+};
+
+/**
+ * The credentials this account can answer a sign-in challenge with.
+ *
+ * Reached with the challenge token, which is all a half-authenticated caller holds. It names no
+ * account and returns no user detail - only the ceremony options the browser needs, which carry
+ * credential ids the caller has already proved a password for.
+ */
+export const signInKeyOptions = async (input: {
+  tenantId: string;
+  challengeToken: string;
+  rp: RelyingParty;
+  now?: Date;
+}): Promise<Outcome<AuthenticationChallenge>> => {
+  const whose = await clientUserForMfaChallenge({
+    tenantId: input.tenantId,
+    token: input.challengeToken,
+    ...(input.now !== undefined ? { now: input.now } : {}),
+  });
+  if (whose.status !== 'ok') return whose as Outcome<never>;
+
+  return beginWebauthnAuthentication({
+    tenantId: input.tenantId,
+    clientUserId: whose.value.clientUserId,
+    rp: input.rp,
+    ...(input.now !== undefined ? { now: input.now } : {}),
+  });
+};
+
+/**
+ * Answer the sign-in challenge with a security key.
+ *
+ * The composition lives here rather than in 11.1 because `@bwc/identity`'s MFA module cannot import
+ * its own WebAuthn verifier without a cycle - and a cycle broken by a dynamic import is a cycle
+ * nobody sees.
+ *
+ * **The assertion is verified BEFORE the challenge is marked answered.** The other order would spend
+ * the challenge on a failed attempt, which turns a mistyped touch into a fresh sign-in.
+ */
+export const completeSignInWithKey = async (input: {
+  tenantId: string;
+  challengeToken: string;
+  response: Record<string, unknown>;
+  rp: RelyingParty;
+  now?: Date;
+}): Promise<
+  Outcome<SessionIssued & { usedRecoveryCode: boolean; recoveryCodesRemaining: number }>
+> => {
+  const whose = await clientUserForMfaChallenge({
+    tenantId: input.tenantId,
+    token: input.challengeToken,
+    ...(input.now !== undefined ? { now: input.now } : {}),
+  });
+  if (whose.status !== 'ok') return whose as Outcome<never>;
+
+  const asserted = await verifyWebauthnAssertion({
+    tenantId: input.tenantId,
+    clientUserId: whose.value.clientUserId,
+    response: input.response,
+    rp: input.rp,
+    ...(input.now !== undefined ? { now: input.now } : {}),
+  });
+  if (asserted.status !== 'ok') return asserted as Outcome<never>;
+
+  const satisfied = await satisfyMfaChallenge({
+    tenantId: input.tenantId,
+    token: input.challengeToken,
+    ...(input.now !== undefined ? { now: input.now } : {}),
+  });
+  if (satisfied.status !== 'ok') return satisfied as Outcome<never>;
+
+  const session = await issueSession({
+    tenantId: input.tenantId,
+    clientUserId: whose.value.clientUserId,
+    ...(input.now !== undefined ? { now: input.now } : {}),
+  });
+  if (session.status !== 'ok') return session as Outcome<never>;
+
+  const principal = await resolveSession({
+    tenantId: input.tenantId,
+    token: session.value.token,
+    ...(input.now !== undefined ? { now: input.now } : {}),
+  });
+  if (principal.status !== 'ok') return principal as Outcome<never>;
+
+  return ok({
+    kind: 'session',
+    token: session.value.token,
+    expiresAt: session.value.expiresAt,
+    displayName: principal.value.displayName,
+    // A key is not a recovery code and does not consume one.
+    usedRecoveryCode: false,
+    recoveryCodesRemaining: 0,
   });
 };
 

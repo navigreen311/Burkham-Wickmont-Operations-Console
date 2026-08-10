@@ -20,7 +20,8 @@
     "@bwc/core": "workspace:*",
     "@bwc/crypto": "workspace:*",
     "@bwc/db": "workspace:*",
-    "@bwc/ledger": "workspace:*"
+    "@bwc/ledger": "workspace:*",
+    "@simplewebauthn/server": "^13.3.2"
   },
   "devDependencies": {
     "typescript": "^5.8.3"
