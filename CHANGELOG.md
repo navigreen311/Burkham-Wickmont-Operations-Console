@@ -7,6 +7,56 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added - Call Promise Tracking and Marketing Ops (`ai-feature/m4-calls-and-marketing-ops`)
+
+**4.3 Call Recording, Summaries & Promise Tracking** with **4.5 Marketing Ops**, completing
+Category 4 - and with it **every V1 module in the blueprint's phasing**. See
+[docs/m4-calls-and-marketing-ops.md](docs/m4-calls-and-marketing-ops.md), ADR-0015 and ADR-0016.
+
+- **A control that runs after the fact produces an obligation, not a verdict** (ADR-0015). 4.2
+  returns `blocked` because it runs before a message is sent. A call has already happened and the
+  client already heard the sentence, so a detected promise becomes a **correction obligation** -
+  what was said, who owes the correction, by when, and, to close it, the correction itself.
+  Closing with a tick is refused: it would record that a client was corrected when nobody had told
+  them anything, which is worse than an open obligation because it stops anyone looking.
+- **Detection matches the SHAPE of a statement, not its wording.** The Claim Library is
+  exact-phrase and the promise varies by amount - "$100K", "a hundred grand" and "six figures" are
+  one promise and would need three entries. Kept in its own file so loosening one mechanism cannot
+  silently loosen the other. False positives are accepted deliberately; dismissal takes a Level 3
+  human and a reason.
+- **Recording consent is a jurisdiction question.** About eleven states require ALL parties to
+  consent, and recording a client there without their consent is a crime **in the state where the
+  client is sitting**. New consent kind `call_recording` in 1.5; the all-party list carries
+  citations and an `openQuestion` where the position is genuinely unsettled. An **unclassified**
+  state requires consent - it is not a one-party state, it is a state nobody looked at.
+- **A refused recording is still a call record**, with a ledger event. "We wanted to record this
+  and the client's state would not let us" is evidence, as a blocked send is in 4.1.
+- **VoiceForge reports `not_built`**, and `analyseCall` on a transcript-less call does too, naming
+  the seam rather than returning a clean analysis. The AI summary is carried **inside** the
+  analysis result as its own `not_built` value rather than omitted - a caller who received an
+  analysis with no summary field would conclude the call did not need one.
+- **Every A/B variant must scan clean before the test runs** (ADR-0016). An A/B test optimises for
+  a metric; if one arm may say something banned and the other may not, the test measures whether
+  non-compliant language converts better, and it does. A failing variant is **refused**, not
+  registered as the arm we expect to lose - while the test runs, real clients read every arm.
+  Declaring a winner adopts nothing: a conversion number is a reason to consider a claim, not a
+  review of it.
+- **Claim proposals are the intake 7.4 never had.** Approval publishes into the Library in the same
+  call, so there is no window where a proposal reads approved and the Library does not have it.
+  Rejected proposals keep their phrase - "we considered saying this and decided not to" is the more
+  useful half of the record.
+- **A campaign cannot activate into a state 7.2 has not activated**, and the refusal names which.
+  `sourceChannel` is fixed at creation, and **4.5 never writes attribution** - it hands out the
+  value and 1.3 writes it once, because a referral fee is owed on it.
+- **Marketing assets are scanned on the way INTO review**, since 4.5 governs content produced by
+  Forge cascades that nobody read. A blocked asset goes to `rejected` with the reason rather than
+  back to `draft`.
+
+**Fixed - the promise detector missed the form people actually speak.** The money pattern matched
+digits only, so "we should be able to secure a hundred grand for you" produced no finding. Caught
+by a test written from spoken phrasings rather than written ones. A detector that catches only the
+written form of a spoken promise catches the promises nobody makes.
+
 ### Added - Partner & Referrer Portal with Training & Certification (`ai-feature/m8-partner-portal`)
 
 **8.1 Partner & Referrer Portal (Core)** with **8.3 Partner Training & Certification** - Category

@@ -121,6 +121,22 @@ export const RISK_EVENT_CLASSIFICATION: Readonly<Partial<Record<EventType, RiskC
     meaning: 'The client signed an authorization.',
   },
 
+  // Promise tracking (4.3). A promise made on a call is the earliest point at which a client
+  // forms an expectation we may not be able to meet - which is what most complaints are about.
+  'calls.promise.detected': {
+    severity: 'serious',
+    meaning: 'A promise or prediction was made to this client on a call and requires correction.',
+  },
+  'calls.promise.dismissed': {
+    severity: 'notable',
+    meaning: 'A detected call promise was judged not to require correction, by a Level 3 human.',
+  },
+  'calls.recording.refused': {
+    severity: 'notable',
+    meaning:
+      'A call could not be recorded because the client had not consented in an all-party state.',
+  },
+
   // Compliance scanner (4.2) and the claim library (7.4).
   'scanner.blocked_content': {
     severity: 'serious',

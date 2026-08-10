@@ -160,6 +160,34 @@ importers:
         specifier: ^5.8.3
         version: 5.9.3
 
+  packages/calls:
+    dependencies:
+      '@bwc/consent':
+        specifier: workspace:*
+        version: link:../consent
+      '@bwc/core':
+        specifier: workspace:*
+        version: link:../core
+      '@bwc/db':
+        specifier: workspace:*
+        version: link:../db
+      '@bwc/identity':
+        specifier: workspace:*
+        version: link:../identity
+      '@bwc/ledger':
+        specifier: workspace:*
+        version: link:../ledger
+      '@bwc/notifications':
+        specifier: workspace:*
+        version: link:../notifications
+      '@bwc/regulatory':
+        specifier: workspace:*
+        version: link:../regulatory
+    devDependencies:
+      typescript:
+        specifier: ^5.8.3
+        version: 5.9.3
+
   packages/capital:
     dependencies:
       '@bwc/clients':
@@ -499,6 +527,34 @@ importers:
       '@bwc/ledger':
         specifier: workspace:*
         version: link:../ledger
+    devDependencies:
+      typescript:
+        specifier: ^5.8.3
+        version: 5.9.3
+
+  packages/marketing:
+    dependencies:
+      '@bwc/claims':
+        specifier: workspace:*
+        version: link:../claims
+      '@bwc/core':
+        specifier: workspace:*
+        version: link:../core
+      '@bwc/db':
+        specifier: workspace:*
+        version: link:../db
+      '@bwc/identity':
+        specifier: workspace:*
+        version: link:../identity
+      '@bwc/ledger':
+        specifier: workspace:*
+        version: link:../ledger
+      '@bwc/regulatory':
+        specifier: workspace:*
+        version: link:../regulatory
+      '@bwc/scanner':
+        specifier: workspace:*
+        version: link:../scanner
     devDependencies:
       typescript:
         specifier: ^5.8.3
