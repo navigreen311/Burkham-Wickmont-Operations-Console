@@ -16,7 +16,7 @@ generator client {
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
-  schemas  = ["tenancy", "identity", "ledger", "clients", "consent", "firewall", "workflow", "notifications", "deliverables", "claims", "vault"]
+  schemas  = ["tenancy", "identity", "ledger", "clients", "consent", "firewall", "workflow", "notifications", "deliverables", "claims", "vault", "intelligence"]
 }
 
 // ---------------------------------------------------------------------------
@@ -433,6 +433,114 @@ enum NotificationStatus {
   cancelled
 
   @@schema("notifications")
+}
+
+// ---------------------------------------------------------------------------
+// 3.3 Document Intelligence Pipeline
+// ---------------------------------------------------------------------------
+
+/// Where normalized data came from. Decisions A and B name the V1 sources.
+enum IntelligenceSource {
+  plaid
+  business_bureau
+  personal_credit
+  uploaded_document
+
+  @@schema("intelligence")
+}
+
+enum IngestionStatus {
+  /// Consent present, adapter reached, data normalized.
+  completed
+  /// The vendor is not activated. Distinct from failing - nothing was attempted.
+  not_available
+  /// The client has not authorized this specific pull or connection.
+  unauthorized
+  failed
+
+  @@schema("intelligence")
+}
+
+model IngestionRun {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  clientId String @db.Uuid
+
+  source IntelligenceSource
+  status IngestionStatus
+
+  /// The specific consent that authorized this. Decision A makes a Plaid connection
+  /// GLBA-adjacent and Decision B makes bureau pulls FCRA-adjacent; both are per-event.
+  consentId String? @db.Uuid
+
+  /// When the vendor produced the data. Every fact derived from this run carries it, so a
+  /// figure can always be dated rather than assumed current.
+  retrievedAt DateTime?
+
+  /// How much of the requested window actually arrived. A reconciliation over 3 of 24 months
+  /// is a different claim from one over all 24, and must not read as the same.
+  monthsRequested Int
+  monthsCovered   Int @default(0)
+
+  /// Normalized accounts and transactions. Held here rather than in their own table until real
+  /// volume justifies the schema - see docs. Never raw vendor payloads.
+  normalized Json?
+
+  failureReason String?
+
+  createdAt DateTime @default(now())
+
+  findings IntelligenceFinding[]
+
+  @@index([tenantId, clientId, source])
+  @@map("ingestion_runs")
+  @@schema("intelligence")
+}
+
+/// What downstream modules read. Risk & Defense (6.1) sources its alerts from exactly these.
+enum FindingKind {
+  nsf_event
+  large_deposit
+  owner_transfer
+  revenue_mismatch
+  balance_deterioration
+  missing_document
+  bureau_bank_disagreement
+
+  @@schema("intelligence")
+}
+
+enum FindingSeverity {
+  informational
+  attention
+  urgent
+
+  @@schema("intelligence")
+}
+
+model IntelligenceFinding {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  clientId String @db.Uuid
+  runId    String? @db.Uuid
+
+  kind     FindingKind
+  severity FindingSeverity
+
+  summary String
+
+  /// Structured detail plus its provenance. Principle 8: a derived figure ships how it was
+  /// derived, including the feed timestamp it rests on.
+  detail Json
+
+  occurredAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  run IngestionRun? @relation(fields: [runId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, clientId, kind])
+  @@map("intelligence_findings")
+  @@schema("intelligence")
 }
 
 // ---------------------------------------------------------------------------

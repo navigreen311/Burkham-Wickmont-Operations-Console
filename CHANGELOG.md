@@ -7,6 +7,42 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added — Document Intelligence Pipeline (`ai-feature/m3-3-document-intelligence-pipeline`)
+
+**3.3 Document Intelligence Pipeline. Completes Category 3.**
+
+Every vendor in 3.3's eight-step flow is ungated (§11.4, §12.3), so the module is split along the
+line the gates draw: ingestion is consent-gated seams reporting `not_built`, while normalization,
+enrichment and correlation are pure functions over a shape we own — fully built and fully tested.
+
+- **Normalized on our own shape**, not Plaid's. It is the only way to build this today, Decision
+  A's V2 roadmap replaces Plaid for parsing, and bureau and bank data have to meet somewhere.
+- **Consent is checked before the vendor gate.** If the client has not authorized the pull, that
+  is the accurate reason — our vendor gate is a fact about us. Every attempt is recorded, so
+  "tried and could not" stays distinguishable from "never tried".
+- **Deterministic categorization with a stated basis per category**, not a model: a category feeds
+  a funding recommendation, and "the classifier said so" is not a derivation anyone can audit.
+  `uncategorized` share is reported rather than hidden.
+- **Coverage travels with every claim.** Thin coverage downgrades severity rather than suppressing
+  a finding.
+- **Anomalies relative to the client**, not fixed thresholds — a large deposit is 3× that client's
+  own median, because $80k is unremarkable for one client and the event of the year for another.
+- **No finding contains a transaction description.** Descriptions carry counterparty names and
+  findings reach the Ledger.
+- **Correlation refuses rather than inventing agreement** — an absent side returns `no_data`
+  naming which side, because an empty correlation result reads downstream as "checked, no
+  disagreement".
+- **Missing-document detection** over the Vault, one finding per missing document since each is
+  independently actionable. `classifyByFilename` returns `null` rather than `other` when it cannot
+  tell.
+- 41 new tests (247 total). The analysis suite needs no database and no vendor.
+
+### Fixed
+
+- Tax-return filename classification never matched a real IRS form. `1120` fails on `1120S`,
+  because the word boundary needs a non-word character after the `0` — and every real form carries
+  a letter suffix.
+
 ### Added — Secure Document Vault (`ai-feature/m3-2-secure-document-vault`)
 
 **3.2 Secure Document Vault.** Encrypted storage for the most sensitive data class in the

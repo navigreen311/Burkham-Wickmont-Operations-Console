@@ -275,6 +275,34 @@ importers:
         specifier: ^5.8.3
         version: 5.9.3
 
+  packages/intelligence:
+    dependencies:
+      '@bwc/clients':
+        specifier: workspace:*
+        version: link:../clients
+      '@bwc/consent':
+        specifier: workspace:*
+        version: link:../consent
+      '@bwc/core':
+        specifier: workspace:*
+        version: link:../core
+      '@bwc/db':
+        specifier: workspace:*
+        version: link:../db
+      '@bwc/integration':
+        specifier: workspace:*
+        version: link:../integration
+      '@bwc/ledger':
+        specifier: workspace:*
+        version: link:../ledger
+      '@bwc/vault':
+        specifier: workspace:*
+        version: link:../vault
+    devDependencies:
+      typescript:
+        specifier: ^5.8.3
+        version: 5.9.3
+
   packages/ledger:
     dependencies:
       '@bwc/core':
