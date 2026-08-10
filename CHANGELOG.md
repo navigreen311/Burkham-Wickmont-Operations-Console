@@ -7,6 +7,39 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added - client access to the Vault (`ai-feature/vault-client-access`)
+
+The follow-on ADR-0021 named: `vault.store` and `vault.read` resolve an internal `Actor`, and a
+client user deliberately is not one, so the portal's upload refused. See
+[docs/m11-client-vault-access.md](docs/m11-client-vault-access.md) and ADR-0021's amendment.
+
+- **`storeForClient` and `readForClient`, where OWNERSHIP replaces the authority level** and every
+  other gate is unchanged - the same tenant check, scan-status rule, legal-hold rule, export
+  watermark and pre-handover access log. Where the rules are the same they are the same CODE.
+- **`MINIMUM_LEVEL_TO_READ.bank_statement` is 0**, so a build that reused the staff path would grant
+  a client access to every other client's bank statements. That is the test this file is built
+  around.
+- **Another client's document answers exactly as one that does not exist**, and both refusals are
+  logged - a pattern of attempts against documents a client does not own is the signal an audit
+  wants.
+- **A legal hold blocks export and not view**, for a client as for staff. **The client is not told a
+  hold exists**: a litigation-hold notice is frequently confidential and may concern a dispute with
+  the client asking, so the refusal is truthful, offers a route to the Concierge Desk, and declines
+  to explain. The real reason goes to the access log. **ADR-0021 is amended to record this as an
+  assumption for counsel** - it is the consistent reading of the staff rule, not a settled legal
+  question.
+- **Exports are watermarked with the client user's identity**; `uploadedBy` is the client user's own
+  id rather than a service account.
+- Which document kinds a client may upload stays in the **portal** - a policy about what a client
+  supplies, not about how bytes are stored.
+
+**Changed - `pdfText` moved to `tests/helpers/pdf.ts`.** A second copy written for this slice missed
+pdf-lib's hex-string decoding and failed for a reason unrelated to what it asserts. Both tests now
+share one.
+
+**Changed - one assertion in `client-authentication.test.ts`.** It pinned upload as `refused`, which
+was true when authentication shipped and is precisely what this slice fixes.
+
 ### Added - Client authentication for the Client Portal (`ai-feature/m11-client-authentication`)
 
 Closes the gap 11.10 shipped with: **nothing authenticated a client user.** See

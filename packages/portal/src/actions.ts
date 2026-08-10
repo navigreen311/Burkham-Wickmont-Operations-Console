@@ -5,8 +5,10 @@
  * check, and that is the point: a portal check would be a second copy of a rule, and the second
  * copy is the one that would be wrong when they disagreed.
  *
- *   upload    -> 3.2 Secure Document Vault, which encrypts and holds the document UNREADABLE
- *                until its scan completes. The portal does not decide that; it cannot.
+ *   upload    -> 3.2's CLIENT path, which encrypts and holds the document UNREADABLE until its
+ *                scan completes. The portal does not decide that; it cannot.
+ *   download  -> 3.2's client path again, where OWNERSHIP replaces the authority level. A document
+ *                belonging to another client answers exactly as one that does not exist.
  *   sign      -> 1.5 Consent & Authorization Center. A signature is a consent record.
  *   message   -> 4.1 Communications Hub, whose INBOUND path is deliberately ungated - a client
  *                contacting us is not something to permit or refuse.
@@ -15,7 +17,13 @@
  * The one thing the portal enforces is that the acting client is acting on their own file.
  */
 
-import { store as storeDocument, type DocumentKind } from '@bwc/vault';
+import {
+  readForClient,
+  storeForClient,
+  type ClientAccessor,
+  type DocumentKind,
+  type VaultConfig,
+} from '@bwc/vault';
 import { grant as grantConsent, type ConsentKind } from '@bwc/consent';
 import { recordInbound } from '@bwc/comms';
 import { notBuilt, ok, refused, type Outcome } from '@bwc/core';
@@ -56,13 +64,27 @@ export interface UploadResult {
  * The returned detail says the document is not yet usable, because a client who uploads a
  * statement and sees it appear will otherwise assume the work has started.
  */
+/**
+ * The accessor 3.2's client path takes.
+ *
+ * Built from the resolved principal, so the client id it carries is the one the session resolved
+ * rather than one a caller passed alongside it. `displayName` is only used to stamp an export
+ * watermark, and is optional for that reason.
+ */
+const accessorFor = (principal: ClientPrincipal, displayName?: string): ClientAccessor => ({
+  tenantId: principal.tenantId,
+  clientId: principal.clientId,
+  clientUserId: principal.actorId,
+  displayName: displayName ?? 'Client user',
+});
+
 export const uploadDocument = async (input: {
   principal: ClientPrincipal;
   kind: DocumentKind;
   filename: string;
   contentType: string;
   content: Buffer;
-  vaultConfig: Parameters<typeof storeDocument>[0];
+  vaultConfig: VaultConfig;
 }): Promise<Outcome<UploadResult>> => {
   if (!CLIENT_UPLOADABLE_KINDS.includes(input.kind)) {
     return refused(
@@ -71,14 +93,12 @@ export const uploadDocument = async (input: {
     );
   }
 
-  const stored = await storeDocument(input.vaultConfig, {
-    tenantId: input.principal.tenantId,
-    clientId: input.principal.clientId,
+  const stored = await storeForClient(input.vaultConfig, {
+    accessor: accessorFor(input.principal),
     kind: input.kind,
     filename: input.filename,
     contentType: input.contentType,
     content: input.content,
-    actorId: input.principal.actorId,
   });
 
   if (stored.status !== 'ok') return stored as Outcome<never>;
@@ -88,6 +108,50 @@ export const uploadDocument = async (input: {
     scanStatus: stored.value.scanStatus,
     detail:
       'Uploaded and encrypted. It is not readable by anyone, including us, until the malware scan completes - so nothing has started on it yet. You will not need to upload it again.',
+  });
+};
+
+export interface DownloadResult {
+  readonly filename: string;
+  readonly contentType: string;
+  readonly content: Buffer;
+  readonly watermarked: boolean;
+}
+
+/**
+ * View or download a document from the client's own file.
+ *
+ * `view` returns the bytes as stored. `export` watermarks them with the client user's identity and
+ * the time - for the same reason a staff export is watermarked: a copy leaving the system carries
+ * who took it. That the client is taking a copy of their own document does not change what the
+ * watermark is for, because the copy still leaves.
+ *
+ * Refusals come from 3.2, unchanged. A document under legal hold refuses `export` without saying
+ * why, because a litigation hold is frequently confidential and may concern a dispute with the
+ * client asking - see the header of `clientAccess.ts`.
+ */
+export const downloadDocument = async (input: {
+  principal: ClientPrincipal;
+  documentId: string;
+  displayName?: string;
+  action?: 'view' | 'export';
+  vaultConfig: VaultConfig;
+  now?: Date;
+}): Promise<Outcome<DownloadResult>> => {
+  const result = await readForClient(input.vaultConfig, {
+    accessor: accessorFor(input.principal, input.displayName),
+    documentId: input.documentId,
+    action: input.action ?? 'view',
+    ...(input.now !== undefined ? { now: input.now } : {}),
+  });
+
+  if (result.status !== 'ok') return result as Outcome<never>;
+
+  return ok({
+    filename: result.value.document.filename,
+    contentType: result.value.document.contentType,
+    content: result.value.content,
+    watermarked: result.value.watermarked,
   });
 };
 
