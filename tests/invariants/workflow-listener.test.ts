@@ -177,6 +177,38 @@ describe('triggers fire exactly once', () => {
     expect(await firedFor(failing.id)).toHaveLength(1);
   });
 
+  it('records a playbook key that ends in digits without redacting it', async () => {
+    // The intermittent this file used to produce, made deterministic.
+    //
+    // Playbook keys are suffixed with the tenant slug, which ends in eight hex characters -
+    // all digits 2.3% of the time. The PII value-shape detector used `\b\d{8,17}\b`, and `\b`
+    // sits between a word and a non-word character, so the run inside
+    // `escalate-test-wf-listen-12345678` matched and `redactPii` replaced the whole
+    // `playbookKey` with [REDACTED] on its way into the Ledger. The assertion below - matching
+    // a fired trigger by its playbook key - then found nothing, roughly one run in forty.
+    //
+    // The key here is fixed rather than random, so this fails every time rather than 2.3% of
+    // the time. A probabilistic guard is how the first version of this defect survived its own
+    // fix.
+    const digitKey = `digit-suffix-${fx.tenant.slug}-12345678`;
+    await publishPlaybook({ key: digitKey, version: 1, phase: 0, definition: ONBOARDING });
+    await upsertTrigger({
+      tenantId: fx.tenant.id,
+      eventType: 'client.created',
+      playbookKey: digitKey,
+    });
+
+    const client = await createClient(fx.tenant.id, 'Digit Suffix Co', actor());
+    await listen(new Date('2026-08-10T11:30:00Z'));
+
+    const fired = (await read({ tenantId: fx.tenant.id, type: 'workflow.trigger_fired' })).filter(
+      (event) => event.clientId === client.id && event.payload['playbookKey'] === digitKey,
+    );
+
+    expect(fired).toHaveLength(1);
+    expect(fired[0]?.payload['playbookKey']).toBe(digitKey);
+  });
+
   it('disables a trigger whose condition is malformed instead of firing on everything', async () => {
     await publishPlaybook({
       key: key('broken-cond'),

@@ -6,6 +6,7 @@
  * Specification v2 section 10.5.
  */
 
+import { randomUUID } from 'node:crypto';
 import { describe, expect, it, beforeAll, afterAll } from 'vitest';
 import { create as createClient, find as findClient } from '@bwc/clients';
 import { append, read } from '@bwc/ledger';
@@ -185,6 +186,57 @@ describe('PII never reaches the Ledger', () => {
 
   it('still catches a bare account-length digit run', () => {
     expect(looksLikePii('account 4111111111111111')).toBe(true);
+  });
+
+  it('does not redact an identifier that merely ends in digits', () => {
+    // The second occurrence of the UUID defect above, in a shape the UUID guard cannot see.
+    //
+    // A tenant slug ends in eight hex characters, which are all digits 2.3% of the time. `\b`
+    // sits between a word and a non-word character and `-` is a non-word character, so
+    // `\b\d{8,17}\b` matched the run inside `escalate-test-wf-listen-12345678` and the whole
+    // value became [REDACTED]. Every payload field carrying a slug - playbookKey, scope,
+    // applicationRef - was destroyed on those runs, in an append-only store.
+    //
+    // It surfaced as an intermittent listener test at the same 2.3%, matching a fired trigger
+    // by playbookKey and finding [REDACTED].
+    for (const identifier of [
+      'escalate-test-wf-listen-12345678',
+      'onboarding-test-wf-listen-00000000',
+      'order_12345678',
+      'app-20260810123456',
+      'sha256-12345678901234567',
+    ]) {
+      expect(looksLikePii(identifier), identifier).toBe(false);
+      expect(redactPii({ playbookKey: identifier })).toEqual({ playbookKey: identifier });
+    }
+  });
+
+  it('survives every slug the fixture generator can produce', () => {
+    // Generative, because the defect was probabilistic: a single hand-picked slug passes 97.7%
+    // of the time whether or not the bug is present, which is exactly how it survived the first
+    // fix. Ten thousand draws puts the chance of missing an all-digit slice below any level
+    // worth worrying about.
+    const slugs = Array.from(
+      { length: 10_000 },
+      () => `escalate-test-wf-listen-${randomUUID().replaceAll('-', '').slice(0, 8)}`,
+    );
+
+    // Sanity-check the generator actually exercises the failing case, so a change to slug
+    // formatting cannot quietly turn this into a test of nothing.
+    expect(slugs.some((slug) => /-\d{8}$/.test(slug))).toBe(true);
+
+    for (const slug of slugs) {
+      expect(looksLikePii(slug), slug).toBe(false);
+    }
+  });
+
+  it('still redacts a long digit run that stands alone as a number', () => {
+    // The narrowing must not have turned the backstop off. A bare account-length run, in prose
+    // or as a whole value, is still caught.
+    expect(looksLikePii('12345678901')).toBe(true);
+    expect(looksLikePii('Account 123456789012 was debited.')).toBe(true);
+    expect(looksLikePii('routing 021000021 account 123456789')).toBe(true);
+    expect(redactPii({ note: 'wire to 123456789012 today' })).toEqual({ note: REDACTED });
   });
 
   it('strips PII on append rather than storing it', async () => {

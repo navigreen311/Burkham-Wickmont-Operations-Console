@@ -164,6 +164,19 @@ Every feature or significant change follows this sequence:
   be corrected. It surfaced only as an unrelated Prisma error in a workflow test. Exclude
   identifiers before shape-matching, and when adding a detector ask what legitimate value shares
   the shape.
+- **The same defect came back once, because the first fix listed a shape instead of fixing the
+  boundary.** Excluding full UUIDs did nothing for a _truncated_ one. Tenant slugs end in eight hex
+  characters - all digits 2.3% of the time - so `\b\d{8,17}\b` matched the run inside
+  `escalate-test-wf-listen-12345678` and destroyed the whole `playbookKey`. `\b` is the trap: `-`
+  and `_` are non-word characters, so `\b` happily sits _inside_ an identifier. Use explicit
+  lookarounds (`(?<![A-Za-z0-9_-])`) when "standalone token" is what you mean. **When a guard fires
+  wrongly, fix the rule, not the instance** - and when a fix is probabilistic, make the regression
+  test deterministic, because a 2.3% guard passes 97.7% of the time whether or not the bug is
+  there.
+- **An intermittent is a defect until proven otherwise; a green re-run proves nothing.** Two wrong
+  hypotheses (unawaited appends, a truncated ledger read) were eliminated by reading the code
+  before the arithmetic - 2.3% observed, 2.3% predicted - identified the cause. Match the observed
+  failure _rate_ to a candidate mechanism; it is a stronger signal than the stack trace.
 - **A lock serializes entry; it cannot refresh a snapshot.** Under `Serializable`, the snapshot is
   fixed when the transaction begins — so a transaction that waits on a lock acquires it and _then
   reads state from before the other transaction committed_. The Event Ledger append hit exactly

@@ -7,6 +7,42 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed — PII value-shape detector destroyed identifiers ending in digits (`ai-feature/fix-listener-intermittent`)
+
+Diagnosis and fix for the intermittent flagged during 1.2. **It was not a test defect and not in
+the workflow listener** — it was silent data loss in the Event Ledger.
+
+- **Root cause.** `redactPii`'s value-shape rule was `/\b\d{8,17}\b/`. `\b` sits between a word and
+  a non-word character, and `-` and `_` are non-word characters — so it matched the digit run
+  _inside_ an identifier. Tenant slugs end in eight hex characters, which are all digits **2.34%**
+  of the time, so `playbookKey: 'escalate-test-wf-listen-12345678'` was replaced wholesale with
+  `[REDACTED]` on its way into an append-only store. Every payload field carrying a slug —
+  `playbookKey`, `scope`, `applicationRef` — was affected at the same rate.
+- **The listener was innocent.** The test matched a fired trigger by `playbookKey` and found
+  `[REDACTED]`, roughly one run in forty. Reverting the regex reproduces the CI failure verbatim,
+  including its message.
+- **Second occurrence of the same defect**, previously fixed for full UUIDs by stripping them
+  before shape-matching. That does nothing for a truncated UUID, or for any identifier that merely
+  ends in digits — the first fix listed a shape where it should have fixed the boundary. Now
+  `/(?<![A-Za-z0-9_-])\d{8,17}(?![A-Za-z0-9_-])/`: `Account 123456789012 was debited` still
+  redacts, `order-123456789012` does not.
+- **Accepted false negative, stated rather than buried:** an account number glued to a text prefix
+  (`acct-123456789012`) under a non-PII field name is no longer caught by shape. The field-name
+  list and `assertNoPii` are the primary defences and are unchanged; value-shape matching is a
+  backstop, and a backstop that destroys 2.3% of identifiers costs more than it saves.
+- **The module doc now records that a false positive is not cheap.** The same redactor runs on
+  Ledger payloads, so it destroys an identifier in the same uneditable store — both directions are
+  data loss, and only one announces itself.
+- **Regression guards are deterministic, not probabilistic.** A fixed all-digit playbook key in
+  `workflow-listener.test.ts` fails every time rather than 2.3% of the time, plus a generative test
+  over 10,000 generated slugs that asserts the failing case is actually exercised.
+
+> **Not repairable:** any Ledger row already written with `[REDACTED]` in place of an identifier
+> stays that way. The store is append-only by design, so this fix stops the loss rather than
+> reversing it.
+
+**Tests:** 434 pass (4 new). Mutation-verified — restoring the old regex fails all three new guards.
+
 ### Added — Client Household / Entity Graph (`ai-feature/m1-2-entity-graph`)
 
 **1.2 Client Household / Entity Graph**, which closes the last `not_built` in the funding path. See
@@ -183,7 +219,7 @@ enrichment and correlation are pure functions over a shape we own — fully buil
 
 ### Fixed
 
-- Tax-return filename classification never matched a real IRS form. `1120` fails on `1120S`,
+- Tax-return filename classification never matched a real IRS form. `\b1120\b` fails on `1120S`,
   because the word boundary needs a non-word character after the `0` — and every real form carries
   a letter suffix.
 
