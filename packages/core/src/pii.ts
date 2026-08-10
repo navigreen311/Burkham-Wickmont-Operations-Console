@@ -41,8 +41,33 @@ const EIN_PATTERN = /\b\d{2}-\d{7}\b/;
 /** 8-17 consecutive digits: bank account and card number range. */
 const LONG_DIGIT_RUN = /\b\d{8,17}\b/;
 
-export const looksLikePii = (value: string): boolean =>
-  SSN_PATTERN.test(value) || EIN_PATTERN.test(value) || LONG_DIGIT_RUN.test(value);
+/**
+ * UUIDs are identifiers, not PII, and must be excluded before the value-shape detectors run.
+ *
+ * A UUID's first group is 8 hex characters, and roughly 2.3% of the time all eight happen to be
+ * digits - `12345678-90ab-...`. That matches `LONG_DIGIT_RUN`, so the redactor replaced the whole
+ * value with `[REDACTED]`.
+ *
+ * The consequence was not cosmetic. Instance ids, document ids and task ids travel in ledger
+ * payloads, so roughly one in forty was silently destroyed in an append-only store that cannot be
+ * corrected, and any code reading the id back got the string `[REDACTED]`. It surfaced as an
+ * unrelated Prisma error ("invalid character ... found `[`") in a workflow test, which is the
+ * only reason it was noticed at all.
+ *
+ * Stripped rather than short-circuited, so a real SSN sitting next to a UUID in the same string
+ * is still caught.
+ */
+const UUID_PATTERN =
+  /\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\b/g;
+
+export const looksLikePii = (value: string): boolean => {
+  const withoutIdentifiers = value.replace(UUID_PATTERN, '');
+  return (
+    SSN_PATTERN.test(withoutIdentifiers) ||
+    EIN_PATTERN.test(withoutIdentifiers) ||
+    LONG_DIGIT_RUN.test(withoutIdentifiers)
+  );
+};
 
 export const REDACTED = '[REDACTED]';
 

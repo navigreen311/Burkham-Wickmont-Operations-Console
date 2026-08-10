@@ -61,6 +61,15 @@ export const EVENT_TYPES = [
   // Communication Compliance Scanner (4.2)
   'scanner.blocked_content',
   'scanner.novel_language',
+  // Secure Document Vault (3.2)
+  'vault.document_stored',
+  'vault.document_accessed',
+  'vault.access_refused',
+  'vault.document_exported',
+  'vault.legal_hold_set',
+  'vault.legal_hold_released',
+  'vault.document_deleted',
+  'vault.scan_completed',
   // Marketing Claim Library (7.4)
   'claim.published',
   'claim.deprecated',

@@ -24,6 +24,7 @@ secrets/
 
 # Client data — never commit. This repository handles SSN, EIN, bank, and credit data.
 uploads/
+.vault-blobs/
 /data/
 *.csv
 *.ofx

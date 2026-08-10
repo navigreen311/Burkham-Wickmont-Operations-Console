@@ -157,6 +157,13 @@ Every feature or significant change follows this sequence:
   (`packages/workflow/src/queue.ts`). This silently broke the task-queue claim query; guarded by
   `tests/invariants/raw-sql-timestamps.test.ts`, which asserts raw SQL and Prisma see the same
   rows rather than asserting a fixed count.
+- **A heuristic that redacts is a heuristic that can destroy data.** The PII value-shape detector
+  matched "8-17 consecutive digits", which also matches a UUID whose first group happens to be all
+  digits - about 2.3% of them. Instance, document and task ids travel in ledger payloads, so
+  roughly one in forty was silently replaced with `[REDACTED]` in an append-only store that cannot
+  be corrected. It surfaced only as an unrelated Prisma error in a workflow test. Exclude
+  identifiers before shape-matching, and when adding a detector ask what legitimate value shares
+  the shape.
 - **A lock serializes entry; it cannot refresh a snapshot.** Under `Serializable`, the snapshot is
   fixed when the transaction begins — so a transaction that waits on a lock acquires it and _then
   reads state from before the other transaction committed_. The Event Ledger append hit exactly
