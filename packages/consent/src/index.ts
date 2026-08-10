@@ -136,3 +136,19 @@ export const check = async (
 
   return ok(row);
 };
+
+/**
+ * Every authorization on file for a client, granted or revoked.
+ *
+ * Added for the Compliance Evidence Vault (7.1), which needs the full history rather than a
+ * yes/no on one scope. Revoked records are included: "this client authorized a bureau pull in
+ * March and revoked it in June" is the evidence, and filtering revoked ones out would present the
+ * revocation as though it had never been granted.
+ */
+export const forClient = async (tenantId: string, clientId: string): Promise<Consent[]> => {
+  const rows = await db().consent.findMany({
+    where: { tenantId, clientId },
+    orderBy: { grantedAt: 'asc' },
+  });
+  return rows;
+};
