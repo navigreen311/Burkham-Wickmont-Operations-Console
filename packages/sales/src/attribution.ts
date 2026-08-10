@@ -22,6 +22,8 @@ import { noData, ok, refused, type EventActor, type Outcome } from '@bwc/core';
 export interface AttributionState {
   readonly sourceChannel: string;
   readonly referrerName: string | null;
+  /** The 8.1 Partner behind the name, when there is one. Moves with the name, never apart. */
+  readonly referrerPartnerId: string | null;
   /** True when a correction has been recorded, so a reader knows to look at the history. */
   readonly corrected: boolean;
   readonly asAt: string;
@@ -33,6 +35,8 @@ export interface CorrectionRecord {
   readonly toSourceChannel: string;
   readonly fromReferrerName: string | null;
   readonly toReferrerName: string | null;
+  readonly fromReferrerPartnerId: string | null;
+  readonly toReferrerPartnerId: string | null;
   readonly reason: string;
   readonly correctedBy: string;
   readonly correctedAt: string;
@@ -50,6 +54,12 @@ export const correctAttribution = async (input: {
   leadId: string;
   toSourceChannel: string;
   toReferrerName?: string | null;
+  /**
+   * The partner the referral moves to. Supplied alongside the name and never on its own: a
+   * correction that moved one without the other would leave the two disagreeing, and the portal
+   * reads the id while a person reads the name.
+   */
+  toReferrerPartnerId?: string | null;
   reason: string;
   actor: EventActor;
   correctedBy: string;
@@ -92,6 +102,8 @@ export const correctAttribution = async (input: {
       toSourceChannel: input.toSourceChannel,
       fromReferrerName: current.value.referrerName,
       toReferrerName: input.toReferrerName ?? null,
+      fromReferrerPartnerId: current.value.referrerPartnerId,
+      toReferrerPartnerId: input.toReferrerPartnerId ?? null,
       reason: input.reason,
       correctedBy: input.correctedBy,
       correctedAt: input.correctedAt,
@@ -122,6 +134,8 @@ interface CorrectionRow {
   toSourceChannel: string;
   fromReferrerName: string | null;
   toReferrerName: string | null;
+  fromReferrerPartnerId: string | null;
+  toReferrerPartnerId: string | null;
   reason: string;
   correctedBy: string;
   correctedAt: Date;
@@ -133,6 +147,8 @@ const toCorrection = (row: CorrectionRow): CorrectionRecord => ({
   toSourceChannel: row.toSourceChannel,
   fromReferrerName: row.fromReferrerName,
   toReferrerName: row.toReferrerName,
+  fromReferrerPartnerId: row.fromReferrerPartnerId,
+  toReferrerPartnerId: row.toReferrerPartnerId,
   reason: row.reason,
   correctedBy: row.correctedBy,
   correctedAt: row.correctedAt.toISOString(),
@@ -161,12 +177,14 @@ export const currentAttribution = async (
       ? {
           sourceChannel: lead.sourceChannel,
           referrerName: lead.referrerName,
+          referrerPartnerId: lead.referrerPartnerId,
           corrected: false,
           asAt: lead.attributedAt.toISOString(),
         }
       : {
           sourceChannel: latest.toSourceChannel,
           referrerName: latest.toReferrerName,
+          referrerPartnerId: latest.toReferrerPartnerId,
           corrected: true,
           asAt: latest.correctedAt.toISOString(),
         },
@@ -190,6 +208,7 @@ export const originalAttribution = async (
   return ok({
     sourceChannel: lead.sourceChannel,
     referrerName: lead.referrerName,
+    referrerPartnerId: lead.referrerPartnerId,
     corrected: false,
     asAt: lead.attributedAt.toISOString(),
   });

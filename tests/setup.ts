@@ -79,6 +79,9 @@ export const cleanupTenant = async (tenantId: string): Promise<void> => {
   await prisma.messageTemplate.deleteMany({ where: { tenantId } });
   await prisma.notificationPreference.deleteMany({ where: { tenantId } });
   await prisma.evidenceExport.deleteMany({ where: { tenantId } });
+  // Partners: completions, claim approvals and brand configs cascade from the partner.
+  await prisma.partner.deleteMany({ where: { tenantId } });
+  await prisma.partnerCurriculumModule.deleteMany({ where: { tenantId } });
   // Risk: overrides cascade from the listing.
   await prisma.doNotFundListing.deleteMany({ where: { tenantId } });
   await prisma.riskObservation.deleteMany({ where: { tenantId } });
