@@ -7,6 +7,59 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added - the internal Console UI, and the staff credential it could not ship without (`ai-feature/console-ui`)
+
+- **The finding this slice starts from.** `apps/api` has taken the acting staff member from an
+  `x-actor-id` header since the walking skeleton. Its own comment called that "a development seam,
+  not authentication"; ADR-0022 called fixing it "necessary anyway". An `Actor` row carries a tenant,
+  an Authority Level and a department, and **nothing a person has to know or hold** - so anybody who
+  could reach the port was any actor they cared to name.
+- **A page is what makes that exploitable.** Not because the header got weaker, but because a
+  console is discoverable, bookmarkable and left open on a laptop, and because the reach is total: a
+  client session opens ONE file, a staff session opens EVERY file in the firm plus the Firewall
+  trigger, the compliance transition and the placement path. So the UI and the credential are one
+  slice, and the ordering is the decision (ADR-0032).
+- **Staff sign in with a password and a TOTP code**, in one request - there is no state to hold
+  between two, so there is no half-authenticated moment to model (contrast ADR-0024, where there is).
+  New `ActorCredential` and `ActorSession` tables in the `identity` schema.
+- **The credential hangs off the existing Actor; there is no `StaffUser`.** The Actor is what every
+  Ledger event names and what the middleware chain reads an Authority Level from. A parallel staff
+  identity would give sign-in and the audit trail **two different answers to "who did this"**.
+- **An Actor with no credential row cannot sign in.** Absence is not permission - the same structural
+  default as ADR-0007 and ADR-0009. A Village agent is refused one outright: it acts through the
+  worker, which holds no session.
+- **The second factor is a precondition, not a setting.** A client may decide how much friction their
+  own file is worth (ADR-0028); a staff member may not, and the reason is BLAST RADIUS rather than
+  seniority. `enrolledAt` stays null until a code verifies, and an unenrolled credential cannot
+  authenticate at all - it is not an account that signs in with one factor. Sessions are shorter than
+  the portal's too: 8 hours absolute, 15 minutes idle, because the case the idle window bounds is an
+  unlocked screen in an office.
+- **`x-actor-id` is now off unless a deployment turns it on**, and `readConsoleConfig` THROWS rather
+  than warns when `CONSOLE_DEV_ACTOR_HEADER=true` meets `NODE_ENV=production`. A warning is a line in
+  a log nobody reads, and the thing it would warn about is authentication being optional. It survives
+  at all because the worker, the integration tests and a developer with curl use it, and deleting it
+  in the same slice as the sign-in would change two things at once.
+- **Every internal route is now behind a session**, including `/api/health/integrations` (which names
+  every vendor this firm has not cleared) and `/api/clients/:id/firewall` (which asked for no actor at
+  all). Liveness stays unauthenticated and says nothing about components.
+- **The page**: four views, no framework, no build step, nothing inline. Today (health whole, the
+  operator's queue, correction obligations), Clients (searchable, with the TOTAL beside the page so a
+  page cannot read as the whole book), and one client file with a **Do Not Fund banner above
+  everything else** - a listing is not a status among others. Nothing is rendered as a colour alone:
+  `unmonitored` is a state and it is not green (ADR-0019).
+- **The rate limiter moved from `apps/portal-api` into `@bwc/http`.** Two surfaces need one, and a
+  limiter pasted into a second app is a second control - which is what `packages/identity`'s own
+  rate-limit header warns about.
+- Configuration with no defaults, as the portal has: `CONSOLE_TENANT_ID`, `CONSOLE_COOKIE_SECURE`,
+  `CONSOLE_TRUST_PROXY`, `CONSOLE_RATE_LIMIT_STORE`. `CONSOLE_TRUST_PROXY='true'` is refused.
+- **Not built, and named rather than half-built:** no writes from the page (the actions are behind a
+  session but have no buttons), no enrolment surface (the first credential is a bootstrap step), no
+  WebAuthn for staff (better than TOTP, deferred for a relying-party origin the internal deployment
+  has not been given).
+- 67 test files, 1169 vitest tests (+57), 23 browser specs (+10). Migration
+  `20260820000000_staff_console_credentials`, verified by deploying the whole chain to an empty
+  database.
+
 ### Changed - CI installs Chromium only (`ai-feature/e2e-chromium-only`)
 
 - Firefox and WebKit were added, narrowed to the specs written for them, and are now **dropped from

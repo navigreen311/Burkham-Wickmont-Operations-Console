@@ -24,7 +24,7 @@ import { create as createClient } from '@bwc/clients';
 import { EnvKekProvider, LocalEncryptedStore, generateKek, type VaultConfig } from '@bwc/vault';
 import { createPortalApp } from '../../apps/portal-api/src/app.js';
 import { type PortalConfig } from '../../apps/portal-api/src/config.js';
-import { createRateLimiter } from '../../apps/portal-api/src/limiter.js';
+import { createRateLimiter } from '@bwc/http';
 import { cleanupTenant, makeFixture, type Fixture } from '../setup.js';
 
 let fx: Fixture;

@@ -4,8 +4,10 @@
  * Three properties carry this file.
  *
  * **The portal process serves no internal capability.** Asserted by asking it for the internal
- * app's own routes and getting 404 - and by the fact that `x-actor-id`, which the internal app
- * trusts, does nothing here.
+ * app's own routes and getting 404 - and by the fact that `x-actor-id` does nothing here. Since
+ * ADR-0032 the internal app does not trust that header either unless a deployment turns it on; this
+ * assertion is about the code not being in this process at all, which is the stronger property and
+ * the one that does not depend on a setting.
  *
  * **Rate limiting catches what lockout cannot.** Ten emails, one attempt each: no account reaches
  * two failures, so lockout never fires, and the per-IP limit is the only thing that stops it.
@@ -40,7 +42,7 @@ import {
 } from '@bwc/vault';
 import { createPortalApp } from '../../apps/portal-api/src/app.js';
 import { readConfig, type PortalConfig } from '../../apps/portal-api/src/config.js';
-import { createRateLimiter } from '../../apps/portal-api/src/limiter.js';
+import { createRateLimiter } from '@bwc/http';
 import { cleanupTenant, makeFixture, type Fixture } from '../setup.js';
 
 let fx: Fixture;
@@ -168,9 +170,10 @@ describe('the portal process serves no internal capability', () => {
     }
   });
 
-  it('ignores x-actor-id, which the internal app trusts', async () => {
-    // THE ASSERTION THIS FILE EXISTS FOR. `apps/api` resolves the acting staff member from this
-    // header; here it is just a header, because the code that reads it is not in this process.
+  it('ignores x-actor-id, which the internal app can be configured to read', async () => {
+    // THE ASSERTION THIS FILE EXISTS FOR. `apps/api` can be configured to resolve an actor from this
+    // header (off by default since ADR-0032); here it is just a header under any configuration,
+    // because the code that reads it is not in this process.
     const reply = await call('/portal/room', {
       headers: { 'x-actor-id': fx.human.id },
     });
@@ -869,7 +872,7 @@ describe('the limiter itself', () => {
   });
 
   it('counts an unattributable request rather than letting it through', async () => {
-    const { rateLimitKey } = await import('../../apps/portal-api/src/limiter.js');
+    const { rateLimitKey } = await import('@bwc/http');
     // An unattributable request is exactly the one an attacker would arrange for.
     expect(rateLimitKey(undefined)).toBe('unknown');
     expect(rateLimitKey('  ')).toBe('unknown');

@@ -81,9 +81,12 @@ silently would assert a check that never ran.
 | GET    | `/api/clients/:clientId/ledger`           | Events for a client                                   |
 | GET    | `/api/ledger/integrity`                   | Verify the tenant's chain                             |
 
-Actor identity arrives as an `x-actor-id` header. **That is a development seam, not
-authentication** — real Identity & Access issues and verifies credentials, and this is replaced
-when it does.
+Actor identity arrived as an `x-actor-id` header. **That was a development seam, not
+authentication.**
+
+> **Replaced in ADR-0032.** Staff now sign in with a password and a TOTP code, and every route above
+> is behind that session. The header is off unless `CONSOLE_DEV_ACTOR_HEADER` is set, and the config
+> refuses to return one with it set in production.
 
 ### Outcome → HTTP
 
@@ -173,7 +176,9 @@ turns it red. A suite that has never been shown a break has been run, not tested
 
 ## Known gaps
 
-- **`x-actor-id` is not authentication.** Replaced by Identity & Access (11.1).
+- **`x-actor-id` is not authentication.** Replaced by Identity & Access (11.1) — done in
+  ADR-0032: staff sign in with a password and a TOTP code, and the header is off unless
+  `CONSOLE_DEV_ACTOR_HEADER` is set, which the config refuses to allow in production.
 - **Step 5 refuses all client-facing actions** until the Regulatory Engine (7.2) exists. Correct
   by principle 6, and it means no client-facing content path is usable yet.
 - **Step 7 is unreachable** while step 5 refuses. Retained so the order stays visible.

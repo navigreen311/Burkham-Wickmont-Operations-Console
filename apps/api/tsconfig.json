@@ -19,6 +19,10 @@
     { "path": "../../packages/firewall" },
     { "path": "../../packages/integration" },
     { "path": "../../packages/middleware" },
-    { "path": "../../packages/placement" }
+    { "path": "../../packages/placement" },
+    { "path": "../../packages/notifications" },
+    { "path": "../../packages/observability" },
+    { "path": "../../packages/risk" },
+    { "path": "../../packages/calls" }
   ]
 }

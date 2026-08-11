@@ -18,6 +18,7 @@
   },
   "dependencies": {
     "@bwc/core": "workspace:*",
+    "@bwc/identity": "workspace:*",
     "express": "^5.1.0"
   },
   "devDependencies": {

@@ -71,6 +71,7 @@ export default [
       'apps/portal-api/src/server.ts',
       // The e2e harness. Its stdout is what a human watching a browser run reads.
       'tests/e2e/server.ts',
+      'tests/e2e/console-server.ts',
       'apps/worker/src/main.ts',
       'scripts/**/*.mjs',
       'scripts/**/*.js',
@@ -79,14 +80,18 @@ export default [
   },
   {
     /**
-     * The Client Portal's page. The only browser code in the repository.
+     * The two served pages - the Client Portal's and the internal Console's. The only browser code
+     * in the repository.
      *
-     * Its globals are listed here rather than added to `NODE_GLOBALS`, because `document` and
+     * Their globals are listed here rather than added to `NODE_GLOBALS`, because `document` and
      * `navigator` existing in server code would be a mistake nobody would catch - the point of
      * `no-undef` is that a global has to be declared somewhere, and where it is declared says where
      * it is allowed to be used.
+     *
+     * One block for both, because the rule is the same one. Two blocks would be two places to
+     * remember when a global is added, and the second is the one that gets forgotten.
      */
-    files: ['apps/portal-api/public/**/*.js'],
+    files: ['apps/portal-api/public/**/*.js', 'apps/api/public/**/*.js'],
     languageOptions: {
       ecmaVersion: 2023,
       sourceType: 'module',
@@ -97,6 +102,7 @@ export default [
         fetch: 'readonly',
         atob: 'readonly',
         btoa: 'readonly',
+        URLSearchParams: 'readonly',
       },
     },
   },

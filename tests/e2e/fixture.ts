@@ -5,6 +5,10 @@
  * filesystem would be a second thing to keep in step for no gain.
  */
 
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { base32Decode, totp } from '@bwc/identity';
+
 export const E2E_PORT = 4300;
 
 /**
@@ -56,4 +60,75 @@ export const openPortal = async (page: {
  * The page puts every value on the screen with `textContent`, and this is the value that proves it:
  * if anything ever reaches the DOM as markup, this is the string that becomes an element.
  */
+/* --- the internal Console ------------------------------------------------- */
+
+/** A second process on a second port. The Console and the portal are separate surfaces (ADR-0022). */
+export const E2E_CONSOLE_PORT = 4301;
+export const E2E_CONSOLE_ORIGIN = `http://localhost:${E2E_CONSOLE_PORT}`;
+
+/**
+ * One Console account per spec that signs in.
+ *
+ * The same reasoning as `E2E_MUTABLE_ACCOUNTS`, arriving from a different direction. A TOTP code is
+ * spent when it is accepted, and a code at or below the last accepted step is refused as a replay -
+ * so **one authenticator cannot sign in twice inside thirty seconds**, which is the whole point of
+ * the guard and is exactly what a suite of fast specs would try to do. A person waits; a spec does
+ * not.
+ *
+ * Each spec claims one of these by name, so no spec is queueing behind another one's clock.
+ */
+export const E2E_CONSOLE_ACCOUNTS = [
+  'e2e-operator-overview@example.com',
+  'e2e-operator-health@example.com',
+  'e2e-operator-clients@example.com',
+  'e2e-operator-file@example.com',
+  'e2e-operator-signout@example.com',
+  'e2e-operator-refusal@example.com',
+] as const;
+
+export const E2E_CONSOLE_PASSWORD = 'a-long-enough-console-password';
+
+/**
+ * Where the Console harness leaves what the specs need.
+ *
+ * **A handshake through the filesystem, and here it earns its keep.** A staff sign-in needs a code
+ * derived from the TOTP secret, and that secret is generated inside `beginStaffEnrolment` - which is
+ * exactly where it should be generated, so it cannot be a constant agreed in this file. The seeding
+ * process is the only one that ever sees it, and the spec process has to compute a code from it.
+ *
+ * The alternative is an endpoint that hands out a secret, which is a worse thing to have existed
+ * than a file in a temp directory that lives for the length of one run.
+ */
+export const E2E_CONSOLE_HANDOFF = join(tmpdir(), 'bwc-e2e-console.json');
+
+export interface ConsoleHandoff {
+  readonly tenantId: string;
+  /** The base32 secret per account email, as an authenticator would be given it. */
+  readonly secrets: Readonly<Record<string, string>>;
+  readonly clientName: string;
+  readonly label: string;
+}
+
+/**
+ * A code for the step AFTER the current one.
+ *
+ * Not the current step, deliberately: seeding spends one code confirming the authenticator works,
+ * and a code at or below the last accepted step is refused as a replay. `verifyTotp` accepts one
+ * step of drift in either direction, so a code for the next step verifies now AND is greater than
+ * the one enrolment spent - which is what a person who waits half a minute would present.
+ */
+export const nextStepCode = (secretBase32: string, now: Date = new Date()): string => {
+  const secret = base32Decode(secretBase32);
+  if (secret === null) throw new Error('the handoff carried an unreadable secret');
+  const step = Math.floor(now.getTime() / 1000 / 30) + 1;
+  return totp(secret, new Date(step * 30 * 1000));
+};
+
+/** Open the Console. `domcontentloaded` for the reason `openPortal` gives. */
+export const openConsole = async (page: {
+  goto: (url: string, options: { waitUntil: 'domcontentloaded' }) => Promise<unknown>;
+}): Promise<void> => {
+  await page.goto(`${E2E_CONSOLE_ORIGIN}/console/`, { waitUntil: 'domcontentloaded' });
+};
+
 export const E2E_MESSAGE_WITH_MARKUP = '<img src=x onerror="document.title=\'xss\'">';

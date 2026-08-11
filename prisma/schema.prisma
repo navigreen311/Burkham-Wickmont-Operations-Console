@@ -61,6 +61,9 @@ model Actor {
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
+  credential ActorCredential?
+  sessions   ActorSession[]
+
   @@index([tenantId])
   @@map("actors")
   @@schema("identity")
@@ -3730,5 +3733,91 @@ model ClientSession {
 
   @@index([tenantId, clientUserId])
   @@map("client_sessions")
+  @@schema("identity")
+}
+
+/// How a staff member proves they are the Actor they claim to be.
+///
+/// **Bound to the existing Actor rather than a parallel StaffUser.** The Actor already carries the
+/// tenant, the Authority Level and the department, and every Ledger event already names an actor id.
+/// A separate staff identity would mean sign-in and the audit trail answer "who did this" with two
+/// different keys, and reconciling them would be somebody's job forever.
+///
+/// One row per Actor, or none. **An Actor with no row cannot sign in** - the same structural default
+/// as ADR-0007 governance and ADR-0009 state activation: absence is not permission. Village agents
+/// have no row and are not meant to; they act through the worker, not through a browser.
+model ActorCredential {
+  id String @id @default(uuid()) @db.Uuid
+
+  actorId String @unique @db.Uuid
+  actor   Actor  @relation(fields: [actorId], references: [id], onDelete: Cascade)
+
+  /// Denormalised from the Actor so the sign-in lookup is one indexed read on (tenantId, email)
+  /// before anything is trusted. Kept in step by the only writer, which is enrolment.
+  tenantId String @db.Uuid
+
+  /// Lowercased at write. Unique per tenant.
+  email String
+
+  /// `scrypt$N$r$p$salt$hash`. Never returned, never logged, never in a Ledger payload.
+  passwordHash String
+
+  /// The TOTP shared secret, field-encrypted (`@bwc/crypto`) under a key that is not in this
+  /// database - the same treatment `ClientMfaFactor` gives a client's.
+  ///
+  /// **Not nullable in practice: a staff credential without one cannot complete enrolment.** The
+  /// column is nullable only for the window between the password being set and the first code being
+  /// proved, and `enrolledAt` is what every gate reads.
+  totpSecretCiphertext String?
+
+  /// The last time step accepted. A code at or below it is refused, so an observed code cannot be
+  /// replayed inside its own validity window.
+  totpLastUsedStep BigInt?
+
+  /// Null until a code from the authenticator has verified. **Until then the account cannot sign
+  /// in at all** - not "can sign in with one factor". Staff MFA is a precondition of enrolment
+  /// rather than a setting, because a staff session opens every client file in the tenant.
+  enrolledAt DateTime?
+
+  /// Consecutive failures since the last success. Reset on success, not on a timer.
+  failedAttempts Int       @default(0)
+  lockedUntil    DateTime?
+
+  lastSignInAt DateTime?
+
+  /// Set when access is withdrawn. Read on every session resolve, so revocation takes effect on the
+  /// next request rather than when a session happens to lapse.
+  disabledAt     DateTime?
+  disabledReason String?
+
+  createdAt DateTime @default(now())
+
+  @@unique([tenantId, email])
+  @@index([tenantId])
+  @@map("actor_credentials")
+  @@schema("identity")
+}
+
+/// A signed-in staff session. Same two-expiry design as `ClientSession`, tighter windows.
+model ActorSession {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+
+  actorId String @db.Uuid
+  actor   Actor  @relation(fields: [actorId], references: [id], onDelete: Cascade)
+
+  /// SHA-256 of the session token. The token is returned once and never stored.
+  tokenHash String @unique
+
+  issuedAt DateTime @default(now())
+  /// Absolute expiry. A session ends here however active it has been.
+  expiresAt DateTime
+  /// Moved forward on each resolve, for the idle window. Both are checked every time.
+  lastSeenAt DateTime @default(now())
+
+  revokedAt DateTime?
+
+  @@index([tenantId, actorId])
+  @@map("actor_sessions")
   @@schema("identity")
 }
