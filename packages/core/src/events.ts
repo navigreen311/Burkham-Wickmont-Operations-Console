@@ -219,6 +219,12 @@ export const EVENT_TYPES = [
   'partner.brand.approved',
   'partner.brand.revoked',
   'partner.client_status.viewed',
+  // Partner Risk Score (8.4). The finding's summary is not in the payload - it is free text about
+  // a named partner and often a named client. `resolved` carries `upheld`, because a dismissed
+  // finding is a different fact from one that never happened, and a run of dismissed complaints
+  // about one partner is itself a signal.
+  'partner.finding.recorded',
+  'partner.finding.resolved',
   // Call Recording & Promise Tracking (4.3). `recording.refused` is an event because "we wanted
   // to record this call and the client's state would not let us" is evidence, the same way a
   // blocked send is. No transcript text reaches the Ledger; excerpts stay in the obligation row.

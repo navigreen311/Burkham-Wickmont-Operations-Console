@@ -2610,6 +2610,7 @@ model Partner {
   completions     PartnerModuleCompletion[]
   claimApprovals  PartnerClaimApproval[]
   brandConfigs    PartnerBrandConfig[]
+  conductFindings PartnerConductFinding[]
 
   @@index([tenantId, status])
   @@index([tenantId, track])
@@ -4217,4 +4218,109 @@ model DeletionRequest {
   @@index([tenantId, clientId, status])
   @@map("deletion_requests")
   @@schema("retention")
+}
+
+// ---------------------------------------------------------------------------
+// 8.4 Partner Risk Score
+//
+// Blueprint 8.4 asks for a "score across dimensions", and the dimensions it
+// lists are two different kinds of thing wearing one name:
+//
+//   claim compliance, unauthorized promises detected, documentation quality
+//     - conduct. Categorical. A partner either promised a client an approval
+//       or did not.
+//
+//   conversion rate, complaint rate, refund rate, revenue contribution
+//     - performance. Numeric, and meaningless below a sample.
+//
+// They are never combined into one figure. A single number lets revenue
+// contribution offset an unauthorized promise, which is precisely the trade
+// design principle 1 exists to forbid - and it would do it invisibly, because
+// the arithmetic gives no sign that one input was a compliance breach. So the
+// standing is worst-of over conduct, the measures are reported separately with
+// their denominators, and nothing in this module averages the two.
+//
+// See ADR-0043.
+// ---------------------------------------------------------------------------
+
+/// What a partner did. Blueprint 8.4's conduct dimensions, as an enum rather than free text,
+/// because "how many unauthorized promises has this partner made" is a query Channel Partnerships
+/// runs rather than a scan of somebody's notes.
+enum PartnerFindingKind {
+  /// A promise no partner may make: guaranteed approval, a specific amount, credit repair.
+  /// The gravest of these and the reason the enum exists - it is a Level 4 prohibited action
+  /// performed by somebody outside the authority system.
+  unauthorized_promise
+  /// Language outside the approved claims library (7.4).
+  unapproved_claim
+  /// A client complained about the partner or about how they were introduced.
+  client_complaint
+  /// Referrals arriving without the documentation the track requires.
+  documentation_gap
+  /// Brand or co-brand usage outside what was approved (8.1).
+  brand_misuse
+  /// Anything a human recorded that the list above does not cover.
+  other
+
+  @@schema("partners")
+}
+
+/// How bad. Deliberately the same four words 6.5 uses, so a reader moving between the two modules
+/// does not have to learn a second severity vocabulary.
+enum PartnerFindingSeverity {
+  critical
+  serious
+  notable
+  context
+
+  @@schema("partners")
+}
+
+/// One recorded thing a partner did.
+///
+/// The input to the standing, and append-only in practice: a finding is superseded by a
+/// `resolvedAt` rather than deleted, because "we looked into this and it was unfounded" is a
+/// different fact from "this never happened", and a partner disputing a decertification is
+/// entitled to the difference.
+model PartnerConductFinding {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+
+  partnerId String  @db.Uuid
+  partner   Partner @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+
+  kind     PartnerFindingKind
+  severity PartnerFindingSeverity
+
+  /// What happened, for the person who will read it back to the partner.
+  summary String
+
+  /// Where it came from, in the observer's words. A scanner hit, a client call, a review of a
+  /// co-branded page. A finding with no provenance is a rumour, and a standing built on rumours is
+  /// how a commercial relationship ends on somebody's recollection.
+  source String
+
+  /// The client it concerned, when it concerned one. Null for a finding about the partner's own
+  /// material rather than about a referral.
+  clientId String? @db.Uuid
+
+  occurredAt DateTime
+  recordedAt DateTime @default(now())
+  recordedBy String   @db.Uuid
+
+  /// Set when somebody investigated and closed it. A resolved finding stops counting toward the
+  /// standing and stays on the record.
+  resolvedAt      DateTime?
+  resolvedBy      String?   @db.Uuid
+  /// Required to resolve. Whether it was upheld or dismissed, and why.
+  resolutionNote  String?
+  /// Whether the investigation agreed with the finding. Null while open. A dismissed finding is
+  /// NOT deleted: a pattern of dismissed complaints about one partner is itself a signal, and it
+  /// is invisible if dismissal erases the row.
+  upheld Boolean?
+
+  @@index([tenantId, partnerId, resolvedAt])
+  @@index([tenantId, kind, occurredAt])
+  @@map("partner_conduct_findings")
+  @@schema("partners")
 }
