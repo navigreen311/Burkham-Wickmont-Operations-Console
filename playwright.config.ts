@@ -64,6 +64,12 @@ export default defineConfig({
             // address - so the harness cannot simply be addressed by IP. Telling Firefox to use one
             // stack removes the choice.
             'network.dns.disableIPv6': true,
+            // Playwright drives Firefox through an internal proxy, and `localhost` bypasses a proxy
+            // by default - so a navigation to it takes a different path from every other request
+            // the harness serves. This is the documented knob for that, and it is the fourth thing
+            // tried against a hang that survived listening on both stacks, navigating on
+            // `domcontentloaded`, and pinning DNS to one stack.
+            'network.proxy.allow_hijacking_localhost': true,
           },
         },
       },
