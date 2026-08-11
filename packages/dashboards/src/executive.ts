@@ -151,7 +151,7 @@ export const readinessImprovement = async (
 ): Promise<Metric<number>> => {
   const readings = await db().readinessReading.findMany({
     where: { tenantId, takenOn: { gte: period.from, lt: period.to } },
-    orderBy: { takenOn: 'asc' },
+    orderBy: [{ takenOn: 'asc' }, { id: 'asc' }],
     select: { leadId: true, readiness: true },
   });
 

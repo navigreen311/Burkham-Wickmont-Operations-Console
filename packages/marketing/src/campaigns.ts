@@ -359,7 +359,7 @@ export const assetsFor = async (
 ): Promise<readonly AssetRecord[]> => {
   const rows = await db().marketingAsset.findMany({
     where: { tenantId, ...(filter.state !== undefined ? { state: filter.state as never } : {}) },
-    orderBy: { createdAt: 'asc' },
+    orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
   });
   return rows.map(toAsset);
 };

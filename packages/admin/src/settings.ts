@@ -338,7 +338,7 @@ export const changeHistory = async (
 ): Promise<readonly ConfigurationChange[]> => {
   const rows = await db().configurationChange.findMany({
     where: { tenantId, ...(key !== undefined ? { key } : {}) },
-    orderBy: { createdAt: 'asc' },
+    orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
   });
   return rows.map(toChange);
 };
@@ -347,7 +347,7 @@ export const changeHistory = async (
 export const stagedChanges = async (tenantId: string): Promise<readonly ConfigurationChange[]> => {
   const rows = await db().configurationChange.findMany({
     where: { tenantId, appliedAt: null },
-    orderBy: { createdAt: 'asc' },
+    orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
   });
   return rows.map(toChange);
 };

@@ -112,7 +112,7 @@ export const publishModule = async (
 
   const current = await db().partnerCurriculumModule.findFirst({
     where: { tenantId: input.tenantId, key: input.key, supersededAt: null },
-    orderBy: { version: 'desc' },
+    orderBy: [{ version: 'desc' }, { id: 'asc' }],
   });
 
   if (!current && input.changeKind === 'editorial') {
@@ -186,7 +186,7 @@ export const publishModule = async (
 export const currentCurriculum = async (tenantId: string): Promise<readonly CurriculumModule[]> => {
   const rows = await db().partnerCurriculumModule.findMany({
     where: { tenantId, supersededAt: null },
-    orderBy: { key: 'asc' },
+    orderBy: [{ key: 'asc' }, { id: 'asc' }],
   });
   return rows.map(toModule);
 };

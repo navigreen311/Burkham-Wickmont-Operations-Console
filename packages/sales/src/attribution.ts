@@ -169,7 +169,7 @@ export const currentAttribution = async (
 
   const latest = await db().attributionCorrection.findFirst({
     where: { tenantId, leadId },
-    orderBy: { correctedAt: 'desc' },
+    orderBy: [{ correctedAt: 'desc' }, { id: 'asc' }],
   });
 
   return ok(
@@ -221,7 +221,7 @@ export const correctionHistory = async (
 ): Promise<readonly CorrectionRecord[]> => {
   const rows = await db().attributionCorrection.findMany({
     where: { tenantId, leadId },
-    orderBy: { correctedAt: 'desc' },
+    orderBy: [{ correctedAt: 'desc' }, { id: 'asc' }],
   });
   return rows.map(toCorrection);
 };

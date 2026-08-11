@@ -90,20 +90,17 @@ and operators read this trace on the page.
 
 ---
 
-## The finding this slice did not fix
+## The finding this slice surfaced — since fixed
 
-**`autoListForComplianceFail` is not called by anything.** Decision E says a failed compliance state
-routes the client to Do Not Fund Governance; the function implementing it is exported, tested, and
-has no production caller. Moving a client to `fail` does not list them.
+**`autoListForComplianceFail` had no production caller.** Decision E says a failed compliance state
+routes the client to Do Not Fund Governance; the function was exported, tested, and called by
+nothing, so moving a client to `fail` left them fundable.
 
-Not fixed here because the fix is a layering decision worth its own slice — `@bwc/clients` calling
-`@bwc/risk` inverts the dependency, and the alternatives are a Ledger-driven listener or moving the
-composition into `@bwc/middleware`. Doing that badly inside a UI slice is how a control ends up in
-the wrong place permanently.
-
-**What this slice does instead is stop the page implying otherwise.** The consequence text under the
-compliance dropdown says what `fail` does and says the automatic listing is not wired today. A button
-quietly doing less than the documentation promises is worse than the gap.
+It was left out of this slice on purpose — the fix is a layering decision, and a UI slice is a bad
+place to take one — and done as its own immediately after:
+[ADR-0034](adr/0034-a-control-a-caller-can-skip-is-not-a-control.md). The listing now happens inside
+`transitionComplianceState`, so there is no second function to reach for, and the consequence text
+under the compliance dropdown says what `fail` does without the caveat it used to carry.
 
 ---
 

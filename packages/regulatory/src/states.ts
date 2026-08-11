@@ -134,7 +134,7 @@ export const publishStateModule = async (
 
   const current = await db().stateModule.findFirst({
     where: { tenantId: input.tenantId, state: input.state, supersededAt: null },
-    orderBy: { version: 'desc' },
+    orderBy: [{ version: 'desc' }, { id: 'asc' }],
   });
 
   if (current === null && input.changeKind === 'editorial') {
@@ -198,7 +198,7 @@ export const currentModule = async (
 ): Promise<Outcome<StateModuleRecord>> => {
   const row = await db().stateModule.findFirst({
     where: { tenantId, state, supersededAt: null },
-    orderBy: { version: 'desc' },
+    orderBy: [{ version: 'desc' }, { id: 'asc' }],
   });
   return row ? ok(toModule(row)) : noData(`No regulatory module has been published for ${state}.`);
 };
@@ -210,7 +210,7 @@ export const moduleHistory = async (
 ): Promise<readonly StateModuleRecord[]> => {
   const rows = await db().stateModule.findMany({
     where: { tenantId, state },
-    orderBy: { version: 'desc' },
+    orderBy: [{ version: 'desc' }, { id: 'asc' }],
   });
   return rows.map(toModule);
 };
@@ -219,7 +219,7 @@ export const statesWithModules = async (tenantId: string): Promise<readonly stri
   const rows = await db().stateModule.findMany({
     where: { tenantId, supersededAt: null },
     select: { state: true },
-    orderBy: { state: 'asc' },
+    orderBy: [{ state: 'asc' }, { id: 'asc' }],
   });
   return rows.map((row) => row.state);
 };

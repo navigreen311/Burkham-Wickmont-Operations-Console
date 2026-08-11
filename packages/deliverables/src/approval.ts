@@ -156,7 +156,7 @@ export const draft = async (input: DraftInput): Promise<Outcome<Deliverable>> =>
       clientId: input.clientId,
       templateKey: input.document.templateKey,
     },
-    orderBy: { version: 'desc' },
+    orderBy: [{ version: 'desc' }, { id: 'asc' }],
     select: { version: true },
   });
 

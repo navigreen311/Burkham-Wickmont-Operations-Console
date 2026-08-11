@@ -108,7 +108,7 @@ export const readingsFor = async (
 ): Promise<readonly ReadingRecord[]> => {
   const rows = await db().readinessReading.findMany({
     where: { tenantId, leadId },
-    orderBy: { takenOn: 'asc' },
+    orderBy: [{ takenOn: 'asc' }, { id: 'asc' }],
   });
   return rows.map((row) => ({
     readiness: row.readiness,
@@ -164,7 +164,7 @@ export const expansionSignals = async (
 
     const latest = await db().readinessReading.findFirst({
       where: { tenantId, leadId: lead.id, takenOn: { lte: today } },
-      orderBy: { takenOn: 'desc' },
+      orderBy: [{ takenOn: 'desc' }, { id: 'asc' }],
     });
 
     const base = lead.blueprintReadiness;

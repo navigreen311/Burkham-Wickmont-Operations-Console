@@ -331,8 +331,15 @@ describe('6.4 review cadence', () => {
 });
 
 describe('6.4 automatic listing per Decision E', () => {
-  it('lists a client whose compliance state reaches fail', async () => {
-    await transitionComplianceState({
+  /**
+   * **The assertion that would have failed for the whole life of this system.**
+   *
+   * `autoListForComplianceFail` was written, exported and tested, and nothing called it - so a
+   * client moved to `fail` stayed fundable. Nobody here calls the lister: the transition does it,
+   * because a control a caller can skip by calling a different function is not a control (ADR-0034).
+   */
+  it('lists a client whose compliance state reaches fail, with nobody calling the lister', async () => {
+    const moved = await transitionComplianceState({
       tenantId: fx.tenant.id,
       clientId: autoListed,
       to: 'fail',
@@ -340,41 +347,61 @@ describe('6.4 automatic listing per Decision E', () => {
       actor: { id: fx.human.id, kind: 'human' },
       findings: [{ code: 'DOC-ALTERED', summary: 'Statement metadata inconsistent with issuer.' }],
     });
+    expect(moved.status).toBe('ok');
 
-    const result = await autoListForComplianceFail({
-      tenantId: fx.tenant.id,
-      clientId: autoListed,
-      complianceState: 'fail',
-      reason: 'Bank statements were altered before submission.',
-      triggeredBy: { id: fx.human.id, kind: 'human' },
-      now: NOW,
-    });
-
-    expect(result.status).toBe('ok');
-    if (result.status !== 'ok') return;
-    expect(result.value.automatic).toBe(true);
-    expect(result.value.trigger).toBe('compliance_fail');
+    const listing = await activeListing(fx.tenant.id, autoListed);
+    expect(listing).not.toBeNull();
+    expect(listing?.automatic).toBe(true);
+    expect(listing?.trigger).toBe('compliance_fail');
     // Null rather than an invented approver. Naming one would put a fiction in the field a
     // reviewer reads to find out who decided, indistinguishable from a real approval.
-    expect(result.value.listedBy).toBeNull();
+    expect(listing?.listedBy).toBeNull();
+    // The reason the transition gave travels into the justification a reviewer reads.
+    expect(listing?.justification).toContain('altered before submission');
   });
 
   it('is idempotent, because a second fail transition is not a second determination', async () => {
-    const again = await autoListForComplianceFail({
+    const first = await activeListing(fx.tenant.id, autoListed);
+    expect(first).not.toBeNull();
+
+    const again = await transitionComplianceState({
       tenantId: fx.tenant.id,
       clientId: autoListed,
-      complianceState: 'fail',
+      to: 'fail',
       reason: 'A second finding on the same file.',
-      triggeredBy: { id: fx.human.id, kind: 'human' },
-      now: new Date(NOW.getTime() + DAY),
+      actor: { id: fx.human.id, kind: 'human' },
     });
-
     expect(again.status).toBe('ok');
-    if (again.status !== 'ok') return;
-    expect(again.value.listedAt).toBe(NOW.toISOString());
 
-    const history = (await activeListing(fx.tenant.id, autoListed, NOW)) !== null;
-    expect(history).toBe(true);
+    const after = await activeListing(fx.tenant.id, autoListed);
+    // The SAME determination, not a second one dated today.
+    expect(after?.id).toBe(first?.id);
+    expect(after?.listedAt).toBe(first?.listedAt);
+  });
+
+  /**
+   * ADR-0013 applied to the pair: automatic in, human out.
+   *
+   * Resolving the findings moves the compliance state back. It does not delist - that is
+   * `removeListing`, with its own Level 3 human and its own justification. A listing that lapsed
+   * because a state moved would be the most serious determination this system makes disappearing
+   * without anybody deciding it should.
+   */
+  it('leaves the listing standing when the client is moved back to pass', async () => {
+    const listed = await activeListing(fx.tenant.id, autoListed);
+    expect(listed).not.toBeNull();
+
+    const restored = await transitionComplianceState({
+      tenantId: fx.tenant.id,
+      clientId: autoListed,
+      to: 'pass',
+      reason: 'Findings resolved.',
+      actor: { id: fx.human.id, kind: 'human' },
+    });
+    expect(restored.status).toBe('ok');
+
+    const still = await activeListing(fx.tenant.id, autoListed);
+    expect(still?.id).toBe(listed?.id);
   });
 
   it('does not list a client who is not at fail', async () => {

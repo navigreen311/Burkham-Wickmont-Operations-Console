@@ -69,7 +69,7 @@ export const staleContracts = async (
         version: { gt: row.stateModuleVersion },
         changeKind: 'material',
       },
-      orderBy: { version: 'asc' },
+      orderBy: [{ version: 'asc' }, { id: 'asc' }],
       select: { version: true },
     });
 
@@ -110,7 +110,7 @@ export const contractsOnSupersededTemplates = async (
     if (current === undefined) {
       const template = await db().contractTemplate.findFirst({
         where: { tenantId, key: row.templateKey, supersededAt: null },
-        orderBy: { version: 'desc' },
+        orderBy: [{ version: 'desc' }, { id: 'asc' }],
         select: { version: true },
       });
       current = template?.version ?? row.templateVersion;

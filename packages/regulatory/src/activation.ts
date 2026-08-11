@@ -107,7 +107,7 @@ export const standingFor = async (tenantId: string, state: string): Promise<Stat
       version: { gt: activation.activatedModuleVersion },
       changeKind: 'material',
     },
-    orderBy: { version: 'asc' },
+    orderBy: [{ version: 'asc' }, { id: 'asc' }],
   });
 
   if (materialSince) {
@@ -299,7 +299,7 @@ export const coverage = async (tenantId: string): Promise<readonly StateStanding
   const rows = await db().stateModule.findMany({
     where: { tenantId, supersededAt: null },
     select: { state: true },
-    orderBy: { state: 'asc' },
+    orderBy: [{ state: 'asc' }, { id: 'asc' }],
   });
 
   return Promise.all(rows.map((row) => standingFor(tenantId, row.state)));

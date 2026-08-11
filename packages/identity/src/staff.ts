@@ -556,7 +556,7 @@ export const activeStaffSessions = async (
 ): Promise<readonly { sessionId: string; issuedAt: string; lastSeenAt: string }[]> => {
   const rows = await db().actorSession.findMany({
     where: { tenantId, actorId, revokedAt: null, expiresAt: { gt: now } },
-    orderBy: { issuedAt: 'desc' },
+    orderBy: [{ issuedAt: 'desc' }, { id: 'asc' }],
   });
 
   return rows

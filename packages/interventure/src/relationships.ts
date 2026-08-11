@@ -181,7 +181,7 @@ export const allRelationships = async (
 ): Promise<readonly VentureRelationship[]> => {
   const rows = await db().ventureRelationship.findMany({
     where: { tenantId },
-    orderBy: { taggedAt: 'asc' },
+    orderBy: [{ taggedAt: 'asc' }, { id: 'asc' }],
   });
   return rows.map(toRelationship);
 };

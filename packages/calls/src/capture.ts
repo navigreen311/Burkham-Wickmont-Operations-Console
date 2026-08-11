@@ -312,7 +312,7 @@ export const callsFor = async (
 ): Promise<readonly CallRecord[]> => {
   const rows = await db().callRecord.findMany({
     where: { tenantId, clientId },
-    orderBy: { startedAt: 'asc' },
+    orderBy: [{ startedAt: 'asc' }, { id: 'asc' }],
   });
   return rows.map((row) => ({
     id: row.id,

@@ -364,7 +364,7 @@ export const pipeline = async (
 ): Promise<readonly LeadRecord[]> => {
   const rows = await db().lead.findMany({
     where: { tenantId, ...(stage !== undefined ? { stage: stage as never } : {}) },
-    orderBy: { lastActivityAt: 'asc' },
+    orderBy: [{ lastActivityAt: 'asc' }, { id: 'asc' }],
   });
   return rows.map(toLead);
 };

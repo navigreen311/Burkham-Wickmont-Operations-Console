@@ -615,6 +615,16 @@ describe('the settings view', () => {
     await registerKey(userId, 'Travel key', softwareAuthenticator());
 
     const keys = await registeredKeys(fx.tenant.id, userId);
-    expect(keys.map((key) => key.label)).toEqual(['Desk key', 'Travel key']);
+
+    // **A set, not a sequence, and that is a correction rather than a weakening.** Two keys
+    // registered in the same millisecond have the same `createdAt`, and nothing in this system
+    // promises which of them came first - `createdAt` is `timestamp(3)` and the tie-break is a
+    // random UUID. This test asserted an order the data cannot carry, and failed about one run in
+    // ten for that reason alone.
+    //
+    // What the client is owed is that both keys appear under the names they chose, which is what a
+    // client with two keys needs in order to remove the right one. That is asserted here. The
+    // ordering ambiguity itself is a real limitation and is written down in ADR-0034.
+    expect(keys.map((key) => key.label).sort()).toEqual(['Desk key', 'Travel key']);
   });
 });

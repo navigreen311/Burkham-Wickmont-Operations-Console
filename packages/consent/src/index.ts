@@ -130,7 +130,7 @@ export const check = async (
       revokedAt: null,
       OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
     },
-    orderBy: { grantedAt: 'desc' },
+    orderBy: [{ grantedAt: 'desc' }, { id: 'asc' }],
   });
 
   if (!row) {
@@ -154,7 +154,7 @@ export const check = async (
 export const forClient = async (tenantId: string, clientId: string): Promise<Consent[]> => {
   const rows = await db().consent.findMany({
     where: { tenantId, clientId },
-    orderBy: { grantedAt: 'asc' },
+    orderBy: [{ grantedAt: 'asc' }, { id: 'asc' }],
   });
   return rows;
 };

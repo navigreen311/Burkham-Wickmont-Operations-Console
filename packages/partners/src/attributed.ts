@@ -69,7 +69,7 @@ export const leadsAttributedTo = async (
     }),
     db().attributionCorrection.findMany({
       where: { tenantId, leadId: { in: ids } },
-      orderBy: { correctedAt: 'asc' },
+      orderBy: [{ correctedAt: 'asc' }, { id: 'asc' }],
       select: { leadId: true, toReferrerPartnerId: true },
     }),
   ]);

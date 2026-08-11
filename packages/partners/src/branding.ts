@@ -213,7 +213,7 @@ export const activeArrangementsFor = async (
 
   const rows = await db().partnerBrandConfig.findMany({
     where: { tenantId, partnerId, revokedAt: null },
-    orderBy: { approvedAt: 'asc' },
+    orderBy: [{ approvedAt: 'asc' }, { id: 'asc' }],
   });
 
   if (rows.length === 0) return ok([]);

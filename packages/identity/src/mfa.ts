@@ -112,7 +112,17 @@ export const activeFactorsFor = async (
 ): Promise<readonly ActiveFactor[]> => {
   const factors = await db().clientMfaFactor.findMany({
     where: { tenantId, clientUserId, removedAt: null, confirmedAt: { not: null } },
-    orderBy: { confirmedAt: 'asc' },
+    // **`id` is the tie-break, and it buys less than it looks like it buys.** `confirmedAt` is a
+    // millisecond timestamp, so two keys confirmed in one sitting land on the same value and
+    // Postgres then returns them in whatever order it likes. A secondary key makes the result
+    // STABLE - the same rows come back in the same order every time - which is what stops a list
+    // reshuffling under a reload.
+    //
+    // It does NOT recover the order they were created in, because `id` is a random UUID. At
+    // millisecond granularity nothing here decides which of two same-millisecond rows came first,
+    // and a caller must not read one. Third sighting of the pattern ADR-0023's PR found. See
+    // ADR-0034.
+    orderBy: [{ confirmedAt: 'asc' }, { id: 'asc' }],
   });
 
   return factors.map((factor) => ({
@@ -149,7 +159,7 @@ export const activeTotpFactor = async (
       confirmedAt: { not: null },
       secretCiphertext: { not: null },
     },
-    orderBy: { confirmedAt: 'desc' },
+    orderBy: [{ confirmedAt: 'desc' }, { id: 'asc' }],
   });
   return factor
     ? {
@@ -292,7 +302,7 @@ export const confirmMfaEnrolment = async (input: {
       confirmedAt: null,
       removedAt: null,
     },
-    orderBy: { createdAt: 'desc' },
+    orderBy: [{ createdAt: 'desc' }, { id: 'asc' }],
   });
   // `secretCiphertext` is nullable since WebAuthn, which has no shared secret. A pending factor
   // without one is not an authenticator app waiting to be confirmed.

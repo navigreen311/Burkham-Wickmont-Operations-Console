@@ -480,7 +480,7 @@ export const pendingEmailChanges = async (
       cancelledAt: null,
       expiresAt: { gt: now },
     },
-    orderBy: { requestedAt: 'desc' },
+    orderBy: [{ requestedAt: 'desc' }, { id: 'asc' }],
   });
 
   return rows.map((row) => ({
@@ -510,7 +510,7 @@ export const emailHistory = async (
 > => {
   const rows = await db().clientEmailChange.findMany({
     where: { tenantId, clientUserId, consumedAt: { not: null } },
-    orderBy: { consumedAt: 'desc' },
+    orderBy: [{ consumedAt: 'desc' }, { id: 'asc' }],
   });
 
   return rows.map((row) => ({

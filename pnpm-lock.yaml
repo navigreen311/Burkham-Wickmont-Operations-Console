@@ -308,6 +308,9 @@ importers:
       '@bwc/ledger':
         specifier: workspace:*
         version: link:../ledger
+      '@bwc/risk':
+        specifier: workspace:*
+        version: link:../risk
     devDependencies:
       typescript:
         specifier: ^5.8.3

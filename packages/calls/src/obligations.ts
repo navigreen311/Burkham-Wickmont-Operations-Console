@@ -318,7 +318,7 @@ export const obligationsFor = async (
 ): Promise<readonly Obligation[]> => {
   const rows = await db().correctionObligation.findMany({
     where: { tenantId, clientId },
-    orderBy: { createdAt: 'asc' },
+    orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
   });
   return rows.map((row) => toObligation(row, now));
 };
@@ -330,7 +330,7 @@ export const openObligations = async (
 ): Promise<readonly Obligation[]> => {
   const rows = await db().correctionObligation.findMany({
     where: { tenantId, status: 'open' },
-    orderBy: { dueAt: 'asc' },
+    orderBy: [{ dueAt: 'asc' }, { id: 'asc' }],
   });
   return rows.map((row) => toObligation(row, now));
 };

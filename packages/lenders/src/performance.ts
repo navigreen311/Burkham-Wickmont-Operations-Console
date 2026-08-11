@@ -105,7 +105,7 @@ export const currentAppetite = async (
 ): Promise<Outcome<AppetiteReading>> => {
   const row = await db().appetiteSignal.findFirst({
     where: { tenantId, providerId },
-    orderBy: { observedAt: 'desc' },
+    orderBy: [{ observedAt: 'desc' }, { id: 'asc' }],
   });
   return row
     ? ok(readingOf(row, now))
@@ -120,7 +120,7 @@ export const appetiteHistory = async (
 ): Promise<readonly AppetiteReading[]> => {
   const rows = await db().appetiteSignal.findMany({
     where: { tenantId, providerId },
-    orderBy: { observedAt: 'desc' },
+    orderBy: [{ observedAt: 'desc' }, { id: 'asc' }],
   });
   return rows.map((row) => readingOf(row, now));
 };

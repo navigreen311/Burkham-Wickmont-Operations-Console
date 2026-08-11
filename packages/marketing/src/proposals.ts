@@ -286,7 +286,7 @@ export const rejectProposal = async (input: {
 export const pendingProposals = async (tenantId: string): Promise<readonly Proposal[]> => {
   const rows = await db().claimProposal.findMany({
     where: { tenantId, status: 'submitted' },
-    orderBy: { submittedAt: 'asc' },
+    orderBy: [{ submittedAt: 'asc' }, { id: 'asc' }],
   });
   return rows.map(toProposal);
 };

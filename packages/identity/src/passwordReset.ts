@@ -420,7 +420,7 @@ export const pendingPasswordResets = async (
       supersededAt: null,
       expiresAt: { gt: now },
     },
-    orderBy: { requestedAt: 'desc' },
+    orderBy: [{ requestedAt: 'desc' }, { id: 'asc' }],
   });
 
   return rows.map((row) => ({
