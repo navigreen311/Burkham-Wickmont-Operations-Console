@@ -14,12 +14,19 @@
  * `resolveSession` re-reads the USER on every call rather than trusting what was true at sign-in.
  * Disabling an account otherwise takes effect whenever the session happens to expire, which is the
  * wrong answer to "revoke this person's access now".
+ *
+ * `issueSession` is also where a tenant's second-factor mandate is enforced (ADR-0046), because it
+ * is the one place every route into a session passes through. It is deliberately NOT enforced on
+ * `resolveSession`: turning the mandate on raises the bar for the next sign-in rather than ejecting
+ * clients who are mid-session, and the exposure is bounded by SESSION_ABSOLUTE_HOURS.
  */
 
 import { db } from '@bwc/db';
 import { append } from '@bwc/ledger';
 import { noData, ok, refused, type Outcome } from '@bwc/core';
 import { hashToken, newToken } from './credentials.js';
+import { hasActiveFactor } from './mfa.js';
+import { clientMfaRequired } from './mfaPolicy.js';
 
 /** A session ends this long after it was issued, active or not. */
 export const SESSION_ABSOLUTE_HOURS = 12;
@@ -49,6 +56,35 @@ export const issueSession = async (input: {
       'This client user cannot hold a session.',
       'Blueprint 11.1 - identity and access',
     );
+  }
+
+  // The tenant may require a second factor of every client user (ADR-0046). The check is HERE, at
+  // the single point a full session is minted, rather than on the sign-in path, for two reasons.
+  //
+  // `authenticateClientUser` answers "are these the right details", and every one of its refusals
+  // is deliberately the same sentence so the endpoint cannot be used to discover which addresses
+  // are clients of this firm. A mandate refusal there would be a different sentence, on a correct
+  // password, and would undo that.
+  //
+  // And it is not an argument the caller passes. ADR-0033: an option is a thing a caller can pass,
+  // and the first caller who wants it out of the way will pass it. Every route into a session -
+  // password, answered challenge, passkey - goes through this function, so there is no path that
+  // has to remember to check.
+  //
+  // A passkey IS an active factor (`kind: 'webauthn'`), so a passwordless account is already
+  // holding what the mandate asks for and is unaffected.
+  if (await clientMfaRequired(input.tenantId)) {
+    if (!(await hasActiveFactor(input.tenantId, user.id))) {
+      // ADR-0033's rule: the gate must not block the act that clears it. Enrolment takes the
+      // password and a code from the new authenticator, and neither `beginMfaEnrolment` nor
+      // `confirmMfaEnrolment` needs a session - so the way out is open to exactly the person who
+      // has just proved they own this account, and the refusal says so rather than leaving them
+      // to guess.
+      return refused(
+        'This firm requires a second factor on every client sign-in, and this account does not have one yet. Enrol an authenticator or a security key first: that takes this password and a code from the new authenticator, and does not need a session.',
+        'Blueprint 11.7 with ADR-0046 - client MFA required by tenant policy',
+      );
+    }
   }
 
   const token = newToken();
