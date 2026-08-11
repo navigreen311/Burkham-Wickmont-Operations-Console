@@ -19,14 +19,26 @@ import { noData, notBuilt, ok, type Outcome } from '@bwc/core';
 import { leadsAttributedTo } from './attributed.js';
 import { findPartner } from './partners.js';
 import { requireCertification, type CertificationStanding } from './certification.js';
+import { assessPartner } from './risk.js';
 
 /**
  * May this partner refer a client right now?
  *
- * Two gates, in this order: the relationship, then the training. The order is the design - "your
- * relationship with us is suspended" and "your certification lapsed" are different problems with
- * different fixes, and a suspended partner told to retake a course would do the course and still
- * be suspended.
+ * Three gates, in this order: the relationship, the conduct standing, then the training. The order
+ * is the design - "your relationship with us is suspended", "we are reviewing something you did"
+ * and "your certification lapsed" are different problems with different fixes, and a suspended
+ * partner told to retake a course would do the course and still be suspended.
+ *
+ * **The standing gate is 8.4's, and it is here rather than beside here for ADR-0034's reason.** An
+ * assessment nothing consults is a report, not a control: 8.4 would have computed
+ * `review_required` for a partner making unapproved claims and that partner would have gone on
+ * introducing clients, which is the exact shape `autoListForComplianceFail` was in for the whole
+ * life of this system.
+ *
+ * `review_required` and `decertification_recommended` stop new referrals; `watch` does not. The
+ * line is drawn there because a review is a decision somebody owes the partner within a week, and
+ * introducing more clients in the meantime deepens whatever is being reviewed - whereas `watch`
+ * exists precisely to be the state that costs nothing.
  */
 export const canRefer = async (
   tenantId: string,
@@ -47,6 +59,19 @@ export const canRefer = async (
       status: 'refused',
       reason: `${detail} They cannot refer a client.`,
       principle: 'Blueprint 8.1 - onboarding status and termination triggers',
+    };
+  }
+
+  const assessment = await assessPartner(tenantId, partnerId, now);
+  if (
+    assessment.status === 'ok' &&
+    (assessment.value.standing === 'review_required' ||
+      assessment.value.standing === 'decertification_recommended')
+  ) {
+    return {
+      status: 'refused',
+      reason: `This partner is under Channel Partnerships review (${assessment.value.standing.replace(/_/g, ' ')}). ${assessment.value.triggers.map((trigger) => trigger.note).join(' ')} They cannot refer a client until the open findings are resolved.`,
+      principle: 'Blueprint 8.4 - threshold-based escalation to Channel Partnerships review',
     };
   }
 

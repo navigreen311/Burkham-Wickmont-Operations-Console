@@ -1,8 +1,8 @@
 {
-  "name": "@bwc/vault",
+  "name": "@bwc/outcomes",
   "version": "0.1.0",
   "private": true,
-  "description": "3.2 Secure Document Vault. Envelope-encrypted storage with access control, watermarking and legal hold.",
+  "description": "5.5 Funding Outcome Ledger - every funding attempt and what happened to it.",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -17,15 +17,11 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@bwc/clients": "workspace:*",
+    "@bwc/billing": "workspace:*",
     "@bwc/core": "workspace:*",
-    "@bwc/crypto": "workspace:*",
     "@bwc/db": "workspace:*",
-    "@bwc/identity": "workspace:*",
     "@bwc/ledger": "workspace:*",
-    "@bwc/retention": "workspace:*",
-    "@bwc/tenancy": "workspace:*",
-    "pdf-lib": "^1.17.1"
+    "@bwc/lenders": "workspace:*"
   },
   "devDependencies": {
     "typescript": "^5.8.3"

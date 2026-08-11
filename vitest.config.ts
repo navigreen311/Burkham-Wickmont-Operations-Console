@@ -26,6 +26,8 @@ const WORKSPACE_PACKAGES = [
   'intelligence',
   'capital',
   'lenders',
+  'outcomes',
+  'retention',
   'governance',
   'graph',
   'regulatory',

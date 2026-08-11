@@ -17,7 +17,10 @@
       "path": "../db"
     },
     {
-      "path": "../outcomes"
+      "path": "../ledger"
+    },
+    {
+      "path": "../lenders"
     }
   ]
 }

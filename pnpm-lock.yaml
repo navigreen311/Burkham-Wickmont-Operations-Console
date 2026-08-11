@@ -423,6 +423,9 @@ importers:
       '@bwc/db':
         specifier: workspace:*
         version: link:../db
+      '@bwc/outcomes':
+        specifier: workspace:*
+        version: link:../outcomes
     devDependencies:
       typescript:
         specifier: ^5.8.3
@@ -802,6 +805,28 @@ importers:
         specifier: ^5.8.3
         version: 5.9.3
 
+  packages/outcomes:
+    dependencies:
+      '@bwc/billing':
+        specifier: workspace:*
+        version: link:../billing
+      '@bwc/core':
+        specifier: workspace:*
+        version: link:../core
+      '@bwc/db':
+        specifier: workspace:*
+        version: link:../db
+      '@bwc/ledger':
+        specifier: workspace:*
+        version: link:../ledger
+      '@bwc/lenders':
+        specifier: workspace:*
+        version: link:../lenders
+    devDependencies:
+      typescript:
+        specifier: ^5.8.3
+        version: 5.9.3
+
   packages/partners:
     dependencies:
       '@bwc/claims':
@@ -920,6 +945,25 @@ importers:
         specifier: ^5.8.3
         version: 5.9.3
 
+  packages/retention:
+    dependencies:
+      '@bwc/core':
+        specifier: workspace:*
+        version: link:../core
+      '@bwc/db':
+        specifier: workspace:*
+        version: link:../db
+      '@bwc/identity':
+        specifier: workspace:*
+        version: link:../identity
+      '@bwc/ledger':
+        specifier: workspace:*
+        version: link:../ledger
+    devDependencies:
+      typescript:
+        specifier: ^5.8.3
+        version: 5.9.3
+
   packages/risk:
     dependencies:
       '@bwc/core':
@@ -1019,6 +1063,9 @@ importers:
       '@bwc/ledger':
         specifier: workspace:*
         version: link:../ledger
+      '@bwc/retention':
+        specifier: workspace:*
+        version: link:../retention
       '@bwc/tenancy':
         specifier: workspace:*
         version: link:../tenancy

@@ -158,7 +158,10 @@ export const observationsFor = async (
 ): Promise<readonly Observation[]> => {
   const rows = await db().riskObservation.findMany({
     where: { tenantId, clientId },
-    orderBy: [{ occurredAt: 'asc' }, { id: 'asc' }],
+    // 6.5 calls itself a chronological timeline, and 6.3 writes into it in bursts that share an
+    // `occurredAt` because they describe one moment. `seq` is what keeps the timeline from
+    // reordering itself between reads (ADR-0040).
+    orderBy: [{ occurredAt: 'asc' }, { seq: 'asc' }],
   });
   return rows.map(toObservation);
 };

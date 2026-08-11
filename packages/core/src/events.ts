@@ -146,6 +146,29 @@ export const EVENT_TYPES = [
   'billing.refund.declined',
   'billing.funding_outcome.recorded',
   'billing.funding_outcome.funded',
+  // Legal Hold & Record Retention (7.5). A refused deletion request is an event because "we
+  // received your request and did not act on it" is the fact a data-subject-rights regime asks you
+  // to be able to show, and a request that was quietly dropped produces no record at all.
+  // Neither the hold's reason nor the client's request text reaches a payload: both are free text
+  // about a named person, and the Ledger is the one store here that cannot be corrected.
+  'retention.hold.placed',
+  'retention.hold.reviewed',
+  'retention.hold.released',
+  'retention.schedule.recorded',
+  'retention.deletion.requested',
+  'retention.deletion.approved',
+  'retention.deletion.refused',
+  'retention.deletion.completed',
+  // Funding Outcome Ledger (5.5). `declined` and `withdrawn` are the types that did not exist
+  // before this module, and they are the reason it does: a chain carrying only approvals cannot
+  // answer what share of attempts were approved. The decline REASON is deliberately not in its
+  // payload - it is free text a provider wrote about a named applicant, and the Ledger is the one
+  // store here that cannot be corrected. It stays in the attempt row.
+  'outcomes.attempt.submitted',
+  'outcomes.attempt.approved',
+  'outcomes.attempt.declined',
+  'outcomes.attempt.withdrawn',
+  'outcomes.attempt.funded',
   // Sales Motion & Engagement Tracking (1.3). The attribution events carry both sides of a
   // correction, because a payout dispute asks what changed and who changed it.
   'sales.lead.created',
@@ -181,6 +204,13 @@ export const EVENT_TYPES = [
   // Risk Event Timeline (6.5). Carries the fact and the severity; the summary stays in the
   // observation table, where a person wrote it and a person will read it.
   'risk.observation.recorded',
+  // Client Conduct Monitoring (6.3). The summary is free text about a named client and stays in the
+  // row; the payload carries the kind, the severity and the response, which is what an audit of
+  // "why was this client's service paused" actually asks for. `resolved` carries `upheld` because
+  // a dismissed detection is a different fact from one that never happened.
+  'risk.conduct.detected',
+  'risk.conduct.reviewed',
+  'risk.conduct.resolved',
   // Partner & Referrer Portal (8.1) with Training & Certification (8.3). `client_status.viewed`
   // exists because a client who consented to a partner seeing their status is entitled to know
   // when the partner looked - the same reasoning as 1.2's reveal events.
@@ -196,6 +226,12 @@ export const EVENT_TYPES = [
   'partner.brand.approved',
   'partner.brand.revoked',
   'partner.client_status.viewed',
+  // Partner Risk Score (8.4). The finding's summary is not in the payload - it is free text about
+  // a named partner and often a named client. `resolved` carries `upheld`, because a dismissed
+  // finding is a different fact from one that never happened, and a run of dismissed complaints
+  // about one partner is itself a signal.
+  'partner.finding.recorded',
+  'partner.finding.resolved',
   // Call Recording & Promise Tracking (4.3). `recording.refused` is an event because "we wanted
   // to record this call and the client's state would not let us" is evidence, the same way a
   // blocked send is. No transcript text reaches the Ledger; excerpts stay in the obligation row.

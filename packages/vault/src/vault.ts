@@ -20,6 +20,11 @@ import { findActor } from '@bwc/identity';
 import { assertSameTenant } from '@bwc/tenancy';
 import { failed, noData, ok, refused, type AuthorityLevel, type Outcome } from '@bwc/core';
 import { decrypt, encrypt, sha256, type KekProvider } from '@bwc/crypto';
+// 7.5. The direction is wrong on a layer diagram - 3.2 is storage and 7.5 is governance - and it is
+// taken knowingly, for the reason ADR-0034 took the same import in the other pair: a hold that the
+// gate does not consult is not a hold. `@bwc/retention` imports core, db, identity and ledger, and
+// none of them reaches back, so there is no cycle.
+import { describeHolds, holdsCovering, resolveRetention } from '@bwc/retention';
 import { newBlobKey, type BlobStore } from './store.js';
 import { watermarkPdf, type WatermarkResult } from './watermark.js';
 
@@ -344,12 +349,29 @@ export const read = async (config: VaultConfig, input: ReadInput): Promise<Outco
 
   // 4. Legal hold blocks export specifically. Viewing during litigation is normal; taking a copy
   //    out of the system is what a hold exists to prevent.
-  if (row.legalHold && action === 'export') {
-    await logAccess(row.id, row.tenantId, row.clientId, actorRef, action, false, 'legal_hold');
-    return refused(
-      `Document is under legal hold${row.legalHoldReason ? `: ${row.legalHoldReason}` : ''}. Export is locked out.`,
-      'Blueprint 3.2 - legal hold with export lockout',
+  //
+  //    TWO SOURCES, and the second one is the point of 7.5. `row.legalHold` is this document's own
+  //    flag, set by `setLegalHold` on one document at a time. `holdsCovering` is the matter-level
+  //    hold, which covers a category of record - so a statement uploaded the morning after a
+  //    litigation hold was placed is held without anybody having touched its row. The flag alone
+  //    would miss it, silently, which is how evidence gets destroyed by an organisation that
+  //    believes it preserved it. See ADR-0042.
+  if (action === 'export') {
+    const matterHolds = await holdsCovering(
+      { tenantId: row.tenantId, clientId: row.clientId, documentKind: row.kind },
+      now,
     );
+    const held = describeHolds(matterHolds);
+
+    if (row.legalHold || held !== null) {
+      await logAccess(row.id, row.tenantId, row.clientId, actorRef, action, false, 'legal_hold');
+      const because =
+        held !== null ? held : (row.legalHoldReason ?? 'a hold recorded against this document');
+      return refused(
+        `Document is under legal hold: ${because}. Export is locked out.`,
+        'Blueprint 3.2 with 7.5 - legal hold with export lockout',
+      );
+    }
   }
 
   let plaintext: Buffer;
@@ -501,29 +523,65 @@ export const setRetention = async (
   return ok(toDocument(row));
 };
 
+export interface RemoveInput {
+  readonly tenantId: string;
+  readonly documentId: string;
+  readonly actorId: string;
+  /**
+   * The client's state, where it is known.
+   *
+   * Passed in rather than looked up, because 7.2's activation model and 1.1's client record
+   * disagree about which state a client "is in" often enough that guessing here would silently
+   * apply the wrong statute to a destruction. The caller that knows says so; a caller that does not
+   * omits it and gets the default schedule, which is the conservative one.
+   */
+  readonly stateCode?: string;
+  readonly now?: Date;
+}
+
 /**
  * Delete a document.
  *
- * Refuses under legal hold, and refuses when no retention schedule has been resolved. The second
- * is the less obvious one and the more important: the per-state retention rules come from the
- * Regulatory Engine (7.2) and Legal Hold & Record Retention (7.5), neither of which exists. With
- * no schedule, the safe default is to keep - §6.2 calls over-retention a liability, but deleting a
- * document a regulator was entitled to see is the worse of the two failures, and the only
- * irreversible one.
+ * Three gates, and they run in this order because that is the order of irreversibility.
+ *
+ *  1. **A hold, from either source.** `row.legalHold` is this document's own flag. `holdsCovering`
+ *     is 7.5's matter-level hold, which covers a category of record rather than a row - so a
+ *     document uploaded after a litigation hold was placed is held without anybody having touched
+ *     it. Checking only the flag is how an organisation destroys evidence while believing it
+ *     preserved it. See ADR-0042.
+ *
+ *  2. **A resolved retention period.** `retainUntil` on the row if somebody set one; otherwise
+ *     7.5's schedule for this document kind and state, resolved now. **This used to return
+ *     `not_built`, and that answer was correct until this commit** - 7.5 did not exist, and saying
+ *     so was more honest than inventing a period. It exists now, so the refusal changes reason
+ *     rather than disappearing: with no schedule recorded, this returns `no_data` naming the kind
+ *     that needs one. `empty` is never `not_built`, and a module that exists must stop claiming it
+ *     does not.
+ *
+ *  3. **The period must have run.** Unchanged.
+ *
+ * An unverified schedule - an assumption, or a citation nobody has checked in a year - does not
+ * authorise destruction. ADR-0013's question is "if this record is stale and wrong, which way is
+ * safe", and for the one irreversible operation in this system the answer is not "destroy it
+ * anyway".
  */
-export const remove = async (
-  tenantId: string,
-  documentId: string,
-  actorId: string,
-  now: Date = new Date(),
-): Promise<Outcome<VaultDocument>> => {
+export const remove = async (input: RemoveInput): Promise<Outcome<VaultDocument>> => {
+  const { tenantId, documentId, actorId } = input;
+  const now = input.now ?? new Date();
+
   const actor = await findActor(actorId);
   if (!actor) return refused('Unknown actor.', 'Specification v2 §5.5 step 1');
 
   const row = await db().vaultDocument.findFirst({ where: { id: documentId, tenantId } });
   if (!row || row.deletedAt !== null) return noData('No such document in this tenant.');
 
-  if (row.legalHold) {
+  const matterHolds = await holdsCovering(
+    { tenantId, clientId: row.clientId, documentKind: row.kind },
+    now,
+  );
+  const held = describeHolds(matterHolds);
+
+  if (row.legalHold || held !== null) {
     await logAccess(
       row.id,
       tenantId,
@@ -534,24 +592,39 @@ export const remove = async (
       'legal_hold',
     );
     return refused(
-      `Document is under legal hold${row.legalHoldReason ? `: ${row.legalHoldReason}` : ''}.`,
-      'Blueprint 3.2 - legal hold overrides retention',
+      `Document is under legal hold: ${held ?? row.legalHoldReason ?? 'a hold recorded against this document'}.`,
+      'Blueprint 3.2 with 7.5 - legal hold overrides retention',
     );
   }
 
-  if (row.retainUntil === null) {
-    return {
-      status: 'not_built',
-      module: '7.2 Regulatory Engine / 7.5 Legal Hold & Record Retention',
-      reason:
-        'No retention schedule has been resolved for this document, and the per-state rules that would resolve one are not built. Refusing to delete: keeping a document too long is a liability, but destroying one a regulator was entitled to see is irreversible.',
-    };
+  let retainUntil = row.retainUntil;
+  let basis = 'a retention date recorded against this document';
+
+  if (retainUntil === null) {
+    const resolved = await resolveRetention({
+      tenantId,
+      documentKind: row.kind,
+      ...(input.stateCode !== undefined ? { stateCode: input.stateCode } : {}),
+      documentDate: row.createdAt,
+      now,
+    });
+    if (resolved.status !== 'ok') return resolved;
+
+    if (resolved.value.unverified) {
+      return refused(
+        `The retention schedule for ${row.kind} is not verified: ${resolved.value.note} An assumption is a legitimate thing to hold and it is not evidence for destroying a record.`,
+        'Design principle 8 with ADR-0013 - staleness moves toward the safe answer',
+      );
+    }
+
+    retainUntil = new Date(resolved.value.retainUntil);
+    basis = resolved.value.note;
   }
 
-  if (row.retainUntil > now) {
+  if (retainUntil > now) {
     return refused(
-      `Document must be retained until ${row.retainUntil.toISOString().slice(0, 10)}.`,
-      'Blueprint 3.2 - retention rules per the Regulatory Engine',
+      `Document must be retained until ${retainUntil.toISOString().slice(0, 10)}: ${basis}`,
+      'Blueprint 3.2 with 7.5 - retention schedule',
     );
   }
 
@@ -565,7 +638,7 @@ export const remove = async (
     type: 'vault.document_deleted',
     actor: { id: actor.id, kind: actor.kind },
     clientId: row.clientId,
-    payload: { documentId, retainedUntil: row.retainUntil.toISOString() },
+    payload: { documentId, retainedUntil: retainUntil.toISOString(), basis },
   });
 
   return ok(toDocument(updated));
@@ -596,7 +669,10 @@ export const accessLog = async (
 ): Promise<AccessLogEntry[]> => {
   const rows = await db().vaultAccessLog.findMany({
     where: { tenantId, documentId },
-    orderBy: [{ at: 'asc' }, { id: 'asc' }],
+    // One request writes several entries - a refusal, then a retry, then a read - and they share a
+    // millisecond routinely. "Refused, then admitted" and "admitted, then refused" are different
+    // findings, so the order here is evidence and `seq` is what makes it one (ADR-0040).
+    orderBy: [{ at: 'asc' }, { seq: 'asc' }],
   });
   return rows.map((row) => ({
     actorId: row.actorId,

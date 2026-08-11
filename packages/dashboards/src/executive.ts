@@ -17,6 +17,7 @@
 
 import { db } from '@bwc/db';
 import { ok, type Outcome } from '@bwc/core';
+import { decidedIn, decidedInByProduct } from '@bwc/outcomes';
 import { measured, rate, unmeasurable, type Metric, type Period } from './metric.js';
 import {
   complianceDistribution,
@@ -193,37 +194,89 @@ export const readinessImprovement = async (
 /**
  * Placement - blueprint 9.1's "approval rate by product".
  *
- * **Not computable, and this is the interesting one.**
+ * **This metric spent its whole life refusing, and the refusal is worth keeping in view.**
  *
- * `FundingOutcome` records an approval: it has an approved credit limit and an approval date, and
- * no column for a denial. That is not an oversight in 1.4 - denials and adverse-action notices
- * belong to **5.5 Funding Outcome Ledger, which is deferred to V1.5**.
+ * It used to count `billing.funding_outcomes`, which records an approval: an approved credit limit
+ * and an approval date, and no column for a denial. So the denominator did not exist, every row in
+ * the table was an approval, and a rate computed from it would have read 100% forever - a figure
+ * arithmetically correct, extremely reassuring, and completely meaningless. It would also have been
+ * the single most damaging number on this dashboard, because "our approval rate is 100%" is exactly
+ * the claim the Marketing Claim Library bans and the Funding Ethics Firewall exists downstream of.
  *
- * So the denominator does not exist. Every row in the table is an approval, and a rate computed
- * from it would be 100% forever - a figure that is arithmetically correct, extremely reassuring,
- * and completely meaningless. It would also be the single most damaging number on this dashboard,
- * because "our approval rate is 100%" is exactly the claim the Marketing Claim Library bans and
- * the Funding Ethics Firewall exists downstream of.
+ * 5.5 Funding Outcome Ledger records the attempt rather than the approval, so a decline is a row.
+ * **The fix was never arithmetic; it was that the denominator had to be collected.** The refusal
+ * has not gone away either: it moved to where it belongs, and `decidedIn` still returns `null`
+ * below ten decided attempts rather than a percentage computed from three.
  *
- * What IS measurable is how many placements this company's own gate stopped before they reached a
- * provider, and that is reported separately under its own name. Calling it an approval rate would
- * be a different number wearing the specification's label.
+ * What this counts is capital providers deciding. How many placements this company's own gate
+ * stopped before they reached one is a different number and is reported separately, under its own
+ * name - calling that an approval rate would be a different figure wearing this label.
  */
 export const placementApprovalRate = async (
   tenantId: string,
   period: Period,
 ): Promise<Metric<number>> => {
-  const approvals = await db().fundingOutcome.count({
-    where: { tenantId, approvedOn: { gte: period.from, lt: period.to } },
-  });
+  const counts = await decidedIn(tenantId, { from: period.from, to: period.to });
 
-  return unmeasurable({
+  if (counts.rate === null) {
+    return unmeasurable({
+      key: 'placement_approval_rate',
+      label: 'Placement approval rate',
+      period,
+      numerator: counts.approved,
+      denominator: counts.decided,
+      note: counts.note,
+    });
+  }
+
+  return measured({
     key: 'placement_approval_rate',
     label: 'Placement approval rate',
+    value: counts.rate,
+    numerator: counts.approved,
+    denominator: counts.decided,
     period,
-    numerator: approvals,
-    unmeasured: ['5.5 Funding Outcome Ledger (V1.5) - denials and adverse-action notices'],
-    note: `${approvals} approval(s) recorded in this period, and no denominator. Only approvals are recorded today: denials and adverse-action notices live in 5.5 Funding Outcome Ledger, which is V1.5. A rate computed from what exists would read 100% forever, which is both meaningless and the most dangerous sentence this dashboard could produce.`,
+    note: counts.note,
+  });
+};
+
+/**
+ * The same rate for one product - the form blueprint 9.1 actually asks for.
+ *
+ * Separate rather than a parameter with a default, because "our approval rate" and "our approval
+ * rate for merchant cash advances" are different claims and a defaulted argument makes the second
+ * one answer to the first one's name.
+ */
+export const placementApprovalRateByProduct = async (
+  tenantId: string,
+  period: Period,
+  productKind: string,
+): Promise<Metric<number>> => {
+  const counts = await decidedInByProduct(
+    tenantId,
+    { from: period.from, to: period.to },
+    productKind,
+  );
+
+  if (counts.rate === null) {
+    return unmeasurable({
+      key: `placement_approval_rate:${productKind}`,
+      label: `Placement approval rate - ${productKind}`,
+      period,
+      numerator: counts.approved,
+      denominator: counts.decided,
+      note: counts.note,
+    });
+  }
+
+  return measured({
+    key: `placement_approval_rate:${productKind}`,
+    label: `Placement approval rate - ${productKind}`,
+    value: counts.rate,
+    numerator: counts.approved,
+    denominator: counts.decided,
+    period,
+    note: counts.note,
   });
 };
 
