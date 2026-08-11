@@ -46,6 +46,7 @@ import {
 import { CONSENT_KINDS, grant as grantConsent, type ConsentKind } from '@bwc/consent';
 import { status as firewallStatus, trigger as triggerFirewall } from '@bwc/firewall';
 import {
+  assertPasswordSignInPermitted,
   authenticateStaff,
   confirmStaffEnrolment,
   enrolStaffFromInvitation,
@@ -83,10 +84,17 @@ import {
 import type { Actor } from '@bwc/identity';
 import { readConsoleConfig, type ConsoleConfig } from './config.js';
 import { registerAdminRoutes } from './routes/admin.js';
+import { registerCapitalRoutes } from './routes/capital.js';
+import { registerDashboardRoutes } from './routes/dashboards.js';
 import { registerDeliverableRoutes } from './routes/deliverables.js';
+import { registerGraphRoutes } from './routes/graph.js';
 import { registerIntelligenceRoutes } from './routes/intelligence.js';
 import { registerInterventureRoutes } from './routes/interventure.js';
+import { registerPartnerRoutes } from './routes/partners.js';
+import { registerSalesRoutes } from './routes/sales.js';
 import { registerWarehouseRoutes } from './routes/warehouse.js';
+// Staff security keys and the passkey-only switch (ADR-0059).
+import { registerStaffKeyRoutes } from './routes/staffKeys.js';
 
 export interface ConsoleAppDeps {
   readonly config?: ConsoleConfig;
@@ -391,6 +399,23 @@ export const createApp = (deps: ConsoleAppDeps = {}): Express => {
         // The same sentence a wrong password gets. A message naming the missing field would let a
         // caller learn which of the three this account actually needs.
         send(res, refused('Those details are not valid.', 'Blueprint 11.1 - identity and access'));
+        return;
+      }
+
+      /**
+       * **An account that has stopped accepting a password is refused here, before anything is
+       * verified** - and with the same sentence a wrong password gets.
+       *
+       * Without this line the switch would be a column nothing reads, which is the shape of every
+       * security feature that turns out to be a setting. ADR-0059.
+       */
+      const permitted = await assertPasswordSignInPermitted({
+        tenantId: config.tenantId,
+        email: body.email,
+        now: now(),
+      });
+      if (permitted.status !== 'ok') {
+        send(res, permitted);
         return;
       }
 
@@ -1020,26 +1045,42 @@ export const createApp = (deps: ConsoleAppDeps = {}): Express => {
     }),
   );
 
-  // --- Module surfaces (11.7, 3.1, 3.3, 10.1, 11.6) ------------------------
+  // --- Module surfaces -----------------------------------------------------
+  //
+  // 5.1/5.6, 9.1/9.2, 1.2, 1.3, 8.1/8.3 and 11.7, 3.1, 3.3, 10.1, 11.6.
 
   /**
-   * The last five feature packages with no browser surface.
+   * Ten read surfaces, each in its own file.
    *
-   * Registered rather than written inline: this file is already a thousand lines, and the five
-   * share only the session, the clock and the tenant. Each declares the context it needs for
-   * itself.
+   * Registered rather than written inline because this file is already a thousand lines and the ten
+   * have nothing to say to each other - they share the session, the clock and the tenant, and that
+   * is the whole of the contract each one declares for itself.
    *
-   * **All five are reads.** Each of these packages has working write functions that emit Ledger
-   * events, and every one must pass `chain()` with a declared action - which
-   * `ACTION_MINIMUM_LEVEL` has for none of them. Each surface reports its own blocked writes
-   * rather than showing a button that cannot work. See ADR-0063.
+   * **Every one of them is reads only**, and not because reads were the easy half. Each of 1.2,
+   * 1.3, 8.1, 11.7, 3.1, 3.3 and 10.1 has working write functions that emit Ledger events, and
+   * every one must pass `chain()` with a declared action - which `ACTION_MINIMUM_LEVEL` has for
+   * none of them. Each surface reports its own blocked writes in `writes.blocked` rather than
+   * showing a button that cannot work or an absence that reads as "not built".
+   *
+   * See ADR-0051 for the rule and ADR-0063 for the case it does not cover: a conflict-disclosure
+   * acknowledgement is absent because the acknowledging party is not us, which no declared action
+   * would change.
+   *
+   * One context for all ten. The five in ADR-0063's batch declare a narrower shape than this
+   * object carries, which TypeScript accepts for a variable - excess-property checking applies to
+   * object literals, not to a value passed by name.
    */
-  const moduleRoutes = { app, requireStaff, asyncRoute, param, tenantId: config.tenantId };
-  registerAdminRoutes(moduleRoutes);
-  registerDeliverableRoutes(moduleRoutes);
-  registerIntelligenceRoutes(moduleRoutes);
-  registerInterventureRoutes(moduleRoutes);
-  registerWarehouseRoutes(moduleRoutes);
+  const routeContext = { app, requireStaff, asyncRoute, param, tenantId: config.tenantId, now };
+  registerCapitalRoutes({ ...routeContext, jsonBody });
+  registerDashboardRoutes(routeContext);
+  registerGraphRoutes(routeContext);
+  registerSalesRoutes(routeContext);
+  registerPartnerRoutes(routeContext);
+  registerAdminRoutes(routeContext);
+  registerDeliverableRoutes(routeContext);
+  registerIntelligenceRoutes(routeContext);
+  registerInterventureRoutes(routeContext);
+  registerWarehouseRoutes(routeContext);
 
   // --- Event Ledger (11.3) ------------------------------------------------
 
@@ -1064,6 +1105,23 @@ export const createApp = (deps: ConsoleAppDeps = {}): Express => {
       send(res, ok(await verifyIntegrity(actor.tenantId)));
     }),
   );
+
+  // --- Composed route modules ---------------------------------------------
+
+  registerStaffKeyRoutes({
+    app,
+    tenantId: config.tenantId,
+    rp: { id: config.rpId, name: config.rpName, origin: config.origin },
+    now,
+    requireStaff,
+    asyncRoute,
+    param,
+    jsonBody,
+    rateLimited,
+    setSessionCookie: (res, token, expiresAt) => {
+      setSessionCookie(res, config, token, expiresAt);
+    },
+  });
 
   // --- The page -----------------------------------------------------------
 

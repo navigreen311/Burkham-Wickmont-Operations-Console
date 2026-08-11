@@ -203,6 +203,11 @@ beforeAll(async () => {
     rateLimitStore: 'memory',
     // The property most of this file rests on.
     devActorHeader: false,
+    // Never read by this file - no route here runs a WebAuthn ceremony - and set anyway, because a
+    // config literal missing a required field is one that compiles and lies.
+    rpId: 'localhost',
+    rpName: 'Burkham Wickmont Console',
+    origin: 'http://localhost',
   };
 
   server = createServer(createApp({ config, limiter, now: at }));

@@ -118,7 +118,19 @@ test.describe('a passkey through a real browser', () => {
     await page.locator('#form-register-key').getByLabel('Name for this key').fill('E2E key two');
     await page.locator('#form-register-key').getByLabel('Your password').fill(E2E_PASSWORD);
     await page.getByRole('button', { name: 'Register a key' }).click();
-    await expect(page.getByRole('status')).toHaveText('Key registered.');
+
+    /**
+     * Wait for the KEY, not for the message.
+     *
+     * The status already reads "Key registered." from the first key, so asserting it here waits for
+     * nothing and the next line clicks before the second registration has landed. The server then
+     * sees one passkey and refuses the switch - and the in-flight registration response overwrites
+     * the refusal, leaving "Key registered." on screen and a failure that names the wrong thing.
+     *
+     * That is exactly what a CI runner produced while this passed on every local run. `registerPasskey`
+     * above already waits on the list; the inline copy here did not.
+     */
+    await expect(page.getByRole('listitem').filter({ hasText: 'E2E key two' })).toBeVisible();
 
     await page.locator('#disable-password').fill(E2E_PASSWORD);
     await page.getByRole('button', { name: 'Turn password sign-in off' }).click();

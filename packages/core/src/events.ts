@@ -358,6 +358,17 @@ export const EVENT_TYPES = [
   'identity.staff.sign_in_blocked',
   'identity.staff.disabled',
   'identity.staff_session.revoked',
+  // Staff security keys. Registering one changes what an account can do; removing one changes what
+  // it can still do afterwards, and on a passkey-only account that is the difference between
+  // working tomorrow and a telephone call.
+  'identity.staff.key_registered',
+  'identity.staff.key_removed',
+  // Turning password sign-in off is the strongest thing a staff member can do to protect an account
+  // that opens every client file in the firm; restoring it is the strongest thing a colleague can do
+  // to weaken one. Two types, because reading them as one would hide which happened - the same
+  // reasoning the client pair above records.
+  'identity.staff.password_sign_in_disabled',
+  'identity.staff.password_sign_in_restored',
 ] as const;
 
 export type EventType = (typeof EVENT_TYPES)[number];

@@ -65,6 +65,9 @@ model Actor {
   sessions    ActorSession[]
   invitations ActorInvitation[]
 
+  webauthnCredentials ActorWebauthnCredential[]
+  webauthnChallenges  ActorWebauthnChallenge[]
+
   @@index([tenantId])
   @@map("actors")
   @@schema("identity")
@@ -4276,6 +4279,19 @@ model ActorCredential {
   disabledAt     DateTime?
   disabledReason String?
 
+  /// Set when this account stopped accepting a password and a code.
+  ///
+  /// **With it set, a CORRECT password and a CORRECT code are refused**, in the same sentence every
+  /// other sign-in failure gets. That is the whole security property: an account is as strong as the
+  /// weakest method it will accept, so a security key beside a live password buys nothing against a
+  /// proxy that collects the password and the six digits together (ADR-0029, ADR-0059).
+  ///
+  /// The password hash and the TOTP secret are deliberately LEFT IN PLACE. Unlike a client
+  /// (ADR-0030) there is no email channel to send a reset token down, so the route back is a Level 3
+  /// colleague clearing this column with a recorded basis - which is one act on one row rather than
+  /// a credential that has to be rebuilt from nothing.
+  passwordSignInDisabledAt DateTime?
+
   createdAt DateTime @default(now())
 
   @@unique([tenantId, email])
@@ -4944,4 +4960,80 @@ model VendorEvidence {
   @@index([vendor, kind, withdrawnAt])
   @@map("vendor_evidence")
   @@schema("admin")
+}
+
+/// A WebAuthn credential held by a staff Actor - ADR-0059.
+///
+/// **There is only one kind.** A client may register a key as a second factor OR as a passkey, and
+/// `ClientMfaFactor.discoverable` keeps them apart so a second-factor credential is never promoted
+/// into a password replacement by a later flag. Staff keys exist to REMOVE the password, so they are
+/// registered discoverable and user-verifying or not at all - and the column that would have needed
+/// keeping honest does not exist, because the state it distinguished cannot occur.
+model ActorWebauthnCredential {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+
+  actorId String @db.Uuid
+  actor   Actor  @relation(fields: [actorId], references: [id], onDelete: Cascade)
+
+  /// base64url, as the browser reports it. Unique across the table: one credential, one account.
+  credentialId String @unique
+
+  /// base64url. A **public** key: a leaked database yields the value that verifies a signature,
+  /// never the one that produces it. There is no secret column here and that is the point.
+  publicKey String
+
+  /// The last counter this credential presented. Handed to the verifier, which is what makes it
+  /// enforce that the value advances. Many authenticators never implement one and always report 0.
+  signCount Int @default(0)
+
+  /// Comma-separated hints from registration, so a browser can prompt for the right thing.
+  transports String?
+
+  /// Named by the person who registered it. Two keys are indistinguishable without one, and a key
+  /// somebody cannot identify is one they will not dare remove.
+  label String
+
+  registeredAt DateTime  @default(now())
+  lastUsedAt   DateTime?
+  removedAt    DateTime?
+
+  /// Set when an assertion was refused AND the counter had not advanced, which means two
+  /// authenticators are answering for one credential. Recorded rather than acted on: it explains a
+  /// refusal that has already happened and never permits anything.
+  clonedAt DateTime?
+
+  @@index([tenantId, actorId])
+  @@map("actor_webauthn_credentials")
+  @@schema("identity")
+}
+
+/// A live ceremony challenge for a staff key.
+model ActorWebauthnChallenge {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+
+  /// **Null for a passkey sign-in**, which belongs to no actor yet - that is what discoverable
+  /// means. The column admits it rather than carrying a placeholder somebody would later have to be
+  /// told was meaningless.
+  actorId String? @db.Uuid
+  actor   Actor?  @relation(fields: [actorId], references: [id], onDelete: Cascade)
+
+  challenge String                 @unique
+  ceremony  ActorWebauthnCeremony
+
+  issuedAt   DateTime  @default(now())
+  expiresAt  DateTime
+  consumedAt DateTime?
+
+  @@index([tenantId, actorId])
+  @@map("actor_webauthn_challenges")
+  @@schema("identity")
+}
+
+enum ActorWebauthnCeremony {
+  registration
+  authentication
+
+  @@schema("identity")
 }
