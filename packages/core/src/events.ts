@@ -239,6 +239,25 @@ export const EVENT_TYPES = [
   // one to be its own row. `declined` exists for ADR-0041's reason: a payout somebody refused to
   // approve is a thing that happened, and inferring it from the absence of an approval loses who
   // decided and why.
+  // Risk & Defense Alerts (6.1). The tier and whether it freezes funding travel; the summary does
+  // not, because it is free text about a named client. `acknowledged` is its own type because
+  // acknowledging is not resolving, and an audit asking "who looked at this and when" is a
+  // different question from "who decided it was over".
+  // Cost & Performance Governance (11.9). Source and provenance travel; the vendor reference does
+  // not, because a model version is a procurement detail and this is a per-client ledger.
+  'admin.cost.recorded',
+  // Cross-Portfolio Opportunity Engine (10.2). No clientId on any of these: they travel to a
+  // portfolio-level reader and principle 5 gives Gardner PII-stripped aggregates. `routed` carries
+  // `consentVerifiedAt` because the whole control is that consent was read AT that moment, and
+  // `routing_refused` is a row for the same reason a decline is (ADR-0041).
+  'interventure.opportunity.detected',
+  'interventure.opportunity.gardner_approved',
+  'interventure.opportunity.gardner_declined',
+  'interventure.opportunity.routed',
+  'interventure.opportunity.routing_refused',
+  'risk.alert.raised',
+  'risk.alert.acknowledged',
+  'risk.alert.resolved',
   'partner.agreement.drafted',
   'partner.agreement.activated',
   'partner.payout.computed',

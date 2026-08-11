@@ -2617,6 +2617,209 @@ model RiskObservation {
   @@schema("risk")
 }
 
+/// The three tiers - blueprint 6.1. Categorical and ordered by seriousness, never numeric:
+/// there is no "risk score", and `worstOf` takes the worst tier rather than an average.
+enum AlertTier {
+  yellow
+  orange
+  red
+
+  @@schema("risk")
+}
+
+enum AlertState {
+  /// Raised and nobody has looked.
+  open
+  /// A human has seen it. NOT resolved - acknowledging is not fixing.
+  acknowledged
+  resolved
+
+  @@schema("risk")
+}
+
+/// A three-tier risk alert on a client - blueprint 6.1.
+///
+/// `summary` is written by the detector and is asserted PII-free, like every other risk row: it
+/// says what kind of thing happened, not who or what account.
+///
+/// There is no expiry column, deliberately. An alert nobody reviewed is not less true for having
+/// aged - see ADR-0055.
+model RiskAlert {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  clientId String @db.Uuid
+
+  tier  AlertTier
+  state AlertState @default(open)
+
+  /// Which detector raised it, and on what. A risk fact with no provenance is a rumour.
+  source  String
+  summary String
+
+  detectedAt DateTime
+
+  acknowledgedBy String?   @db.Uuid
+  acknowledgedAt DateTime?
+
+  resolvedBy String?   @db.Uuid
+  resolvedAt DateTime?
+  /// Required to resolve. "It stopped mattering" is a decision somebody makes, not one time makes.
+  resolutionNote String?
+
+  createdAt DateTime @default(now())
+
+  /// Alert order, from a Postgres sequence, for the same reason the timeline has one.
+  seq BigInt @unique @default(autoincrement())
+
+  @@index([tenantId, clientId, state, tier])
+  @@map("risk_alerts")
+  @@schema("risk")
+}
+
+// ---------------------------------------------------------------------------
+// 11.9 Cost & Performance Governance
+// ---------------------------------------------------------------------------
+
+/// Where a cost came from. Named per Decisions A and B, so a vendor cost is attributable to the
+/// decision that introduced it.
+enum CostSource {
+  model_api
+  voice_minutes
+  document_processing
+  plaid
+  business_bureau
+  personal_credit
+
+  @@schema("admin")
+}
+
+/// How we know this figure - principle 8, applied to money we spend.
+///
+/// There is no `estimated`. A cost we guessed and a cost we were billed must not be summable, and
+/// the moment they share a column somebody sums them. See ADR-0057.
+enum CostProvenance {
+  /// Counted by us at the time of the call - tokens, minutes, pages.
+  observed
+  /// Taken from a vendor invoice or statement.
+  vendor_invoice
+
+  @@schema("admin")
+}
+
+/// One unit of spend - blueprint 11.9.
+///
+/// `clientId` is nullable and that is the whole difficulty of the module: platform costs are real
+/// and are not attributable to a client. A per-client unit cost computed by spreading them evenly
+/// would be an allocation presented as a measurement.
+model CostRecord {
+  id       String  @id @default(uuid()) @db.Uuid
+  tenantId String  @db.Uuid
+  clientId String? @db.Uuid
+
+  /// The agent whose action incurred it, where one did.
+  actorId String? @db.Uuid
+
+  source     CostSource
+  provenance CostProvenance
+
+  /// Integer cents, like all money here (ADR-0011).
+  amountCents Int
+
+  /// How many of whatever this source counts - tokens, minutes, pages, pulls. Null when the
+  /// vendor bills a subscription rather than a unit.
+  units    Int?
+  unitKind String?
+
+  /// The model or vendor product, for regression detection across versions.
+  vendorRef String?
+
+  occurredOn DateTime
+
+  createdAt DateTime @default(now())
+  createdBy String   @db.Uuid
+
+  @@index([tenantId, occurredOn])
+  @@index([tenantId, clientId, occurredOn])
+  @@index([tenantId, source, occurredOn])
+  @@map("cost_records")
+  @@schema("admin")
+}
+
+// ---------------------------------------------------------------------------
+// 10.2 Cross-Portfolio Opportunity Engine
+// ---------------------------------------------------------------------------
+
+enum OpportunityKind {
+  payroll_float
+  emd_or_marketing_capital
+  project_funding
+  advisor_or_client_acquisition
+  shared_vendor_financing
+  insurance_premium_financing
+  tax_reserve_planning
+
+  @@schema("interventure")
+}
+
+enum OpportunityState {
+  /// Detected and going nowhere until Gardner approves it.
+  detected
+  gardner_approved
+  /// Gardner said no. A row, not a deletion.
+  gardner_declined
+  /// Approved AND consent verified at the moment of transfer. The only state that permits an act.
+  routed
+  dismissed
+
+  @@schema("interventure")
+}
+
+/// A capital opportunity detected across the Green Companies portfolio - blueprint 10.2.
+///
+/// **This model deliberately has no consent column.** Consent is per-handoff and re-checked live
+/// at the moment of transfer (ADR-0018, principle 5); a stored `consented: true` would be a claim
+/// about a permission that may have been revoked since. See ADR-0058.
+model CrossPortfolioOpportunity {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+
+  /// The venture the opportunity is FOR.
+  venture String
+
+  /// The client it concerns, when it concerns one. Null for a portfolio-level opportunity that
+  /// names no client - which is the only kind that can be discussed without consent at all.
+  clientId String? @db.Uuid
+
+  kind  OpportunityKind
+  state OpportunityState @default(detected)
+
+  /// What was noticed, in the detector's words. No PII: this travels to Gardner.
+  summary String
+
+  /// What the detection rests on, so a reader can argue with it rather than with the conclusion.
+  basis String
+
+  detectedAt DateTime
+
+  /// Gardner governs both sides and is the only party positioned to permit a handoff (ADR-0018).
+  gardnerDecidedBy String?
+  gardnerDecidedAt DateTime?
+  gardnerNote      String?
+
+  /// Set only when an act actually happened, after a live consent check.
+  routedAt         DateTime?
+  routedToDepartment String?
+
+  dismissedReason String?
+
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, state, detectedAt])
+  @@index([tenantId, clientId])
+  @@map("cross_portfolio_opportunities")
+  @@schema("interventure")
+}
+
 
 // ---------------------------------------------------------------------------
 // 8.1 Partner & Referrer Portal, 8.3 Partner Training & Certification
