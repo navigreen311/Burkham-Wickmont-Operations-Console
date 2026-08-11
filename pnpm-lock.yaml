@@ -600,6 +600,12 @@ importers:
       '@bwc/core':
         specifier: workspace:*
         version: link:../core
+      '@bwc/db':
+        specifier: workspace:*
+        version: link:../db
+      '@bwc/identity':
+        specifier: workspace:*
+        version: link:../identity
     devDependencies:
       typescript:
         specifier: ^5.8.3

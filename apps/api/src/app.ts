@@ -63,6 +63,7 @@ import { CAPITAL_NEEDS, type CapitalNeed } from '@bwc/lenders';
 import { activeListing, timelineFor } from '@bwc/risk';
 import { openObligations } from '@bwc/calls';
 import { VENDOR_GATES, isActivated, mode, outstandingPreconditions } from '@bwc/integration';
+import { registerIntegrationRoutes } from './routes/integrations.js';
 import {
   ACTION_MINIMUM_LEVEL,
   failed,
@@ -357,6 +358,10 @@ export const createApp = (deps: ConsoleAppDeps = {}): Express => {
       });
     }),
   );
+
+  // 11.5 vendor activation surface - ADR-0065. Registered from its own module; this composer
+  // gains one line rather than another two hundred.
+  registerIntegrationRoutes({ app, asyncRoute, requireStaff });
 
   // --- Sign in ------------------------------------------------------------
 
