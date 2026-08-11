@@ -12,6 +12,16 @@
     -->
     <link rel="stylesheet" href="/console/console.css" />
     <script type="module" src="/console/console.js"></script>
+    <!--
+      One module per panel, each wiring only the elements it owns. Five scripts rather than one so
+      a parse error in any of them cannot take the other four - or the Console itself - down with
+      it. A module script is deferred by definition, so each runs after the document is parsed.
+    -->
+    <script type="module" src="/console/views/admin.js"></script>
+    <script type="module" src="/console/views/warehouse.js"></script>
+    <script type="module" src="/console/views/interventure.js"></script>
+    <script type="module" src="/console/views/intelligence.js"></script>
+    <script type="module" src="/console/views/deliverables.js"></script>
   </head>
 
   <body>
@@ -189,6 +199,153 @@
         <p id="obligations-summary"></p>
         <ul id="obligations-list"></ul>
       </section>
+
+      <!--
+        Module surfaces: 11.7, 3.1, 3.3, 10.1, 11.6.
+
+        Five `details` elements rather than five nav destinations, for the reason the earlier module
+        panels use them: native disclosure needs no script to open and cannot fight the view
+        switching in console.js, which knows nothing about these.
+      -->
+
+      <details id="panel-admin">
+        <summary>11.7 Admin Configuration Center</summary>
+        <p id="admin-status"></p>
+        <button id="admin-refresh" type="button">Refresh</button>
+
+        <h4>Configurable parameters</h4>
+        <ul id="admin-parameters"></ul>
+
+        <!--
+          Fixed, and not because nobody has been given permission. There is no code path that
+          writes one, so there is no input here and no branch that could render one.
+        -->
+        <h4>Fixed — not configurable, at any authority level</h4>
+        <ul id="admin-invariants"></ul>
+
+        <h4>Staged, not in force</h4>
+        <ul id="admin-staged"></ul>
+
+        <h4>Change history</h4>
+        <ul id="admin-history"></ul>
+
+        <h4>Writes this Console cannot offer</h4>
+        <ul id="admin-blocked"></ul>
+      </details>
+
+      <details id="panel-warehouse">
+        <summary>11.6 Data Warehouse &amp; Analytics</summary>
+        <p>
+          The warehouse answers about a period you name. It has no notion of "now" — 9.1 answers
+          that, live.
+        </p>
+        <label for="warehouse-from">From (ISO date)</label>
+        <input id="warehouse-from" type="text" autocomplete="off" />
+        <label for="warehouse-to">To (ISO date)</label>
+        <input id="warehouse-to" type="text" autocomplete="off" />
+        <button id="warehouse-load" type="button">Snapshots in this period</button>
+        <p id="warehouse-status"></p>
+        <ul id="warehouse-snapshots"></ul>
+        <p id="warehouse-etl"></p>
+
+        <h4>Trend</h4>
+        <label for="warehouse-metric">Metric</label>
+        <select id="warehouse-metric">
+          <option value="clients">clients</option>
+          <option value="engagementsActive">engagementsActive</option>
+          <option value="billedToDateCents">billedToDateCents</option>
+          <option value="compliance_healthy">compliance_healthy</option>
+        </select>
+        <button id="warehouse-trend-load" type="button">Trend over this period</button>
+        <p id="warehouse-trend-status"></p>
+        <ul id="warehouse-trend"></ul>
+
+        <h4>Cohorts</h4>
+        <label for="warehouse-cohort">Cohort (blank to list them)</label>
+        <input id="warehouse-cohort" type="text" autocomplete="off" />
+        <button id="warehouse-cohort-load" type="button">Cohorts</button>
+        <p id="warehouse-cohort-status"></p>
+        <ul id="warehouse-cohorts"></ul>
+      </details>
+
+      <details id="panel-interventure">
+        <summary>10.1 Inter-Venture Commerce Hooks</summary>
+        <p id="interventure-status"></p>
+        <button id="interventure-refresh" type="button">Refresh</button>
+
+        <h4>Tagged relationships</h4>
+        <ul id="interventure-relationships"></ul>
+
+        <h4>Green Companies ventures</h4>
+        <ul id="interventure-ventures"></ul>
+
+        <h4>Intercompany invoices awaiting routing</h4>
+        <ul id="interventure-routing"></ul>
+
+        <!--
+          A disclosure completes on acknowledgement by parties who are not us. There is no
+          acknowledge control here and there will not be one.
+        -->
+        <h4>Conflict position for one engagement</h4>
+        <label for="interventure-engagement-id">Engagement id</label>
+        <input id="interventure-engagement-id" type="text" autocomplete="off" />
+        <label for="interventure-client-id">Client id</label>
+        <input id="interventure-client-id" type="text" autocomplete="off" />
+        <button id="interventure-engagement-load" type="button">Load conflict position</button>
+        <p id="interventure-engagement-status"></p>
+        <ul id="interventure-disclosure"></ul>
+
+        <h4>Writes this Console cannot offer</h4>
+        <ul id="interventure-blocked"></ul>
+      </details>
+
+      <details id="panel-intelligence">
+        <summary>3.3 Document Intelligence Pipeline</summary>
+        <label for="intelligence-client-id">Client id</label>
+        <input id="intelligence-client-id" type="text" autocomplete="off" />
+        <label for="intelligence-phase">Phase</label>
+        <select id="intelligence-phase">
+          <option value="0">0</option>
+          <option value="1">1</option>
+          <option value="2">2</option>
+        </select>
+        <button id="intelligence-load" type="button">Load</button>
+        <p id="intelligence-status"></p>
+
+        <section id="intelligence-detail" hidden>
+          <!-- Every finding carries the provenance behind it. An extraction is not a fact. -->
+          <h4>Findings</h4>
+          <ul id="intelligence-findings"></ul>
+
+          <h4>Ingestion runs</h4>
+          <ul id="intelligence-runs"></ul>
+
+          <h4>Document coverage</h4>
+          <ul id="intelligence-coverage"></ul>
+
+          <h4>Writes this Console cannot offer</h4>
+          <ul id="intelligence-blocked"></ul>
+        </section>
+      </details>
+
+      <details id="panel-deliverables">
+        <summary>3.1 Document &amp; Deliverable Management</summary>
+        <p id="deliverables-status"></p>
+        <button id="deliverables-refresh" type="button">Refresh</button>
+
+        <h4>Template library</h4>
+        <ul id="deliverables-templates"></ul>
+
+        <h4>Deliverables for one client — every version</h4>
+        <label for="deliverables-client-id">Client id</label>
+        <input id="deliverables-client-id" type="text" autocomplete="off" />
+        <button id="deliverables-client-load" type="button">Load</button>
+        <p id="deliverables-client-status"></p>
+        <ul id="deliverables-list"></ul>
+
+        <h4>Writes this Console cannot offer</h4>
+        <ul id="deliverables-blocked"></ul>
+      </details>
     </main>
 
     <!-- Clients ------------------------------------------------------------ -->
