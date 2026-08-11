@@ -103,6 +103,21 @@
     },
     {
       "path": "../../packages/regulatory"
+    },
+    {
+      "path": "../../packages/billing"
+    },
+    {
+      "path": "../../packages/contracts"
+    },
+    {
+      "path": "../../packages/vault"
+    },
+    {
+      "path": "../../packages/workbench"
+    },
+    {
+      "path": "../../packages/workflow"
     }
   ]
 }

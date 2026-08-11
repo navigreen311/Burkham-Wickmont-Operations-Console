@@ -60,6 +60,9 @@ importers:
       '@bwc/admin':
         specifier: workspace:*
         version: link:../../packages/admin
+      '@bwc/billing':
+        specifier: workspace:*
+        version: link:../../packages/billing
       '@bwc/calls':
         specifier: workspace:*
         version: link:../../packages/calls
@@ -75,6 +78,9 @@ importers:
       '@bwc/consent':
         specifier: workspace:*
         version: link:../../packages/consent
+      '@bwc/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
       '@bwc/core':
         specifier: workspace:*
         version: link:../../packages/core
@@ -150,9 +156,18 @@ importers:
       '@bwc/tenancy':
         specifier: workspace:*
         version: link:../../packages/tenancy
+      '@bwc/vault':
+        specifier: workspace:*
+        version: link:../../packages/vault
       '@bwc/warehouse':
         specifier: workspace:*
         version: link:../../packages/warehouse
+      '@bwc/workbench':
+        specifier: workspace:*
+        version: link:../../packages/workbench
+      '@bwc/workflow':
+        specifier: workspace:*
+        version: link:../../packages/workflow
       dotenv:
         specifier: ^16.4.7
         version: 16.6.1
