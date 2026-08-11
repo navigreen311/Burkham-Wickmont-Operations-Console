@@ -101,6 +101,8 @@ export const E2E_CONSOLE_ACCOUNTS = [
   'e2e-operator-placement-ok@example.com',
   'e2e-operator-placement-vocabulary@example.com',
   'e2e-operator-inviter@example.com',
+  /** The five module panels: 5.1/5.6, 9.1/9.2, 1.2, 1.3, 8.1/8.3. Reads only, so one account does. */
+  'e2e-operator-modules@example.com',
   /** The last five module panels: 11.7, 3.1, 3.3, 10.1, 11.6. Reads only, so one account does. */
   'e2e-operator-final@example.com',
   // Staff security keys (ADR-0059). One per spec, and each of these specs CHANGES its account -

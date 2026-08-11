@@ -60,6 +60,21 @@
       "path": "../../packages/lenders"
     },
     {
+      "path": "../../packages/capital"
+    },
+    {
+      "path": "../../packages/dashboards"
+    },
+    {
+      "path": "../../packages/graph"
+    },
+    {
+      "path": "../../packages/sales"
+    },
+    {
+      "path": "../../packages/partners"
+    },
+    {
       "path": "../../packages/admin"
     },
     {

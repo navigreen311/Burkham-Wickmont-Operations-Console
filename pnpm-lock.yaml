@@ -63,6 +63,9 @@ importers:
       '@bwc/calls':
         specifier: workspace:*
         version: link:../../packages/calls
+      '@bwc/capital':
+        specifier: workspace:*
+        version: link:../../packages/capital
       '@bwc/clients':
         specifier: workspace:*
         version: link:../../packages/clients
@@ -72,6 +75,9 @@ importers:
       '@bwc/core':
         specifier: workspace:*
         version: link:../../packages/core
+      '@bwc/dashboards':
+        specifier: workspace:*
+        version: link:../../packages/dashboards
       '@bwc/db':
         specifier: workspace:*
         version: link:../../packages/db
@@ -81,6 +87,9 @@ importers:
       '@bwc/firewall':
         specifier: workspace:*
         version: link:../../packages/firewall
+      '@bwc/graph':
+        specifier: workspace:*
+        version: link:../../packages/graph
       '@bwc/http':
         specifier: workspace:*
         version: link:../../packages/http
@@ -111,12 +120,18 @@ importers:
       '@bwc/observability':
         specifier: workspace:*
         version: link:../../packages/observability
+      '@bwc/partners':
+        specifier: workspace:*
+        version: link:../../packages/partners
       '@bwc/placement':
         specifier: workspace:*
         version: link:../../packages/placement
       '@bwc/risk':
         specifier: workspace:*
         version: link:../../packages/risk
+      '@bwc/sales':
+        specifier: workspace:*
+        version: link:../../packages/sales
       '@bwc/tenancy':
         specifier: workspace:*
         version: link:../../packages/tenancy
