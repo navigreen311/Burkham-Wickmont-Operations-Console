@@ -4324,3 +4324,106 @@ model PartnerConductFinding {
   @@map("partner_conduct_findings")
   @@schema("partners")
 }
+
+// ---------------------------------------------------------------------------
+// 6.3 Client Conduct Monitoring
+//
+// The detection layer for client-generated risk. It detects; 6.4 decides.
+//
+// The interesting decision in this module is which way STALENESS moves, and
+// the answer is not the same for every kind - which is the point ADR-0013
+// makes and the reason it says a third cadenced record has to decide
+// explicitly rather than copy a neighbour.
+//
+// A client who applied for capital behind our back while frozen, unreviewed
+// for ninety days, is still a client who did that: the pause HARDENS, because
+// nothing about the passage of time resolves it.
+//
+// A client who stopped answering the phone after funding, unreviewed for
+// ninety days, may be in trouble. Freezing service to somebody in distress is
+// the harm, not the remedy, so that one SOFTENS - toward outreach and a human,
+// not toward a stricter gate.
+//
+// The direction is therefore a property of the kind, declared in code beside
+// the kind, rather than a single rule applied to the table. See ADR-0044.
+// ---------------------------------------------------------------------------
+
+/// Blueprint 6.3's data model, as an enum.
+///
+/// Nine kinds, and they are not interchangeable: each one has its own staleness direction and its
+/// own response, so a free-text `kind` would make both unqueryable and would let a tenth kind
+/// arrive with no decision made about either.
+enum ConductBreachKind {
+  /// The client applied for capital elsewhere while placement was frozen.
+  independent_application
+  /// Debt found that the client did not disclose.
+  undisclosed_debt
+  /// Funds used for something other than what the placement was built around.
+  funds_usage_anomaly
+  /// Submitted documents that do not agree with each other or with a feed.
+  document_inconsistency
+  /// No response to a payment alert.
+  payment_alert_non_response
+  /// The client pressured staff or an agent to do something they should not.
+  staff_pressure_incident
+  /// No contact since funding.
+  post_funding_non_response
+  /// A fee dispute the record does not support.
+  unfounded_fee_dispute
+  /// Abusive conduct toward staff.
+  abuse
+
+  @@schema("risk")
+}
+
+/// One detected breach.
+///
+/// Resolved rather than deleted, like 6.4's listings, 7.5's holds and 8.4's findings: "we looked
+/// into this and it was unfounded" is a different fact from "this never happened", and a client
+/// disputing a termination is entitled to the difference.
+model ClientConductBreach {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  clientId String @db.Uuid
+
+  kind     ConductBreachKind
+  /// Reuses 6.5's severity vocabulary, held as text and validated in code against SEVERITIES -
+  /// the same arrangement 8.1 uses for partner tracks, and for the same reason: a fifth severity
+  /// would be a decision, not a migration.
+  severity String
+
+  /// What happened, for the person who will read it back to the client.
+  summary String
+
+  /// Where the detection came from, in the observer's words. A breach with no provenance is an
+  /// accusation, and a service pause built on accusations is how a client is cut off on a rumour.
+  source String
+
+  occurredAt DateTime
+  detectedAt DateTime @default(now())
+  detectedBy String   @db.Uuid
+
+  /// How long before this breach is due for another look. Defaulted per kind in code rather than
+  /// here, because the cadence and the staleness direction are one decision and splitting them
+  /// across two files is how they drift apart.
+  reviewCadenceDays Int
+  lastReviewedAt    DateTime?
+  lastReviewedBy    String?   @db.Uuid
+
+  resolvedAt     DateTime?
+  resolvedBy     String?   @db.Uuid
+  /// Required to resolve. What was looked into and what was concluded.
+  resolutionNote String?
+  /// Whether the investigation agreed. Null while open. A dismissed breach is NOT deleted: a run
+  /// of dismissed detections against one client is a signal about the detector.
+  upheld Boolean?
+
+  /// The 6.5 observation this breach produced, so the timeline and the breach record cannot
+  /// disagree about whether something was recorded.
+  observationId String? @db.Uuid
+
+  @@index([tenantId, clientId, resolvedAt])
+  @@index([tenantId, kind, occurredAt])
+  @@map("client_conduct_breaches")
+  @@schema("risk")
+}

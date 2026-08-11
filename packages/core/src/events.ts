@@ -204,6 +204,13 @@ export const EVENT_TYPES = [
   // Risk Event Timeline (6.5). Carries the fact and the severity; the summary stays in the
   // observation table, where a person wrote it and a person will read it.
   'risk.observation.recorded',
+  // Client Conduct Monitoring (6.3). The summary is free text about a named client and stays in the
+  // row; the payload carries the kind, the severity and the response, which is what an audit of
+  // "why was this client's service paused" actually asks for. `resolved` carries `upheld` because
+  // a dismissed detection is a different fact from one that never happened.
+  'risk.conduct.detected',
+  'risk.conduct.reviewed',
+  'risk.conduct.resolved',
   // Partner & Referrer Portal (8.1) with Training & Certification (8.3). `client_status.viewed`
   // exists because a client who consented to a partner seeing their status is entitled to know
   // when the partner looked - the same reasoning as 1.2's reveal events.
