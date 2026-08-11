@@ -133,7 +133,14 @@ export const requestPasswordReset = async (input: {
   // An unenrolled user is deliberately not a candidate: enrolment is what the invitation is for,
   // and a reset here would be a second enrolment path that bypasses the invitation's expiry. A
   // disabled one is not a candidate either. Neither is told so.
-  const eligible = user !== null && user.enrolledAt !== null && user.disabledAt === null;
+  // An account with no password has nothing to reset, and a reset that quietly created one would
+  // hand the email channel a credential the client deliberately removed. Not distinguished in the
+  // answer: doing so would say which addresses are passkey-only.
+  const eligible =
+    user !== null &&
+    user.enrolledAt !== null &&
+    user.disabledAt === null &&
+    user.passwordRemovedAt === null;
 
   if (!eligible) {
     return notBuilt('11.5 Integration Layer - email provider', ACKNOWLEDGEMENT);
@@ -240,6 +247,14 @@ export const issuePasswordReset = async (input: {
     return refused(
       'That client user is disabled. Restoring access is a decision about whether they should have it, not a password problem.',
       'Blueprint 11.1 - access reviews',
+    );
+  }
+  if (user.passwordRemovedAt !== null) {
+    // Staff-facing, so it says what is actually true. `restorePassword` is the one act that gives
+    // this account a password again, and it records why.
+    return refused(
+      'That client user has no password. Use restorePassword, which re-enables password sign-in and issues a reset in one recorded act.',
+      'Blueprint 11.1 - identity and access',
     );
   }
 

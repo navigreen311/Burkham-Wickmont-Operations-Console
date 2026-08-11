@@ -16,6 +16,7 @@ import { read } from '@bwc/ledger';
 import {
   PASSKEYS_REQUIRED_TO_DISABLE_PASSWORD,
   authenticateClientUser,
+  byPassword,
   beginPasskeySignIn,
   beginWebauthnRegistration,
   completePasskeySignIn,
@@ -102,7 +103,7 @@ const registerPasskey = async (
   const done = await completeWebauthnRegistration({
     tenantId: fx.tenant.id,
     clientUserId: userId,
-    password: PASSWORD,
+    confirmation: byPassword(PASSWORD),
     label,
     response: authenticator.register({
       challenge: challengeFrom(offer.value.options),

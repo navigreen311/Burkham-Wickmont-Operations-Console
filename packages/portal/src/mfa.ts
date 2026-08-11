@@ -17,6 +17,8 @@ import {
   registeredKeys,
   disablePasswordSignIn,
   passwordSignInState,
+  removePassword,
+  type Confirmation,
   changeClientPassword,
   completeEmailChange,
   confirmMfaEnrolment,
@@ -53,26 +55,30 @@ export const startAuthenticatorEnrolment = async (
  */
 export const confirmAuthenticator = async (input: {
   principal: ClientPrincipal;
-  password: string;
+  confirmation: Confirmation;
+  rp: RelyingParty;
   code: string;
 }): Promise<Outcome<ConfirmedEnrolment>> =>
   confirmMfaEnrolment({
     tenantId: input.principal.tenantId,
     clientUserId: input.principal.actorId,
-    password: input.password,
+    confirmation: input.confirmation,
+    rp: input.rp,
     code: input.code,
   });
 
 /** Remove your own authenticator: the password AND a current code, or a recovery code. */
 export const removeAuthenticator = async (input: {
   principal: ClientPrincipal;
-  password: string;
+  confirmation: Confirmation;
+  rp: RelyingParty;
   code: string;
 }): Promise<Outcome<{ factorId: string }>> =>
   disableMfa({
     tenantId: input.principal.tenantId,
     clientUserId: input.principal.actorId,
-    password: input.password,
+    confirmation: input.confirmation,
+    rp: input.rp,
     code: input.code,
   });
 
@@ -110,14 +116,16 @@ export const changePassword = async (input: {
 export const requestAddressChange = async (input: {
   principal: ClientPrincipal;
   newEmail: string;
-  currentPassword: string;
+  confirmation: Confirmation;
+  rp: RelyingParty;
   code?: string;
 }): Promise<Outcome<EmailChangeAcknowledgement>> =>
   requestEmailChange({
     tenantId: input.principal.tenantId,
     clientUserId: input.principal.actorId,
     newEmail: input.newEmail,
-    currentPassword: input.currentPassword,
+    confirmation: input.confirmation,
+    rp: input.rp,
     ...(input.code !== undefined ? { code: input.code } : {}),
   });
 
@@ -156,7 +164,7 @@ export const startKeyRegistration = async (input: {
 /** Finish registering a key. Takes the password, as every credential change does. */
 export const registerKey = async (input: {
   principal: ClientPrincipal;
-  password: string;
+  confirmation: Confirmation;
   label: string;
   response: Record<string, unknown>;
   rp: RelyingParty;
@@ -165,7 +173,7 @@ export const registerKey = async (input: {
   completeWebauthnRegistration({
     tenantId: input.principal.tenantId,
     clientUserId: input.principal.actorId,
-    password: input.password,
+    confirmation: input.confirmation,
     label: input.label,
     response: input.response,
     rp: input.rp,
@@ -203,10 +211,30 @@ export const keysOnAccount = async (principal: ClientPrincipal) =>
 /** A fresh set of recovery codes, retiring the old ones. */
 export const newRecoveryCodes = async (input: {
   principal: ClientPrincipal;
-  password: string;
+  confirmation: Confirmation;
+  rp: RelyingParty;
 }): Promise<Outcome<{ recoveryCodes: readonly string[] }>> =>
   regenerateRecoveryCodes({
     tenantId: input.principal.tenantId,
     clientUserId: input.principal.actorId,
-    password: input.password,
+    confirmation: input.confirmation,
+    rp: input.rp,
+  });
+
+/**
+ * Remove the password outright.
+ *
+ * The step after turning password sign-in off: the hash stayed because seven gates asked for it,
+ * and now that they take a passkey instead it can go.
+ */
+export const removeAccountPassword = async (input: {
+  principal: ClientPrincipal;
+  response: Record<string, unknown>;
+  rp: RelyingParty;
+}): Promise<Outcome<{ clientUserId: string }>> =>
+  removePassword({
+    tenantId: input.principal.tenantId,
+    clientUserId: input.principal.actorId,
+    response: input.response,
+    rp: input.rp,
   });

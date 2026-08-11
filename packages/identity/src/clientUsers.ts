@@ -334,7 +334,10 @@ export const authenticateClientUser = async (input: {
     !correct ||
     user.enrolledAt === null ||
     user.disabledAt !== null ||
-    user.passwordSignInDisabledAt !== null
+    user.passwordSignInDisabledAt !== null ||
+    // Belt and braces beside the sentinel hash: an account with no password cannot be signed into
+    // with one, whatever the hash column happens to contain.
+    user.passwordRemovedAt !== null
   ) {
     const attempts = user.failedAttempts + 1;
     const lock = attempts >= MAX_FAILED_ATTEMPTS;

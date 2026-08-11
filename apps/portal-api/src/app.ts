@@ -34,6 +34,7 @@ import {
   downloadDocument,
   mfaSettings,
   keysOnAccount,
+  removeAccountPassword,
   passkeySignInOptions,
   passwordSignIn,
   newRecoveryCodes,
@@ -55,6 +56,7 @@ import {
   type ClientPrincipal,
 } from '@bwc/portal';
 import { refused, type Outcome } from '@bwc/core';
+import { byPasskey, byPassword, type Confirmation } from '@bwc/identity';
 import type { ConsentKind } from '@bwc/consent';
 import type { DocumentKind, VaultConfig } from '@bwc/vault';
 import { send } from '@bwc/http';
@@ -178,6 +180,29 @@ const asyncRoute =
   (req: Request, res: Response, next: NextFunction): void => {
     handler(req, res).catch(next);
   };
+
+/**
+ * Read a confirmation out of a request body.
+ *
+ * `{ password }` or `{ passkey }`. **One reader for every gate**, so a route cannot accidentally
+ * accept less than its neighbour - and a body carrying neither is refused here rather than in five
+ * different sentences downstream.
+ */
+const confirmationFrom = (body: unknown): Confirmation | null => {
+  const supplied = (body ?? {}) as { password?: unknown; passkey?: unknown };
+
+  if (typeof supplied.password === 'string') return byPassword(supplied.password);
+  if (typeof supplied.passkey === 'object' && supplied.passkey !== null) {
+    return byPasskey(supplied.passkey as Record<string, unknown>);
+  }
+  return null;
+};
+
+const NEEDS_CONFIRMATION = (): Outcome<never> =>
+  refused(
+    'This needs your password, or a passkey if this account no longer has one.',
+    'Blueprint 11.1 - a credential change needs a credential',
+  );
 
 export const createPortalApp = (deps: PortalAppDeps): Express => {
   const config = deps.config ?? readConfig();
@@ -635,22 +660,15 @@ export const createPortalApp = (deps: PortalAppDeps): Express => {
     '/portal/mfa/enrol/confirm',
     express.json({ limit: config.maxJsonBytes }),
     withPrincipal(async (principal, req, res) => {
-      const body = req.body as { password?: unknown; code?: unknown };
-      if (typeof body?.password !== 'string' || typeof body?.code !== 'string') {
-        send(
-          res,
-          refused(
-            'Confirming an authenticator needs your password and a code from it.',
-            'Blueprint 11.1 - a credential change needs a credential',
-          ),
-        );
+      const body = req.body as { code?: unknown };
+      const confirmation = confirmationFrom(req.body);
+
+      if (confirmation === null || typeof body?.code !== 'string') {
+        send(res, NEEDS_CONFIRMATION());
         return;
       }
 
-      send(
-        res,
-        await confirmAuthenticator({ principal, password: body.password, code: body.code }),
-      );
+      send(res, await confirmAuthenticator({ principal, confirmation, rp, code: body.code }));
     }),
   );
 
@@ -658,19 +676,15 @@ export const createPortalApp = (deps: PortalAppDeps): Express => {
     '/portal/mfa/remove',
     express.json({ limit: config.maxJsonBytes }),
     withPrincipal(async (principal, req, res) => {
-      const body = req.body as { password?: unknown; code?: unknown };
-      if (typeof body?.password !== 'string' || typeof body?.code !== 'string') {
-        send(
-          res,
-          refused(
-            'Removing an authenticator needs your password and a current code, or a recovery code.',
-            'Blueprint 11.1 - a credential change needs a credential',
-          ),
-        );
+      const body = req.body as { code?: unknown };
+      const confirmation = confirmationFrom(req.body);
+
+      if (confirmation === null || typeof body?.code !== 'string') {
+        send(res, NEEDS_CONFIRMATION());
         return;
       }
 
-      send(res, await removeAuthenticator({ principal, password: body.password, code: body.code }));
+      send(res, await removeAuthenticator({ principal, confirmation, rp, code: body.code }));
     }),
   );
 
@@ -728,16 +742,11 @@ export const createPortalApp = (deps: PortalAppDeps): Express => {
     limitBy(changeLimiter, 'Too many attempts from this address. Try again shortly.'),
     express.json({ limit: config.maxJsonBytes }),
     withPrincipal(async (principal, req, res) => {
-      const body = req.body as { newEmail?: unknown; currentPassword?: unknown; code?: unknown };
+      const body = req.body as { newEmail?: unknown; code?: unknown };
+      const confirmation = confirmationFrom(req.body);
 
-      if (typeof body?.newEmail !== 'string' || typeof body?.currentPassword !== 'string') {
-        send(
-          res,
-          refused(
-            'Moving your address needs the new one and your current password.',
-            'Blueprint 11.1 - a credential change needs a credential',
-          ),
-        );
+      if (typeof body?.newEmail !== 'string' || confirmation === null) {
+        send(res, NEEDS_CONFIRMATION());
         return;
       }
 
@@ -746,7 +755,8 @@ export const createPortalApp = (deps: PortalAppDeps): Express => {
         await requestAddressChange({
           principal,
           newEmail: body.newEmail,
-          currentPassword: body.currentPassword,
+          confirmation,
+          rp,
           ...(typeof body.code === 'string' ? { code: body.code } : {}),
         }),
       );
@@ -805,6 +815,41 @@ export const createPortalApp = (deps: PortalAppDeps): Express => {
     }),
   );
 
+  /**
+   * Remove the password outright.
+   *
+   * The step after turning password sign-in off. Only a passkey can authorise it - there is no
+   * password left to ask for, which is the point.
+   */
+  app.post(
+    '/portal/password-sign-in/remove-password',
+    limitBy(changeLimiter, 'Too many attempts from this address. Try again shortly.'),
+    express.json({ limit: config.maxJsonBytes }),
+    withPrincipal(async (principal, req, res) => {
+      const body = req.body as { response?: unknown };
+
+      if (typeof body?.response !== 'object' || body.response === null) {
+        send(
+          res,
+          refused(
+            'Removing the password needs a passkey.',
+            'Blueprint 11.1 - a credential change needs a credential',
+          ),
+        );
+        return;
+      }
+
+      send(
+        res,
+        await removeAccountPassword({
+          principal,
+          response: body.response as Record<string, unknown>,
+          rp,
+        }),
+      );
+    }),
+  );
+
   app.get(
     '/portal/password-sign-in',
     withPrincipal(async (principal, _req, res) => {
@@ -857,25 +902,19 @@ export const createPortalApp = (deps: PortalAppDeps): Express => {
     express.json({ limit: config.maxJsonBytes }),
     withPrincipal(async (principal, req, res) => {
       const body = req.body as {
-        password?: unknown;
         label?: unknown;
         response?: unknown;
         discoverable?: unknown;
       };
+      const confirmation = confirmationFrom(req.body);
 
       if (
-        typeof body?.password !== 'string' ||
+        confirmation === null ||
         typeof body?.label !== 'string' ||
         typeof body?.response !== 'object' ||
         body.response === null
       ) {
-        send(
-          res,
-          refused(
-            'Registering a key needs your password, a name for the key, and the browser response.',
-            'Blueprint 11.1 - a credential change needs a credential',
-          ),
-        );
+        send(res, NEEDS_CONFIRMATION());
         return;
       }
 
@@ -883,7 +922,7 @@ export const createPortalApp = (deps: PortalAppDeps): Express => {
         res,
         await registerKey({
           principal,
-          password: body.password,
+          confirmation,
           label: body.label,
           response: body.response as Record<string, unknown>,
           rp,
@@ -897,19 +936,13 @@ export const createPortalApp = (deps: PortalAppDeps): Express => {
     '/portal/mfa/recovery-codes',
     express.json({ limit: config.maxJsonBytes }),
     withPrincipal(async (principal, req, res) => {
-      const body = req.body as { password?: unknown };
-      if (typeof body?.password !== 'string') {
-        send(
-          res,
-          refused(
-            'New recovery codes need your password.',
-            'Blueprint 11.1 - a credential change needs a credential',
-          ),
-        );
+      const confirmation = confirmationFrom(req.body);
+      if (confirmation === null) {
+        send(res, NEEDS_CONFIRMATION());
         return;
       }
 
-      send(res, await newRecoveryCodes({ principal, password: body.password }));
+      send(res, await newRecoveryCodes({ principal, confirmation, rp }));
     }),
   );
 

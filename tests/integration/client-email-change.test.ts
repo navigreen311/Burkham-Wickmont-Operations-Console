@@ -26,6 +26,7 @@ import { create as createClient } from '@bwc/clients';
 import { read } from '@bwc/ledger';
 import {
   EMAIL_CHANGE_MINUTES,
+  byPassword,
   MFA_SECRET_KEY_VARIABLE,
   TOTP_STEP_SECONDS,
   authenticateClientUser,
@@ -46,6 +47,7 @@ import {
   requestEmailChange,
   resolveSession,
   totp,
+  type RelyingParty,
 } from '@bwc/identity';
 import { cleanupTenant, makeFixture, type Fixture } from '../setup.js';
 
@@ -54,6 +56,12 @@ let clientId: string;
 
 const NOW = new Date('2026-08-16T09:00:00.000Z');
 const PASSWORD = 'a-long-enough-portal-password';
+const RP: RelyingParty = {
+  id: 'portal.example.com',
+  name: 'Burkham Wickmont',
+  origin: 'https://portal.example.com',
+};
+
 const HUMAN = () => ({ id: fx.human.id, kind: 'human' as const });
 const VERIFICATION = 'Called back on the number on file and confirmed the EIN last four.';
 
@@ -99,7 +107,8 @@ describe('the address moves only when the new one answers', () => {
       tenantId: fx.tenant.id,
       clientUserId: userId,
       newEmail: 'after@example.com',
-      currentPassword: PASSWORD,
+      confirmation: byPassword(PASSWORD),
+      rp: RP,
       now: NOW,
     });
     // Nothing delivers it, and the answer says so rather than reporting success.
@@ -176,7 +185,8 @@ describe('the address moves only when the new one answers', () => {
       tenantId: fx.tenant.id,
       clientUserId: userId,
       newEmail: 'occupied@example.com',
-      currentPassword: PASSWORD,
+      confirmation: byPassword(PASSWORD),
+      rp: RP,
       now: NOW,
     });
 
@@ -193,7 +203,8 @@ describe('the address moves only when the new one answers', () => {
       tenantId: fx.tenant.id,
       clientUserId: userId,
       newEmail: 'somewhere-else@example.com',
-      currentPassword: 'not-the-current-password',
+      confirmation: byPassword('not-the-current-password'),
+      rp: RP,
       now: NOW,
     });
     expect(wrongPassword.status).toBe('refused');
@@ -208,7 +219,8 @@ describe('the address moves only when the new one answers', () => {
     const confirmed = await confirmMfaEnrolment({
       tenantId: fx.tenant.id,
       clientUserId: userId,
-      password: PASSWORD,
+      confirmation: byPassword(PASSWORD),
+      rp: RP,
       code: totp(secret, NOW),
       now: NOW,
     });
@@ -220,7 +232,8 @@ describe('the address moves only when the new one answers', () => {
       tenantId: fx.tenant.id,
       clientUserId: userId,
       newEmail: 'somewhere-else@example.com',
-      currentPassword: PASSWORD,
+      confirmation: byPassword(PASSWORD),
+      rp: RP,
       now: at,
     });
     expect(withoutCode.status).toBe('refused');
@@ -229,7 +242,8 @@ describe('the address moves only when the new one answers', () => {
       tenantId: fx.tenant.id,
       clientUserId: userId,
       newEmail: 'somewhere-else@example.com',
-      currentPassword: PASSWORD,
+      confirmation: byPassword(PASSWORD),
+      rp: RP,
       code: totp(secret, at),
       now: at,
     });
@@ -478,7 +492,8 @@ const tokenFor = async (userId: string, newEmail: string, at = NOW): Promise<str
     tenantId: fx.tenant.id,
     clientUserId: userId,
     newEmail,
-    currentPassword: PASSWORD,
+    confirmation: byPassword(PASSWORD),
+    rp: RP,
     now: at,
     deliver: async (input) => {
       token = input.token;

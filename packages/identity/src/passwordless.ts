@@ -17,6 +17,7 @@ import { append } from '@bwc/ledger';
 import { noData, ok, refused, type EventActor, type Outcome } from '@bwc/core';
 import { findActor } from './index.js';
 import { verifyPassword } from './credentials.js';
+import { issuePasswordReset } from './passwordReset.js';
 import { completePasskeySignIn, discoverableKeyCount, type RelyingParty } from './webauthn.js';
 
 /**
@@ -34,9 +35,13 @@ const MINIMUM_VERIFICATION_BASIS = 10;
 
 export interface PasswordSignInState {
   readonly passwordSignInEnabled: boolean;
+  /** Whether a password exists at all. False once it has been removed. */
+  readonly hasPassword: boolean;
   readonly discoverableKeys: number;
   /** Whether the account could switch the password off today. */
   readonly mayDisablePassword: boolean;
+  /** Whether the account could remove the password outright today. */
+  readonly mayRemovePassword: boolean;
 }
 
 export const passwordSignInState = async (
@@ -48,13 +53,182 @@ export const passwordSignInState = async (
     discoverableKeyCount(tenantId, clientUserId),
   ]);
 
-  const enabled = user?.passwordSignInDisabledAt == null;
+  const hasPassword = user != null && user.passwordRemovedAt === null;
+  const enabled = user?.passwordSignInDisabledAt == null && hasPassword;
 
   return {
     passwordSignInEnabled: enabled,
+    hasPassword,
     discoverableKeys: keys,
     mayDisablePassword: enabled && keys >= PASSKEYS_REQUIRED_TO_DISABLE_PASSWORD,
+    // Removing it is the step AFTER switching it off, never instead of it: an account whose
+    // password still signs people in has not shown that anything else can.
+    mayRemovePassword: hasPassword && !enabled && keys >= PASSKEYS_REQUIRED_TO_DISABLE_PASSWORD,
   };
+};
+
+/**
+ * Remove the password outright.
+ *
+ * Switching password sign-in off (ADR-0029) stopped the password authenticating anybody; the hash
+ * stayed, because seven gates asked for it. Now that they take a passkey instead, it can go.
+ *
+ * **Two independent facts are written.** `passwordRemovedAt` is what every gate reads, and the hash
+ * is overwritten with a value that cannot verify - so a column somebody edits back to null cannot
+ * resurrect a credential. The weaker fact cannot undo the stronger one.
+ *
+ * Only ever after password sign-in has been switched off, and only with two passkeys and an
+ * assertion. Removing it from an account whose password still signs people in would be a way to
+ * lock somebody out with one call.
+ */
+export const removePassword = async (input: {
+  tenantId: string;
+  clientUserId: string;
+  response: Record<string, unknown>;
+  rp: RelyingParty;
+  now?: Date;
+}): Promise<Outcome<{ clientUserId: string }>> => {
+  const now = input.now ?? new Date();
+
+  const user = await db().clientUser.findFirst({
+    where: { tenantId: input.tenantId, id: input.clientUserId },
+  });
+  if (!user) return noData(`No client user ${input.clientUserId} is on record.`);
+  if (user.passwordRemovedAt !== null) {
+    return refused('This account already has no password.', 'Blueprint 11.1 - identity and access');
+  }
+  if (user.passwordSignInDisabledAt === null) {
+    return refused(
+      'Turn password sign-in off first. An account whose password still signs people in has not shown that anything else can.',
+      'Blueprint 11.1 - identity and access',
+    );
+  }
+
+  const keys = await discoverableKeyCount(input.tenantId, user.id);
+  if (keys < PASSKEYS_REQUIRED_TO_DISABLE_PASSWORD) {
+    return refused(
+      `Keep ${PASSKEYS_REQUIRED_TO_DISABLE_PASSWORD} passkeys registered before removing the password.`,
+      'Blueprint 11.1 - identity and access',
+    );
+  }
+
+  const asserted = await completePasskeySignIn({
+    tenantId: input.tenantId,
+    response: input.response,
+    rp: input.rp,
+    now,
+  });
+  if (asserted.status !== 'ok') return asserted as Outcome<never>;
+  if (asserted.value.clientUserId !== user.id) {
+    return refused(
+      'That passkey belongs to a different account.',
+      'Blueprint 11.1 - identity and access',
+    );
+  }
+
+  await db().clientUser.update({
+    where: { id: user.id },
+    data: {
+      passwordRemovedAt: now,
+      // Not a hash of anything. `verifyPassword` needs six `$`-separated parts beginning `scrypt`,
+      // and this is not that, so nothing verifies against it even if the column above is wrong.
+      passwordHash: 'removed',
+    },
+  });
+
+  await append({
+    tenantId: input.tenantId,
+    type: 'identity.client_user.password_removed',
+    actor: { id: user.id, kind: 'client' },
+    clientId: user.clientId,
+    payload: { clientUserId: user.id, discoverableKeys: keys },
+  });
+
+  return ok({ clientUserId: user.id });
+};
+
+/**
+ * Give an account a password again, from the Concierge Desk.
+ *
+ * **The one route back for a client who removed their password and then lost every passkey.** A
+ * Level 3 human with a recorded verification basis clears both flags and issues a reset, so the
+ * client chooses the password rather than being told one.
+ *
+ * It is deliberately one act. Re-enabling sign-in, restoring the hash and issuing a reset as three
+ * separate calls would leave an account that could be found in two of the three states, and the
+ * middle ones are worse than either end.
+ */
+export const restorePassword = async (input: {
+  tenantId: string;
+  clientUserId: string;
+  restoredBy: string;
+  verificationBasis: string;
+  actor: EventActor;
+  now?: Date;
+}): Promise<Outcome<{ clientUserId: string; token: string; expiresAt: string }>> => {
+  const now = input.now ?? new Date();
+
+  if (input.verificationBasis.trim().length < MINIMUM_VERIFICATION_BASIS) {
+    return refused(
+      'Restoring a password needs a record of how you verified who you were speaking to. It undoes the strongest protection this account chose.',
+      'Blueprint 11.1 - identity and access',
+    );
+  }
+
+  const restorer = await findActor(input.restoredBy);
+  if (
+    !restorer ||
+    restorer.kind !== 'human' ||
+    restorer.authorityLevel < PASSWORD_SIGN_IN_AUTHORITY_LEVEL
+  ) {
+    return refused(
+      `Restoring a password requires a human at Authority Level ${PASSWORD_SIGN_IN_AUTHORITY_LEVEL}.`,
+      'Blueprint 2.1 with 11.1 - identity and access',
+    );
+  }
+
+  const user = await db().clientUser.findFirst({
+    where: { tenantId: input.tenantId, id: input.clientUserId },
+  });
+  if (!user) return noData(`No client user ${input.clientUserId} is on record.`);
+  if (user.passwordRemovedAt === null) {
+    return refused('This account already has a password.', 'Blueprint 11.1 - identity and access');
+  }
+
+  await db().clientUser.update({
+    where: { id: user.id },
+    data: { passwordRemovedAt: null, passwordSignInDisabledAt: null },
+  });
+
+  // The client sets it, not the Concierge Desk. A password read down a telephone is a password two
+  // people know.
+  const issued = await issuePasswordReset({
+    tenantId: input.tenantId,
+    clientUserId: user.id,
+    issuedBy: input.restoredBy,
+    verificationBasis: input.verificationBasis,
+    actor: input.actor,
+    now,
+  });
+  if (issued.status !== 'ok') return issued as Outcome<never>;
+
+  await append({
+    tenantId: input.tenantId,
+    type: 'identity.client_user.password_restored',
+    actor: input.actor,
+    clientId: user.clientId,
+    payload: {
+      clientUserId: user.id,
+      restoredBy: input.restoredBy,
+      verificationBasis: input.verificationBasis.trim(),
+    },
+  });
+
+  return ok({
+    clientUserId: user.id,
+    token: issued.value.token,
+    expiresAt: issued.value.expiresAt,
+  });
 };
 
 /**

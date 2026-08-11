@@ -28,7 +28,9 @@ import { db } from '@bwc/db';
 import { append } from '@bwc/ledger';
 import { noData, notBuilt, ok, refused, type EventActor, type Outcome } from '@bwc/core';
 import { findActor } from './index.js';
-import { hashToken, newToken, verifyPassword } from './credentials.js';
+import { hashToken, newToken } from './credentials.js';
+import { confirmIdentity, type Confirmation } from './confirmation.js';
+import type { RelyingParty } from './webauthn.js';
 import { hasActiveFactor, verifySecondFactor } from './mfa.js';
 
 /** How long a verification token is good for. Same reasoning as a reset: minutes, not days. */
@@ -123,7 +125,10 @@ export const requestEmailChange = async (input: {
   tenantId: string;
   clientUserId: string;
   newEmail: string;
-  currentPassword: string;
+  /** The password, or a passkey where the account has none. */
+  confirmation: Confirmation;
+  /** Needed to accept a passkey confirmation. */
+  rp?: RelyingParty;
   code?: string;
   /**
    * Where the token goes.
@@ -159,14 +164,23 @@ export const requestEmailChange = async (input: {
     );
   }
 
-  if (!(await verifyPassword(input.currentPassword, user.passwordHash))) {
-    return refused(
-      'That is not your current password.',
-      'Blueprint 11.1 - a credential change needs a credential',
-    );
-  }
+  const confirmed = await confirmIdentity({
+    tenantId: input.tenantId,
+    clientUserId: user.id,
+    confirmation: input.confirmation,
+    ...(input.rp !== undefined ? { rp: input.rp } : {}),
+    ...(input.now !== undefined ? { now: input.now } : {}),
+  });
+  if (confirmed.status !== 'ok') return confirmed as Outcome<never>;
 
-  if (await hasActiveFactor(input.tenantId, user.id)) {
+  // **A passkey confirmation already IS the second factor.** It is possession and user verification
+  // in one act (ADR-0029), so asking for a code on top would be asking the same category twice - and
+  // for a key-only account it would be asking for something that does not exist, which is how a
+  // client ends up unable to change their own address.
+  if (
+    confirmed.value.confirmedWith !== 'passkey' &&
+    (await hasActiveFactor(input.tenantId, user.id))
+  ) {
     const presented = await verifySecondFactor({
       tenantId: input.tenantId,
       clientUserId: user.id,
