@@ -18,10 +18,11 @@
  */
 
 import { expect, test } from '@playwright/test';
+import { openPortal } from './fixture.js';
 
 test.describe('the policy is enforced, not merely sent', () => {
   test('refuses an injected inline script', async ({ page }) => {
-    await page.goto('/');
+    await openPortal(page);
     await expect(page.getByRole('heading', { name: 'Sign in' })).toBeVisible();
 
     // What an XSS would try. `script-src 'self'` with no `'unsafe-inline'` and no nonce means the
@@ -36,7 +37,7 @@ test.describe('the policy is enforced, not merely sent', () => {
   });
 
   test('refuses a script from another origin', async ({ page }) => {
-    await page.goto('/');
+    await openPortal(page);
 
     await page.addScriptTag({ url: 'https://cdn.example.com/anything.js' }).catch(() => undefined);
 
@@ -57,14 +58,14 @@ test.describe('a browser that cannot do WebAuthn', () => {
   });
 
   test('says so rather than failing silently on the passkey button', async ({ page }) => {
-    await page.goto('/');
+    await openPortal(page);
     await page.getByRole('button', { name: 'Sign in with a passkey' }).click();
 
     await expect(page.getByRole('status')).toHaveText('This browser cannot use a passkey.');
   });
 
   test('leaves the password path working', async ({ page }) => {
-    await page.goto('/');
+    await openPortal(page);
 
     // The point of the guard: a browser without WebAuthn is not a browser that cannot sign in. It
     // is one route being unavailable, and the page has to keep the other one usable.

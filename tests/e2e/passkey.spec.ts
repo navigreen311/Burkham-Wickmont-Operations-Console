@@ -12,7 +12,7 @@
  */
 
 import { expect, test, type CDPSession, type Page } from '@playwright/test';
-import { E2E_MUTABLE_ACCOUNTS, E2E_PASSWORD } from './fixture.js';
+import { E2E_MUTABLE_ACCOUNTS, E2E_PASSWORD, openPortal } from './fixture.js';
 
 /**
  * Attach a virtual authenticator to a page.
@@ -48,7 +48,7 @@ const attachAuthenticator = async (
 };
 
 const signInWithPassword = async (page: Page, email: string): Promise<void> => {
-  await page.goto('/');
+  await openPortal(page);
   await page.locator('#form-password').getByLabel('Email').fill(email);
   await page.locator('#form-password').getByLabel('Password', { exact: true }).fill(E2E_PASSWORD);
   await page.getByRole('button', { name: 'Sign in', exact: true }).click();

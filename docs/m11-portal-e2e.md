@@ -88,6 +88,13 @@ independently, which is what says the test is real rather than vacuous.
 Playwright's own readiness check - Node's fetch picked IPv4 - and then every Firefox navigation hung
 until the test timed out. It now listens on both stacks.
 
+**`load` is the wrong signal to navigate on.** It waits for every subresource, so a navigation
+depends on a stylesheet finishing rather than on the page being usable - and one Firefox navigation
+in CI hung there for the full test timeout while the ones on either side of it did not. Every spec
+asserts against an element and those assertions wait on their own, so `openPortal` waits for
+`domcontentloaded` and nothing more. **The hang itself is not explained**, only removed from the
+path; if it returns, this is the note to start from.
+
 **A passwordless sign-in with two resident credentials is ambiguous.** One spec registered a second
 key, copied from the test below it that genuinely needs two. A passwordless ceremony sends no
 `allowCredentials` at all, so the authenticator is left to choose between them; that passed locally
