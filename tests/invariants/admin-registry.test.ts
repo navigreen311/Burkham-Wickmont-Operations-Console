@@ -34,6 +34,7 @@ import { ALL_PARTY_CONSENT_STATES } from '@bwc/calls';
 import { MINIMUM_COHORT } from '@bwc/partners';
 import { MINIMUM_DENOMINATOR } from '@bwc/dashboards';
 import { CONTROLLING_OWNERSHIP_PERCENT } from '@bwc/graph';
+import { CLIENT_MFA_REQUIRED_DEFAULT, CLIENT_MFA_REQUIRED_KEY } from '@bwc/identity';
 
 describe('the configurable registry', () => {
   it('gives every parameter bounds with a stated basis', () => {
@@ -66,6 +67,37 @@ describe('the configurable registry', () => {
     // A ratio is the one kind that takes a fraction.
     const target = parameterFor('dashboards.HEALTHY_SHARE_TARGET');
     expect(checkBounds(target!, 0.95).withinBounds).toBe(true);
+  });
+
+  it('bounds a flag to on or off, and nothing in between or beyond', () => {
+    const mandate = parameterFor(CLIENT_MFA_REQUIRED_KEY);
+    expect(mandate).not.toBeNull();
+    expect(mandate?.kind).toBe('flag');
+
+    expect(checkBounds(mandate!, 0).withinBounds).toBe(true);
+    expect(checkBounds(mandate!, 1).withinBounds).toBe(true);
+    // A flag carried as a number is still a number, so the interesting cases are the ones that
+    // would make "is it on" stop having an answer.
+    expect(checkBounds(mandate!, 2).withinBounds).toBe(false);
+    expect(checkBounds(mandate!, 0.5).withinBounds).toBe(false);
+    expect(checkBounds(mandate!, -1).withinBounds).toBe(false);
+  });
+
+  it('registers the client MFA mandate against the key the enforcement actually reads', () => {
+    // The registry entry and the check in `@bwc/identity` are in different packages, so the way
+    // this goes wrong is two keys that differ by a character and a setting nothing reads.
+    expect(parameterFor(CLIENT_MFA_REQUIRED_KEY)?.key).toBe(CLIENT_MFA_REQUIRED_KEY);
+    expect(parameterFor(CLIENT_MFA_REQUIRED_KEY)?.compiledDefault).toBe(
+      CLIENT_MFA_REQUIRED_DEFAULT,
+    );
+
+    // Off by default. A mandate that arrived with a deployment rather than with a decision is a
+    // lockout nobody chose, and the people it locks out cannot escalate to anybody but us.
+    expect(CLIENT_MFA_REQUIRED_DEFAULT).toBe(0);
+
+    // High-risk, so switching it on is staged: it alters what the system does to CLIENTS, which is
+    // exactly the line ADR-0019 draws for staging.
+    expect(parameterFor(CLIENT_MFA_REQUIRED_KEY)?.highRisk).toBe(true);
   });
 
   it('caps the cadences the specification states as minimums', () => {

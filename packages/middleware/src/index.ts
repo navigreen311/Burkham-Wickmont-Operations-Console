@@ -30,7 +30,7 @@ import { decideAuthority, findActor, type Actor } from '@bwc/identity';
 import { assertSameTenant } from '@bwc/tenancy';
 import { find as findClient } from '@bwc/clients';
 import { evaluate as evaluateGate } from '@bwc/firewall';
-import { checkDoNotFund } from '@bwc/risk';
+import { checkConduct, checkDoNotFund } from '@bwc/risk';
 import { checkJurisdiction, type RegulatoryClearance } from '@bwc/regulatory';
 import { scanForTenant } from '@bwc/scanner';
 import {
@@ -244,6 +244,33 @@ export const chain = async (
       doNotFundOverrideId = doNotFund.value.overrideId;
     }
 
+    // 6.3's conduct pause, checked after Do Not Fund and before the Firewall, on the same
+    // "which true statement to lead with" reasoning. A Do Not Fund listing is a standing
+    // determination not to fund this client; a conduct pause is "we are looking into something
+    // and service is stopped meanwhile". Reporting the pause when the listing is what is really in
+    // force would send the operator to resolve the smaller thing.
+    //
+    // The check is here rather than beside here because an assessment nothing consults is a report
+    // rather than a control - 6.3 would compute `service_pause` for a client who applied for
+    // capital behind our back while frozen, and that client would go on being placed. Third
+    // instance of ADR-0034's defect closed in this batch.
+    const conduct = await checkConduct(request.tenantId, request.clientId, request.action);
+    if (conduct.status !== 'ok') {
+      await append({
+        tenantId: request.tenantId,
+        type: 'placement.refused',
+        actor: { id: actor.id, kind: actor.kind },
+        clientId: request.clientId,
+        payload: {
+          action: request.action,
+          reason: conduct.status === 'refused' ? conduct.reason : 'conduct check failed',
+          principle: conduct.status === 'refused' ? conduct.principle : 'unknown',
+          complianceState: client.value.complianceState,
+        },
+      });
+      return blockAt('firewall', conduct as Outcome<never>, 'conduct service pause');
+    }
+
     const gate = await evaluateGate(request.clientId, client.value.complianceState);
     if (gate.status !== 'ok') {
       await append({
@@ -263,7 +290,7 @@ export const chain = async (
     trace.push({
       step: 'firewall',
       outcome: 'passed',
-      detail: `${gate.value.firewallState} / ${gate.value.complianceState}${doNotFund.value.listed ? `; do not fund listing in force (${doNotFundOverrideId !== undefined ? 'single-use override approved' : 'action permitted while listed'})` : ''}`,
+      detail: `${gate.value.firewallState} / ${gate.value.complianceState}${doNotFund.value.listed ? `; do not fund listing in force (${doNotFundOverrideId !== undefined ? 'single-use override approved' : 'action permitted while listed'})` : ''}${conduct.value.paused ? `; conduct service pause in force (${conduct.value.response}), action permitted while paused` : ''}`,
     });
   }
 

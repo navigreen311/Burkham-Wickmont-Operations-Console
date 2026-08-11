@@ -18,12 +18,18 @@ narrowly scoped Client Portal (module 11.10), which is a secure delivery and app
 | [Workflow Engine core](docs/m2-2-workflow-engine.md)            | Playbooks, instances, durable Postgres task queue, retry/backoff/dead-letter, wait states, decision predicates, SLA escalation                                                                                      |
 | [Scheduler, listener, worker](docs/m2-2-scheduler-listener.md)  | Cron schedules with timezones, Ledger-triggered workflows, event-wait resolution, and a worker process that runs it all                                                                                             |
 
-**624 tests green** (lint, types, format clean). Module 2.2 complete (all seven §5.3 components);
+**1309 tests green** (lint, types, format clean). Module 2.2 complete (all seven §5.3 components);
 **Category 3 complete** (3.1, 3.2, 3.3, 3.4), plus 4.2, 7.4, and **Category 5's V1 modules complete**
 (5.1, 5.3, 5.4, 5.6) with 5.2 pulled forward from V1.5 because 5.3 and 5.4 depend on it, plus
 1.2 Entity Graph. No `not_built` remains anywhere on the funding path.
 
-Next: 5.2 Lender Intelligence Database with 5.4 Capital Product Governance Board, or Category 1's remaining Client & Engagement modules.
+[**V1.5 engines, batch 1**](docs/v15-engines-batch-1.md) — 5.5 Funding Outcome Ledger, 7.5 Legal
+Hold & Record Retention, 8.4 Partner Risk Score and 6.3 Client Conduct Monitoring, as engines with
+no HTTP surface yet, plus the ordering key ADR-0034 named and left open. 9.1's placement approval
+rate now has a denominator: it refuses on sample size rather than because a decline was never a row.
+
+Next: routes and Console surfaces for the four V1.5 engines, or Category 1's remaining Client &
+Engagement modules.
 
 ## Scope
 

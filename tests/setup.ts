@@ -94,10 +94,12 @@ export const cleanupTenant = async (tenantId: string): Promise<void> => {
   await prisma.marketingAsset.deleteMany({ where: { tenantId } });
   await prisma.campaign.deleteMany({ where: { tenantId } });
   await prisma.claimProposal.deleteMany({ where: { tenantId } });
-  // Partners: completions, claim approvals and brand configs cascade from the partner.
+  // Partners: completions, claim approvals, brand configs and conduct findings cascade from the
+  // partner.
   await prisma.partner.deleteMany({ where: { tenantId } });
   await prisma.partnerCurriculumModule.deleteMany({ where: { tenantId } });
   // Risk: overrides cascade from the listing.
+  await prisma.clientConductBreach.deleteMany({ where: { tenantId } });
   await prisma.doNotFundListing.deleteMany({ where: { tenantId } });
   await prisma.riskObservation.deleteMany({ where: { tenantId } });
   // Sales: activities, corrections and outcomes cascade from the lead.
@@ -107,6 +109,14 @@ export const cleanupTenant = async (tenantId: string): Promise<void> => {
   await prisma.leadActivity.deleteMany({ where: { tenantId } });
   await prisma.lead.deleteMany({ where: { tenantId } });
   await prisma.taskNotification.deleteMany({ where: { tenantId } });
+  // 7.5: holds, schedules and deletion requests reference clients and document kinds across
+  // schema boundaries without FKs, so nothing cascades them.
+  await prisma.legalHold.deleteMany({ where: { tenantId } });
+  await prisma.retentionSchedule.deleteMany({ where: { tenantId } });
+  await prisma.deletionRequest.deleteMany({ where: { tenantId } });
+  // 5.5 attempts reference the engagement, the client and a provider across three schema
+  // boundaries, so there is no FK to cascade and the rows would otherwise outlive all three.
+  await prisma.fundingAttempt.deleteMany({ where: { tenantId } });
   // Billing: credits reference billing records; records cascade from the engagement.
   await prisma.creditApplication.deleteMany({ where: { tenantId } });
   await prisma.refundRecord.deleteMany({ where: { tenantId } });

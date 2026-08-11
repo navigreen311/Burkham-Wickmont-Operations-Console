@@ -16,6 +16,7 @@
  */
 
 import { notBuilt, type Outcome, type Provenance } from '@bwc/core';
+import { activationStanding } from './activation.js';
 
 export type IntegrationMode = 'stub' | 'sandbox' | 'live';
 
@@ -25,7 +26,8 @@ export const mode = (): IntegrationMode => {
   throw new Error(`INTEGRATION_MODE must be stub | sandbox | live, received '${value}'.`);
 };
 
-export type VendorId = 'plaid' | 'business_bureau' | 'personal_credit' | 'capitalforge';
+export const VENDOR_IDS = ['plaid', 'business_bureau', 'personal_credit', 'capitalforge'] as const;
+export type VendorId = (typeof VENDOR_IDS)[number];
 
 export interface VendorGate {
   readonly vendor: VendorId;
@@ -40,9 +42,22 @@ export interface VendorGate {
 }
 
 /**
- * Current gate state. Every V1 vendor is un-activated: no review, no DPA, and for two of
- * them no vendor chosen yet. Encoded as data rather than as a comment so the API can report
- * exactly which precondition is outstanding.
+ * The FAIL-CLOSED FLOOR, and no longer the source of truth. ADR-0065.
+ *
+ * Activation used to be these booleans: editing four literals and deploying was what let client
+ * bank statements and credit reports leave the firm - no actor, no evidence, no date, no record.
+ * It is now derived from `VendorEvidence` rows, each carrying a required document reference
+ * accepted by a Level 3 human. See `activation.ts`.
+ *
+ * This struct stays because three consumers outside this package read it synchronously and this
+ * slice does not own them (`@bwc/intelligence`, `apps/api/src/app.ts`, and an invariants test). It
+ * now answers one question only: **"activated with no evidence considered"** - which is always no.
+ * Every flag is `false`, including CapitalForge's, which the old constant marked cleared on
+ * nobody's authority. A sibling venture holding client financial data is still a third party
+ * holding client financial data.
+ *
+ * A synchronous caller therefore always gets the safe answer. The disagreement between this and
+ * `activationStanding` can only over-refuse, never over-permit.
  */
 export const VENDOR_GATES: Readonly<Record<VendorId, VendorGate>> = {
   plaid: {
@@ -68,10 +83,10 @@ export const VENDOR_GATES: Readonly<Record<VendorId, VendorGate>> = {
   },
   capitalforge: {
     vendor: 'capitalforge',
-    argusReviewed: true,
-    dpaSigned: true,
-    securityAttestationVerified: true,
-    vendorSelected: true,
+    argusReviewed: false,
+    dpaSigned: false,
+    securityAttestationVerified: false,
+    vendorSelected: false,
   },
 };
 
@@ -85,6 +100,12 @@ export const outstandingPreconditions = (vendor: VendorId): string[] => {
   return outstanding;
 };
 
+/**
+ * The synchronous answer, which is always `false`.
+ *
+ * Kept for the three callers this slice does not own. `activationStanding` in `activation.ts` is
+ * the authoritative check and the one `gatedAdapter` uses.
+ */
 export const isActivated = (vendor: VendorId): boolean =>
   outstandingPreconditions(vendor).length === 0;
 
@@ -107,11 +128,12 @@ export const gatedAdapter = <TRequest, TResponse>(
   vendor,
   capability,
   async call(request: TRequest): Promise<Outcome<TResponse>> {
-    if (!isActivated(vendor)) {
-      return notBuilt(
-        `${vendor}.${capability}`,
-        `Vendor not activated. Outstanding: ${outstandingPreconditions(vendor).join(', ')}. Specification v2 section 11.4 requires all preconditions before any client onboards.`,
-      );
+    // Read at the moment of the call, never cached at module load. ADR-0058 makes the same
+    // argument about consent, and for the same reason: a withdrawn DPA has to take effect now
+    // rather than at the next deploy.
+    const standing = await activationStanding(vendor);
+    if (!standing.activated) {
+      return notBuilt(`${vendor}.${capability}`, standing.explanation);
     }
     if (mode() === 'stub') {
       return notBuilt(
@@ -175,3 +197,5 @@ export const personalCreditPull = gatedAdapter<BureauPullRequest, BureauPullResp
     throw new Error('unreachable: personal credit gate is closed');
   },
 );
+
+export * from './activation.js';

@@ -15,18 +15,31 @@
  * stops there. The absence is a refusal with a name, not a silence.
  */
 
-import { noData, notBuilt, ok, type Outcome } from '@bwc/core';
+import { noData, ok, type EventActor, type Outcome } from '@bwc/core';
 import { leadsAttributedTo } from './attributed.js';
 import { findPartner } from './partners.js';
 import { requireCertification, type CertificationStanding } from './certification.js';
+import { assessPartner } from './risk.js';
+import { computePayout, type PayoutComputation } from './payouts.js';
 
 /**
  * May this partner refer a client right now?
  *
- * Two gates, in this order: the relationship, then the training. The order is the design - "your
- * relationship with us is suspended" and "your certification lapsed" are different problems with
- * different fixes, and a suspended partner told to retake a course would do the course and still
- * be suspended.
+ * Three gates, in this order: the relationship, the conduct standing, then the training. The order
+ * is the design - "your relationship with us is suspended", "we are reviewing something you did"
+ * and "your certification lapsed" are different problems with different fixes, and a suspended
+ * partner told to retake a course would do the course and still be suspended.
+ *
+ * **The standing gate is 8.4's, and it is here rather than beside here for ADR-0034's reason.** An
+ * assessment nothing consults is a report, not a control: 8.4 would have computed
+ * `review_required` for a partner making unapproved claims and that partner would have gone on
+ * introducing clients, which is the exact shape `autoListForComplianceFail` was in for the whole
+ * life of this system.
+ *
+ * `review_required` and `decertification_recommended` stop new referrals; `watch` does not. The
+ * line is drawn there because a review is a decision somebody owes the partner within a week, and
+ * introducing more clients in the meantime deepens whatever is being reviewed - whereas `watch`
+ * exists precisely to be the state that costs nothing.
  */
 export const canRefer = async (
   tenantId: string,
@@ -47,6 +60,19 @@ export const canRefer = async (
       status: 'refused',
       reason: `${detail} They cannot refer a client.`,
       principle: 'Blueprint 8.1 - onboarding status and termination triggers',
+    };
+  }
+
+  const assessment = await assessPartner(tenantId, partnerId, now);
+  if (
+    assessment.status === 'ok' &&
+    (assessment.value.standing === 'review_required' ||
+      assessment.value.standing === 'decertification_recommended')
+  ) {
+    return {
+      status: 'refused',
+      reason: `This partner is under Channel Partnerships review (${assessment.value.standing.replace(/_/g, ' ')}). ${assessment.value.triggers.map((trigger) => trigger.note).join(' ')} They cannot refer a client until the open findings are resolved.`,
+      principle: 'Blueprint 8.4 - threshold-based escalation to Channel Partnerships review',
     };
   }
 
@@ -100,14 +126,29 @@ export const referralSummary = async (
 /**
  * What this partner is owed.
  *
- * `not_built`, deliberately and permanently until 8.2 ships. Blueprint 8.2 owns referral fee
- * terms, the state restrictions on referral fees, payout approval and clawback on refunds - and
- * every one of those is required before a number here would mean anything. Half of it is not a
- * smaller version of the whole: a fee computed without the state restriction is a figure that
- * looks payable and may be unlawful to pay.
+ * **This was `not_built` for the whole of V1, and the sentence it refused with became 8.2's
+ * specification** - "a figure produced without them would look payable without anybody having
+ * checked whether it is lawful to pay". `computePayout` is that check, so this now delegates
+ * rather than refusing.
+ *
+ * It stays here, under the name the rest of the system already used, because a capability that
+ * arrives under a new name leaves every reader who remembers the old one believing it is still
+ * missing.
+ *
+ * The signature grew a tenant and a period, and both are load-bearing: there is no such thing as
+ * "what this partner is owed" without a window, and a figure that silently meant "since the
+ * beginning of time" would be paid twice.
  */
-export const payableToPartner = async (partnerId: string): Promise<Outcome<never>> =>
-  notBuilt(
-    '8.2 Partner Agreement & Payout Center (V1.5)',
-    `Referrals attributed to partner ${partnerId} are tracked, but referral fee terms, the state-by-state restrictions on referral fees, payout approval and refund clawback all live in 8.2, which is deferred to V1.5. A figure produced without them would look payable without anybody having checked whether it is lawful to pay.`,
-  );
+export const payableToPartner = async (
+  tenantId: string,
+  partnerId: string,
+  period: { start: Date; end: Date },
+  by: { computedBy: string; actor: EventActor },
+): Promise<Outcome<PayoutComputation>> =>
+  computePayout({
+    tenantId,
+    partnerId,
+    period,
+    computedBy: by.computedBy,
+    actor: by.actor,
+  });

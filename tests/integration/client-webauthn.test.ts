@@ -616,15 +616,40 @@ describe('the settings view', () => {
 
     const keys = await registeredKeys(fx.tenant.id, userId);
 
-    // **A set, not a sequence, and that is a correction rather than a weakening.** Two keys
-    // registered in the same millisecond have the same `createdAt`, and nothing in this system
-    // promises which of them came first - `createdAt` is `timestamp(3)` and the tie-break is a
-    // random UUID. This test asserted an order the data cannot carry, and failed about one run in
-    // ten for that reason alone.
+    // **A sequence again.** This assertion was weakened to a set under ADR-0034, because two keys
+    // registered in the same millisecond shared a `createdAt` and the tie-break behind it was a
+    // random UUID - so the order was genuinely undecided and the test failed about one run in ten
+    // saying so. `seq` decides it now (ADR-0040), so the assertion goes back to what it wanted to
+    // say in the first place: the desk key was registered first and is listed first.
+    expect(keys.map((key) => key.label)).toEqual(['Desk key', 'Travel key']);
+  });
+
+  it('lists keys in registration order even when they share a millisecond', async () => {
+    // The regression test for the ordering key, made deterministic rather than probabilistic.
     //
-    // What the client is owed is that both keys appear under the names they chose, which is what a
-    // client with two keys needs in order to remove the right one. That is asserted here. The
-    // ordering ambiguity itself is a real limitation and is written down in ADR-0034.
-    expect(keys.map((key) => key.label).sort()).toEqual(['Desk key', 'Travel key']);
+    // The defect it guards was intermittent - two registrations only tie when they land in the same
+    // millisecond - and a probabilistic guard passes most of the time whether or not the bug is
+    // there, which is the lesson the PII detector taught this repository twice. So the tie is
+    // FORCED: every row is stamped with one `createdAt` directly, which is the state the old code
+    // could not order and the new code can.
+    const userId = await enrol('same-millisecond@example.com');
+    const labels = ['First key', 'Second key', 'Third key'];
+    for (const label of labels) {
+      await registerKey(userId, label, softwareAuthenticator());
+    }
+
+    await db().clientMfaFactor.updateMany({
+      where: { tenantId: fx.tenant.id, clientUserId: userId, kind: 'webauthn' },
+      data: { createdAt: new Date('2026-08-17T09:00:00.000Z') },
+    });
+
+    const keys = await registeredKeys(fx.tenant.id, userId);
+    expect(keys.map((key) => key.label)).toEqual(labels);
+
+    // And the order is the same on every read. A random tie-break is stable per dataset too, so
+    // repetition alone would not distinguish the two - what does is that the order matches the
+    // order they were WRITTEN, asserted above.
+    const again = await registeredKeys(fx.tenant.id, userId);
+    expect(again.map((key) => key.label)).toEqual(labels);
   });
 });

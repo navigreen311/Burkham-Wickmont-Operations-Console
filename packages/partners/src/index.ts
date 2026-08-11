@@ -30,3 +30,6 @@ export * from './attributed.js';
 export * from './referrals.js';
 export * from './visibility.js';
 export * from './branding.js';
+export * from './risk.js';
+export * from './agreements.js';
+export * from './payouts.js';

@@ -17,14 +17,15 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@bwc/clients": "workspace:*",
     "@bwc/core": "workspace:*",
     "@bwc/crypto": "workspace:*",
     "@bwc/db": "workspace:*",
-    "@bwc/ledger": "workspace:*",
     "@bwc/identity": "workspace:*",
-    "@bwc/clients": "workspace:*",
-    "pdf-lib": "^1.17.1",
-    "@bwc/tenancy": "workspace:*"
+    "@bwc/ledger": "workspace:*",
+    "@bwc/retention": "workspace:*",
+    "@bwc/tenancy": "workspace:*",
+    "pdf-lib": "^1.17.1"
   },
   "devDependencies": {
     "typescript": "^5.8.3"

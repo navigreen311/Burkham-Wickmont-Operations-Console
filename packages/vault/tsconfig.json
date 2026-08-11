@@ -7,12 +7,29 @@
   },
   "include": ["src/**/*.ts"],
   "references": [
-    { "path": "../core" },
-    { "path": "../crypto" },
-    { "path": "../db" },
-    { "path": "../ledger" },
-    { "path": "../identity" },
-    { "path": "../clients" },
-    { "path": "../tenancy" }
+    {
+      "path": "../clients"
+    },
+    {
+      "path": "../core"
+    },
+    {
+      "path": "../crypto"
+    },
+    {
+      "path": "../db"
+    },
+    {
+      "path": "../identity"
+    },
+    {
+      "path": "../ledger"
+    },
+    {
+      "path": "../retention"
+    },
+    {
+      "path": "../tenancy"
+    }
   ]
 }

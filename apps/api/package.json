@@ -12,28 +12,45 @@
     "start": "node dist/server.js"
   },
   "dependencies": {
+    "@bwc/admin": "workspace:*",
     "@bwc/calls": "workspace:*",
+<<<<<<< HEAD
     "@bwc/claims": "workspace:*",
+=======
+    "@bwc/capital": "workspace:*",
+>>>>>>> main
     "@bwc/clients": "workspace:*",
     "@bwc/consent": "workspace:*",
     "@bwc/core": "workspace:*",
+    "@bwc/dashboards": "workspace:*",
     "@bwc/db": "workspace:*",
+<<<<<<< HEAD
     "@bwc/evidence": "workspace:*",
     "@bwc/firewall": "workspace:*",
     "@bwc/governance": "workspace:*",
+=======
+    "@bwc/deliverables": "workspace:*",
+    "@bwc/firewall": "workspace:*",
+    "@bwc/graph": "workspace:*",
+>>>>>>> main
     "@bwc/http": "workspace:*",
     "@bwc/identity": "workspace:*",
     "@bwc/integration": "workspace:*",
+    "@bwc/intelligence": "workspace:*",
+    "@bwc/interventure": "workspace:*",
     "@bwc/ledger": "workspace:*",
     "@bwc/lenders": "workspace:*",
     "@bwc/marketing": "workspace:*",
     "@bwc/middleware": "workspace:*",
     "@bwc/notifications": "workspace:*",
     "@bwc/observability": "workspace:*",
+    "@bwc/partners": "workspace:*",
     "@bwc/placement": "workspace:*",
     "@bwc/regulatory": "workspace:*",
     "@bwc/risk": "workspace:*",
+    "@bwc/sales": "workspace:*",
     "@bwc/tenancy": "workspace:*",
+    "@bwc/warehouse": "workspace:*",
     "dotenv": "^16.4.7",
     "express": "^5.1.0",
     "helmet": "^8.1.0"

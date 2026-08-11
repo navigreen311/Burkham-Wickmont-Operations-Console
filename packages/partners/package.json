@@ -17,12 +17,15 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@bwc/billing": "workspace:*",
     "@bwc/claims": "workspace:*",
     "@bwc/consent": "workspace:*",
     "@bwc/core": "workspace:*",
     "@bwc/db": "workspace:*",
+    "@bwc/graph": "workspace:*",
     "@bwc/identity": "workspace:*",
     "@bwc/ledger": "workspace:*",
+    "@bwc/regulatory": "workspace:*",
     "@bwc/scanner": "workspace:*"
   },
   "devDependencies": {

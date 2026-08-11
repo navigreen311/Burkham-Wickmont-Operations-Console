@@ -644,7 +644,10 @@ export const registeredKeys = async (
       removedAt: null,
       confirmedAt: { not: null },
     },
-    orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+    // Registration order, resolved by `seq` when two keys share a millisecond. The list a client
+    // picks from to revoke a key is the reason this has to be an order and not merely a stable
+    // permutation.
+    orderBy: [{ createdAt: 'asc' }, { seq: 'asc' }],
   });
 
   return factors.map((factor) => ({

@@ -146,6 +146,29 @@ export const EVENT_TYPES = [
   'billing.refund.declined',
   'billing.funding_outcome.recorded',
   'billing.funding_outcome.funded',
+  // Legal Hold & Record Retention (7.5). A refused deletion request is an event because "we
+  // received your request and did not act on it" is the fact a data-subject-rights regime asks you
+  // to be able to show, and a request that was quietly dropped produces no record at all.
+  // Neither the hold's reason nor the client's request text reaches a payload: both are free text
+  // about a named person, and the Ledger is the one store here that cannot be corrected.
+  'retention.hold.placed',
+  'retention.hold.reviewed',
+  'retention.hold.released',
+  'retention.schedule.recorded',
+  'retention.deletion.requested',
+  'retention.deletion.approved',
+  'retention.deletion.refused',
+  'retention.deletion.completed',
+  // Funding Outcome Ledger (5.5). `declined` and `withdrawn` are the types that did not exist
+  // before this module, and they are the reason it does: a chain carrying only approvals cannot
+  // answer what share of attempts were approved. The decline REASON is deliberately not in its
+  // payload - it is free text a provider wrote about a named applicant, and the Ledger is the one
+  // store here that cannot be corrected. It stays in the attempt row.
+  'outcomes.attempt.submitted',
+  'outcomes.attempt.approved',
+  'outcomes.attempt.declined',
+  'outcomes.attempt.withdrawn',
+  'outcomes.attempt.funded',
   // Sales Motion & Engagement Tracking (1.3). The attribution events carry both sides of a
   // correction, because a payout dispute asks what changed and who changed it.
   'sales.lead.created',
@@ -181,6 +204,13 @@ export const EVENT_TYPES = [
   // Risk Event Timeline (6.5). Carries the fact and the severity; the summary stays in the
   // observation table, where a person wrote it and a person will read it.
   'risk.observation.recorded',
+  // Client Conduct Monitoring (6.3). The summary is free text about a named client and stays in the
+  // row; the payload carries the kind, the severity and the response, which is what an audit of
+  // "why was this client's service paused" actually asks for. `resolved` carries `upheld` because
+  // a dismissed detection is a different fact from one that never happened.
+  'risk.conduct.detected',
+  'risk.conduct.reviewed',
+  'risk.conduct.resolved',
   // Partner & Referrer Portal (8.1) with Training & Certification (8.3). `client_status.viewed`
   // exists because a client who consented to a partner seeing their status is entitled to know
   // when the partner looked - the same reasoning as 1.2's reveal events.
@@ -196,6 +226,44 @@ export const EVENT_TYPES = [
   'partner.brand.approved',
   'partner.brand.revoked',
   'partner.client_status.viewed',
+  // Partner Risk Score (8.4). The finding's summary is not in the payload - it is free text about
+  // a named partner and often a named client. `resolved` carries `upheld`, because a dismissed
+  // finding is a different fact from one that never happened, and a run of dismissed complaints
+  // about one partner is itself a signal.
+  'partner.finding.recorded',
+  'partner.finding.resolved',
+  // Partner Agreement & Payout Center (8.2). The payout payload carries the STATES a period drew
+  // on and never the clients - a jurisdiction is not PII and a client list is. `computed` and
+  // `approved` are separate because the computation is unattended and the approval is the only
+  // point a person sees the figure; an audit asking "who authorised this money" needs the second
+  // one to be its own row. `declined` exists for ADR-0041's reason: a payout somebody refused to
+  // approve is a thing that happened, and inferring it from the absence of an approval loses who
+  // decided and why.
+  // Risk & Defense Alerts (6.1). The tier and whether it freezes funding travel; the summary does
+  // not, because it is free text about a named client. `acknowledged` is its own type because
+  // acknowledging is not resolving, and an audit asking "who looked at this and when" is a
+  // different question from "who decided it was over".
+  // Cost & Performance Governance (11.9). Source and provenance travel; the vendor reference does
+  // not, because a model version is a procurement detail and this is a per-client ledger.
+  'admin.cost.recorded',
+  // Cross-Portfolio Opportunity Engine (10.2). No clientId on any of these: they travel to a
+  // portfolio-level reader and principle 5 gives Gardner PII-stripped aggregates. `routed` carries
+  // `consentVerifiedAt` because the whole control is that consent was read AT that moment, and
+  // `routing_refused` is a row for the same reason a decline is (ADR-0041).
+  'interventure.opportunity.detected',
+  'interventure.opportunity.gardner_approved',
+  'interventure.opportunity.gardner_declined',
+  'interventure.opportunity.routed',
+  'interventure.opportunity.routing_refused',
+  'risk.alert.raised',
+  'risk.alert.acknowledged',
+  'risk.alert.resolved',
+  'partner.agreement.drafted',
+  'partner.agreement.activated',
+  'partner.payout.computed',
+  'partner.payout.approved',
+  'partner.payout.declined',
+  'partner.payout.clawback_recorded',
   // Call Recording & Promise Tracking (4.3). `recording.refused` is an event because "we wanted
   // to record this call and the client's state would not let us" is evidence, the same way a
   // blocked send is. No transcript text reaches the Ledger; excerpts stay in the obligation row.
@@ -290,6 +358,17 @@ export const EVENT_TYPES = [
   'identity.staff.sign_in_blocked',
   'identity.staff.disabled',
   'identity.staff_session.revoked',
+  // Staff security keys. Registering one changes what an account can do; removing one changes what
+  // it can still do afterwards, and on a passkey-only account that is the difference between
+  // working tomorrow and a telephone call.
+  'identity.staff.key_registered',
+  'identity.staff.key_removed',
+  // Turning password sign-in off is the strongest thing a staff member can do to protect an account
+  // that opens every client file in the firm; restoring it is the strongest thing a colleague can do
+  // to weaken one. Two types, because reading them as one would hide which happened - the same
+  // reasoning the client pair above records.
+  'identity.staff.password_sign_in_disabled',
+  'identity.staff.password_sign_in_restored',
 ] as const;
 
 export type EventType = (typeof EVENT_TYPES)[number];

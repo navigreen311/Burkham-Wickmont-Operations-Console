@@ -8,6 +8,9 @@
   "include": ["src/**/*.ts"],
   "references": [
     {
+      "path": "../billing"
+    },
+    {
       "path": "../claims"
     },
     {
@@ -20,10 +23,16 @@
       "path": "../db"
     },
     {
+      "path": "../graph"
+    },
+    {
       "path": "../identity"
     },
     {
       "path": "../ledger"
+    },
+    {
+      "path": "../regulatory"
     },
     {
       "path": "../scanner"

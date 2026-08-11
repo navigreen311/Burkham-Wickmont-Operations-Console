@@ -263,17 +263,18 @@ describe('the pipeline runs in order', () => {
     const trail = await activityFor(fx.tenant.id, lead.id);
     const kinds = trail.map((entry) => entry.kind);
 
-    // Every step is on the trail, and the two the test dates explicitly are in the order it dated
-    // them. `created` and `qualification` are NOT compared to each other: both are stamped with the
-    // wall clock a fraction of a millisecond apart, `occurredAt` is `timestamp(3)`, and when they
-    // land in the same millisecond nothing decides which came first. This assertion used to demand
-    // one and failed about one run in ten for that reason alone - see ADR-0034.
-    expect(kinds.sort()).toEqual(
-      ['blueprint_delivered', 'created', 'qualification', 'review_call_scheduled'].sort(),
-    );
-    expect(kinds.indexOf('blueprint_delivered')).toBeLessThan(
-      kinds.indexOf('review_call_scheduled'),
-    );
+    // **The whole trail, in order**, and this is the deterministic regression guard for the
+    // ordering key rather than a probabilistic one. `created` and `qualification` are both stamped
+    // `CREATED_ON` by the fixture, so they do not merely *sometimes* tie on `occurredAt` - they tie
+    // on every run, and before `seq` existed the pair came back in whichever order Postgres felt
+    // like. That is why ADR-0034 had to weaken this to a set. `seq` decides it now (ADR-0040) and
+    // the assertion says what it always meant: created, then qualified, then Blueprint, then review.
+    expect(kinds).toEqual([
+      'created',
+      'qualification',
+      'blueprint_delivered',
+      'review_call_scheduled',
+    ]);
     // The trail explains the pipeline rather than merely accompanying it.
     expect(trail[2]?.fromStage).toBe('qualified');
     expect(trail[2]?.toStage).toBe('blueprint_delivered');

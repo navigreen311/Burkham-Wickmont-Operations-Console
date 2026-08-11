@@ -19,7 +19,8 @@
   "dependencies": {
     "@bwc/billing": "workspace:*",
     "@bwc/core": "workspace:*",
-    "@bwc/db": "workspace:*"
+    "@bwc/db": "workspace:*",
+    "@bwc/outcomes": "workspace:*"
   },
   "devDependencies": {
     "typescript": "^5.8.3"

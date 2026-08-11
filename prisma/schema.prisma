@@ -16,7 +16,7 @@ generator client {
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
-  schemas  = ["tenancy", "identity", "ledger", "clients", "consent", "firewall", "workflow", "notifications", "deliverables", "claims", "vault", "intelligence", "lenders", "governance", "graph", "regulatory", "contracts", "billing", "sales", "evidence", "comms", "risk", "partners", "calls", "marketing", "interventure", "admin", "warehouse"]
+  schemas  = ["tenancy", "identity", "ledger", "clients", "consent", "firewall", "workflow", "notifications", "deliverables", "claims", "vault", "intelligence", "lenders", "governance", "graph", "regulatory", "contracts", "billing", "sales", "evidence", "comms", "risk", "partners", "calls", "marketing", "interventure", "admin", "warehouse", "outcomes", "retention"]
 }
 
 // ---------------------------------------------------------------------------
@@ -64,6 +64,9 @@ model Actor {
   credential  ActorCredential?
   sessions    ActorSession[]
   invitations ActorInvitation[]
+
+  webauthnCredentials ActorWebauthnCredential[]
+  webauthnChallenges  ActorWebauthnChallenge[]
 
   @@index([tenantId])
   @@map("actors")
@@ -655,9 +658,18 @@ model VaultAccessLog {
 
   at DateTime @default(now())
 
+  /// Access order, from a Postgres sequence. See `LeadActivity.seq` for the argument.
+  ///
+  /// The strongest case of the four this column was added to. One request routinely writes several
+  /// entries - a read, then an export, or a refusal followed by a second attempt - inside the same
+  /// millisecond, and the order of an access log **is** the artifact: "they were refused and then
+  /// they got in" and "they got in and were later refused" are different findings, and `at` alone
+  /// cannot tell a regulator which one happened.
+  seq BigInt @unique @default(autoincrement())
+
   document VaultDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
 
-  @@index([tenantId, documentId])
+  @@index([tenantId, documentId, at, seq])
   @@index([tenantId, actorId])
   @@map("vault_access_log")
   @@schema("vault")
@@ -1484,6 +1496,10 @@ model StateModule {
 
   disclosures StateDisclosure[]
 
+  /// At most one. A state says one thing about referral fees at a time; two rows would be two
+  /// answers to a question that has to have one.
+  referralFeeRule StateReferralFeeRule?
+
   @@unique([tenantId, state, version])
   @@index([tenantId, state, supersededAt])
   @@map("state_modules")
@@ -1515,6 +1531,57 @@ model StateDisclosure {
   @@unique([moduleId, key, productKind])
   @@index([tenantId, productKind])
   @@map("state_disclosures")
+  @@schema("regulatory")
+}
+
+/// What a state permits by way of paying somebody for an introduction.
+///
+/// Categorical. There is no "how restricted" number, because the question a payout asks is
+/// "may we pay this at all", and a scale would invite a threshold.
+enum ReferralFeePosture {
+  /// The state permits a referral fee on these facts with no conditions we must carry.
+  permitted
+  /// Permitted, but only if every condition on the rule holds.
+  permitted_with_conditions
+  /// Not payable in this state, on any terms.
+  prohibited
+
+  @@schema("regulatory")
+}
+
+/// A state's restriction on paying a referral fee - blueprint 8.2's "state restrictions on
+/// referral fees", owned HERE because 7.2 owns state rules.
+///
+/// Hangs off the module VERSION rather than off the state, so it is part of what counsel
+/// reviewed. Republishing a module materially leaves the new version with no rule attached,
+/// and 8.2 refuses rather than carrying the old one forward - see ADR-0053.
+model StateReferralFeeRule {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+
+  moduleId String      @db.Uuid
+  module   StateModule @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+
+  posture ReferralFeePosture
+
+  /// What must hold before a fee may be paid. Carried to the payout line as evidence, so the
+  /// figure travels with the conditions somebody undertook to meet.
+  conditions String[]
+
+  /// Cap on the partner's share, in basis points of the fee WE earned. Null means the state
+  /// states no cap - which is not the same as "no cap applies", because the agreement's own
+  /// share still governs.
+  maxShareBasisPoints Int?
+
+  /// The statute or regime. A restriction with no cited basis cannot be reviewed or defended.
+  citation String
+
+  createdAt DateTime @default(now())
+  createdBy String   @db.Uuid
+
+  @@unique([moduleId])
+  @@index([tenantId])
+  @@map("state_referral_fee_rules")
   @@schema("regulatory")
 }
 
@@ -2122,7 +2189,20 @@ model LeadActivity {
 
   createdAt DateTime @default(now())
 
-  @@index([tenantId, leadId, occurredAt])
+  /// Insertion order, from a Postgres sequence. **The tie-break `createdAt` cannot be.**
+  ///
+  /// `occurredAt` is `timestamp(3)`. Two activities written in the same millisecond tie, and the
+  /// `{ id: 'asc' }` tie-break behind it is a random UUID - stable for a given set of rows and
+  /// unrelated to the order they arrived in. A pipeline trail is read as a sequence, so the
+  /// tie-break has to carry the meaning the reader is relying on. ADR-0034 named this and did not
+  /// fix it; ADR-0040 fixes it.
+  ///
+  /// Assignment order, not commit order: two concurrent transactions can take 5 and 6 and commit in
+  /// the other order. That is invisible to every reader here, all of which read settled rows. It
+  /// would matter to a change feed paginating on `seq > lastSeen`, and there is none.
+  seq BigInt @unique @default(autoincrement())
+
+  @@index([tenantId, leadId, occurredAt, seq])
   @@map("lead_activities")
   @@schema("sales")
 }
@@ -2527,9 +2607,220 @@ model RiskObservation {
   recordedAt DateTime @default(now())
   recordedBy String   @db.Uuid
 
-  @@index([tenantId, clientId, occurredAt])
+  /// Observation order, from a Postgres sequence. See `LeadActivity.seq` for the argument.
+  ///
+  /// 6.5 calls itself a *chronological* timeline and 6.3 writes into it in bursts - one detection
+  /// pass records several observations for one client, all stamped with the same `occurredAt`
+  /// because they describe one moment. Without this column that timeline reorders itself on every
+  /// read, which is the one thing a timeline must not do.
+  seq BigInt @unique @default(autoincrement())
+
+  @@index([tenantId, clientId, occurredAt, seq])
   @@map("risk_observations")
   @@schema("risk")
+}
+
+/// The three tiers - blueprint 6.1. Categorical and ordered by seriousness, never numeric:
+/// there is no "risk score", and `worstOf` takes the worst tier rather than an average.
+enum AlertTier {
+  yellow
+  orange
+  red
+
+  @@schema("risk")
+}
+
+enum AlertState {
+  /// Raised and nobody has looked.
+  open
+  /// A human has seen it. NOT resolved - acknowledging is not fixing.
+  acknowledged
+  resolved
+
+  @@schema("risk")
+}
+
+/// A three-tier risk alert on a client - blueprint 6.1.
+///
+/// `summary` is written by the detector and is asserted PII-free, like every other risk row: it
+/// says what kind of thing happened, not who or what account.
+///
+/// There is no expiry column, deliberately. An alert nobody reviewed is not less true for having
+/// aged - see ADR-0055.
+model RiskAlert {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  clientId String @db.Uuid
+
+  tier  AlertTier
+  state AlertState @default(open)
+
+  /// Which detector raised it, and on what. A risk fact with no provenance is a rumour.
+  source  String
+  summary String
+
+  detectedAt DateTime
+
+  acknowledgedBy String?   @db.Uuid
+  acknowledgedAt DateTime?
+
+  resolvedBy String?   @db.Uuid
+  resolvedAt DateTime?
+  /// Required to resolve. "It stopped mattering" is a decision somebody makes, not one time makes.
+  resolutionNote String?
+
+  createdAt DateTime @default(now())
+
+  /// Alert order, from a Postgres sequence, for the same reason the timeline has one.
+  seq BigInt @unique @default(autoincrement())
+
+  @@index([tenantId, clientId, state, tier])
+  @@map("risk_alerts")
+  @@schema("risk")
+}
+
+// ---------------------------------------------------------------------------
+// 11.9 Cost & Performance Governance
+// ---------------------------------------------------------------------------
+
+/// Where a cost came from. Named per Decisions A and B, so a vendor cost is attributable to the
+/// decision that introduced it.
+enum CostSource {
+  model_api
+  voice_minutes
+  document_processing
+  plaid
+  business_bureau
+  personal_credit
+
+  @@schema("admin")
+}
+
+/// How we know this figure - principle 8, applied to money we spend.
+///
+/// There is no `estimated`. A cost we guessed and a cost we were billed must not be summable, and
+/// the moment they share a column somebody sums them. See ADR-0057.
+enum CostProvenance {
+  /// Counted by us at the time of the call - tokens, minutes, pages.
+  observed
+  /// Taken from a vendor invoice or statement.
+  vendor_invoice
+
+  @@schema("admin")
+}
+
+/// One unit of spend - blueprint 11.9.
+///
+/// `clientId` is nullable and that is the whole difficulty of the module: platform costs are real
+/// and are not attributable to a client. A per-client unit cost computed by spreading them evenly
+/// would be an allocation presented as a measurement.
+model CostRecord {
+  id       String  @id @default(uuid()) @db.Uuid
+  tenantId String  @db.Uuid
+  clientId String? @db.Uuid
+
+  /// The agent whose action incurred it, where one did.
+  actorId String? @db.Uuid
+
+  source     CostSource
+  provenance CostProvenance
+
+  /// Integer cents, like all money here (ADR-0011).
+  amountCents Int
+
+  /// How many of whatever this source counts - tokens, minutes, pages, pulls. Null when the
+  /// vendor bills a subscription rather than a unit.
+  units    Int?
+  unitKind String?
+
+  /// The model or vendor product, for regression detection across versions.
+  vendorRef String?
+
+  occurredOn DateTime
+
+  createdAt DateTime @default(now())
+  createdBy String   @db.Uuid
+
+  @@index([tenantId, occurredOn])
+  @@index([tenantId, clientId, occurredOn])
+  @@index([tenantId, source, occurredOn])
+  @@map("cost_records")
+  @@schema("admin")
+}
+
+// ---------------------------------------------------------------------------
+// 10.2 Cross-Portfolio Opportunity Engine
+// ---------------------------------------------------------------------------
+
+enum OpportunityKind {
+  payroll_float
+  emd_or_marketing_capital
+  project_funding
+  advisor_or_client_acquisition
+  shared_vendor_financing
+  insurance_premium_financing
+  tax_reserve_planning
+
+  @@schema("interventure")
+}
+
+enum OpportunityState {
+  /// Detected and going nowhere until Gardner approves it.
+  detected
+  gardner_approved
+  /// Gardner said no. A row, not a deletion.
+  gardner_declined
+  /// Approved AND consent verified at the moment of transfer. The only state that permits an act.
+  routed
+  dismissed
+
+  @@schema("interventure")
+}
+
+/// A capital opportunity detected across the Green Companies portfolio - blueprint 10.2.
+///
+/// **This model deliberately has no consent column.** Consent is per-handoff and re-checked live
+/// at the moment of transfer (ADR-0018, principle 5); a stored `consented: true` would be a claim
+/// about a permission that may have been revoked since. See ADR-0058.
+model CrossPortfolioOpportunity {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+
+  /// The venture the opportunity is FOR.
+  venture String
+
+  /// The client it concerns, when it concerns one. Null for a portfolio-level opportunity that
+  /// names no client - which is the only kind that can be discussed without consent at all.
+  clientId String? @db.Uuid
+
+  kind  OpportunityKind
+  state OpportunityState @default(detected)
+
+  /// What was noticed, in the detector's words. No PII: this travels to Gardner.
+  summary String
+
+  /// What the detection rests on, so a reader can argue with it rather than with the conclusion.
+  basis String
+
+  detectedAt DateTime
+
+  /// Gardner governs both sides and is the only party positioned to permit a handoff (ADR-0018).
+  gardnerDecidedBy String?
+  gardnerDecidedAt DateTime?
+  gardnerNote      String?
+
+  /// Set only when an act actually happened, after a live consent check.
+  routedAt         DateTime?
+  routedToDepartment String?
+
+  dismissedReason String?
+
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, state, detectedAt])
+  @@index([tenantId, clientId])
+  @@map("cross_portfolio_opportunities")
+  @@schema("interventure")
 }
 
 
@@ -2580,6 +2871,10 @@ model Partner {
   completions     PartnerModuleCompletion[]
   claimApprovals  PartnerClaimApproval[]
   brandConfigs    PartnerBrandConfig[]
+  conductFindings PartnerConductFinding[]
+  agreements      PartnerAgreement[]
+  payouts         PartnerPayout[]
+  clawbacks       PayoutClawback[]
 
   @@index([tenantId, status])
   @@index([tenantId, track])
@@ -2698,6 +2993,191 @@ model PartnerBrandConfig {
 // ---------------------------------------------------------------------------
 // 4.3 Call Recording, Summaries & Promise Tracking
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// 8.2 Partner Agreement & Payout Center
+// ---------------------------------------------------------------------------
+
+enum PartnerAgreementStatus {
+  draft
+  active
+  superseded
+  terminated
+
+  @@schema("partners")
+}
+
+/// The commercial terms with one partner - blueprint 8.2's "referral fee terms".
+///
+/// Versioned and never edited in place. A payout cites the agreement version it was computed
+/// under, so "what were we paying them in March" survives the terms changing in April.
+model PartnerAgreement {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+
+  partnerId String  @db.Uuid
+  partner   Partner @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+
+  version Int
+
+  /// The partner's share of the fee WE earned, in basis points. Basis points and integer cents
+  /// throughout, per ADR-0011 - a percentage as a float is two figures in one table meaning
+  /// different things.
+  shareBasisPoints Int
+
+  /// Free text the parties agreed. Not parsed; carried so a reader sees the terms behind the
+  /// number rather than only the number.
+  termsSummary String
+
+  status PartnerAgreementStatus @default(draft)
+
+  effectiveFrom DateTime
+  supersededAt  DateTime?
+
+  /// Level 3 human who activated it. An agreement that binds us to pay money is not an
+  /// automatic act.
+  activatedBy String?   @db.Uuid
+  activatedAt DateTime?
+
+  createdAt DateTime @default(now())
+  createdBy String   @db.Uuid
+
+  payouts PartnerPayout[]
+
+  @@unique([tenantId, partnerId, version])
+  @@index([tenantId, partnerId, status])
+  @@map("partner_agreements")
+  @@schema("partners")
+}
+
+enum PayoutStatus {
+  /// Computed and awaiting a human. Never pays anything on its own.
+  pending_approval
+  approved
+  /// A human declined it, with a reason.
+  declined
+
+  @@schema("partners")
+}
+
+/// One period's payout for one partner.
+///
+/// `automatic in, human out`: the computation runs unattended, and nothing leaves without a
+/// Level 3 approval. There is no status that means "paid" here - money movement is not this
+/// system's act, and a `paid` we could set without anybody moving money would be a figure two
+/// sets of books disagreed about.
+model PartnerPayout {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+
+  partnerId String  @db.Uuid
+  partner   Partner @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+
+  agreementId String           @db.Uuid
+  agreement   PartnerAgreement @relation(fields: [agreementId], references: [id])
+
+  /// Half-open [periodStart, periodEnd), like every other window in this system.
+  periodStart DateTime
+  periodEnd   DateTime
+
+  status PayoutStatus @default(pending_approval)
+
+  /// The sum of the lines, minus clawbacks, in cents. Never negative: a period whose clawbacks
+  /// exceed its earnings carries the remainder forward on the clawback rows rather than
+  /// producing a payout that owes us money.
+  netCents Int
+
+  grossCents    Int
+  clawbackCents Int
+
+  computedAt DateTime
+
+  decidedBy String?   @db.Uuid
+  decidedAt DateTime?
+  /// Required to decline. Declining a payout the terms say is owed is the decision that needs
+  /// oversight; approving one does not, because the terms already said so.
+  declineReason String?
+
+  createdAt DateTime @default(now())
+
+  lines PayoutLine[]
+
+  @@index([tenantId, partnerId, periodStart])
+  @@map("partner_payouts")
+  @@schema("partners")
+}
+
+/// One referral's contribution to a payout, with the state rule that made it payable.
+///
+/// The citation and module version are copied onto the line rather than joined at read time.
+/// A payout approved in March under version 3 of Nevada's module must still read as it did
+/// after Nevada republishes - the evidence is what was relied on, not what is current.
+model PayoutLine {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+
+  payoutId String        @db.Uuid
+  payout   PartnerPayout @relation(fields: [payoutId], references: [id], onDelete: Cascade)
+
+  leadId   String  @db.Uuid
+  clientId String? @db.Uuid
+
+  /// The jurisdiction whose rule was applied.
+  state String
+
+  /// What we earned on this client in the period.
+  grossFeeCents Int
+  /// The share actually applied, after the state cap. May be below the agreement's share.
+  appliedBasisPoints Int
+  amountCents        Int
+
+  /// Evidence, frozen at computation.
+  rulePosture      ReferralFeePosture
+  ruleCitation     String
+  ruleConditions   String[]
+  moduleVersion    Int
+  cappedByState    Boolean            @default(false)
+
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, payoutId])
+  @@index([tenantId, leadId])
+  @@map("payout_lines")
+  @@schema("partners")
+}
+
+/// Money owed back because the engagement that earned it was refunded or charged back.
+///
+/// Its own row rather than a negative payout line, for ADR-0041's reason: a clawback is a thing
+/// that happened, and netting it into an earlier figure loses that it happened at all.
+model PayoutClawback {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+
+  partnerId String  @db.Uuid
+  partner   Partner @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+
+  /// The refund that triggered it. Null for a chargeback recorded by hand, which is a different
+  /// fact and says so.
+  refundRecordId String? @db.Uuid
+
+  engagementId String @db.Uuid
+
+  amountCents Int
+  reason      String
+
+  /// Set when a payout has absorbed it. Null means still outstanding, and the next computation
+  /// picks it up.
+  settledByPayoutId String?   @db.Uuid
+  settledAt         DateTime?
+
+  createdAt DateTime @default(now())
+  createdBy String   @db.Uuid
+
+  @@index([tenantId, partnerId, settledAt])
+  @@map("payout_clawbacks")
+  @@schema("partners")
+}
 
 enum CallStatus {
   consent_refused
@@ -3499,7 +3979,15 @@ model ClientMfaFactor {
   /// client removed their own.
   removalVerificationBasis String?
 
-  @@index([tenantId, clientUserId])
+  /// Registration order, from a Postgres sequence. See `LeadActivity.seq` for the argument.
+  ///
+  /// A client with two keys is shown a list and asked to remove one of them. `createdAt` is
+  /// `timestamp(3)` and two keys registered back to back land in the same millisecond often enough
+  /// that the settings test failed about one run in ten before this column existed. A list that
+  /// reorders itself between reloads is how somebody revokes the wrong key.
+  seq BigInt @unique @default(autoincrement())
+
+  @@index([tenantId, clientUserId, createdAt, seq])
   @@map("client_mfa_factors")
   @@schema("identity")
 }
@@ -3791,6 +4279,19 @@ model ActorCredential {
   disabledAt     DateTime?
   disabledReason String?
 
+  /// Set when this account stopped accepting a password and a code.
+  ///
+  /// **With it set, a CORRECT password and a CORRECT code are refused**, in the same sentence every
+  /// other sign-in failure gets. That is the whole security property: an account is as strong as the
+  /// weakest method it will accept, so a security key beside a live password buys nothing against a
+  /// proxy that collects the password and the six digits together (ADR-0029, ADR-0059).
+  ///
+  /// The password hash and the TOTP secret are deliberately LEFT IN PLACE. Unlike a client
+  /// (ADR-0030) there is no email channel to send a reset token down, so the route back is a Level 3
+  /// colleague clearing this column with a recorded basis - which is one act on one row rather than
+  /// a credential that has to be rebuilt from nothing.
+  passwordSignInDisabledAt DateTime?
+
   createdAt DateTime @default(now())
 
   @@unique([tenantId, email])
@@ -3853,5 +4354,686 @@ model ActorInvitation {
 
   @@index([tenantId, actorId])
   @@map("actor_invitations")
+  @@schema("identity")
+}
+
+// ---------------------------------------------------------------------------
+// 5.5 Funding Outcome Ledger
+//
+// The module that gives 9.1 a denominator. Every other table in this system
+// that touches placement records an APPROVAL - `billing.funding_outcomes` has
+// an approved credit limit and an approval date and no column for a denial -
+// so an approval rate computed from what existed would read 100% forever.
+// Arithmetically correct, completely meaningless, and the single most damaging
+// sentence a dashboard here could produce, because "our approval rate is 100%"
+// is exactly the claim 7.4 bans.
+//
+// So the record is an ATTEMPT, and its outcome is one of the things that can
+// happen to an attempt. A declined attempt is a row, not an absence.
+// ---------------------------------------------------------------------------
+
+/// What happened to an attempt.
+///
+/// `pending` is a real state, not a placeholder: an application sitting with a provider is a fact
+/// about the world, and it must not count in either half of a rate. `withdrawn` is excluded from
+/// the denominator for the reason 5.2 already gives - a withdrawn application was never decided,
+/// and counting it as a non-approval makes a provider look worse the more clients change their minds.
+enum FundingAttemptOutcome {
+  pending
+  approved
+  declined
+  withdrawn
+
+  @@schema("outcomes")
+}
+
+/// Blueprint 5.5 lists "client satisfaction" in the data model.
+///
+/// Categorical, and with an explicit `not_asked`. A numeric satisfaction score would invite exactly
+/// the averaging Decision E forbids elsewhere, and a nullable number would make "we did not ask"
+/// indistinguishable from a zero once anybody aggregated it.
+enum ClientSatisfaction {
+  not_asked
+  delighted
+  satisfied
+  dissatisfied
+
+  @@schema("outcomes")
+}
+
+/// One attempt to place one client with one provider.
+///
+/// **`requestedCents` and `approvedCreditLimitCents` are different columns and neither is derived
+/// from the other.** This is the Seek Capital lesson in its original form: `creditLimit` is what was
+/// asked for, `approvedCreditLimit` is what was granted, and a success fee computed against the
+/// first is a revenue-integrity bug that looks like a rounding difference. The CHECK constraints in
+/// this table's migration make the wrong shapes unwritable rather than merely discouraged.
+///
+/// Time to approval and time to funding are NOT stored. They are differences between columns that
+/// are already here, and a stored duration is a second copy that goes stale the moment a date is
+/// corrected.
+model FundingAttempt {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+
+  clientId String @db.Uuid
+
+  /// The engagement the fee hangs off. Required: an attempt with no engagement cannot produce a
+  /// success fee, cannot produce a refund entitlement, and is invisible to 1.4 - which is the
+  /// state that let approvals and refunds disagree in the first place.
+  engagementId String @db.Uuid
+
+  /// The 5.2 provider. Not an FK: `lenders` is another module's schema and this one does not reach
+  /// into it - the provider is read through `@bwc/lenders`, and the id is carried here so the
+  /// feedback loop can be written back through the same door.
+  providerId  String      @db.Uuid
+  productKind ProductKind
+
+  /// What the client asked for. **Never the basis of a fee.**
+  requestedCents Int
+
+  submittedAt DateTime
+
+  outcome   FundingAttemptOutcome @default(pending)
+  decidedAt DateTime?
+
+  /// What was granted. Null while pending, null on a decline, and the only figure a success fee may
+  /// compute against. Null is not zero: a declined attempt was not approved for nothing, it was not
+  /// approved.
+  approvedCreditLimitCents Int?
+
+  /// Required on a decline, in the provider's words where they gave them. A decline with no stated
+  /// reason teaches 5.2 nothing and gives the client no adverse-action explanation.
+  declineReason String?
+
+  fundedOn    DateTime?
+  fundedCents Int?
+
+  /// Coarse cohort bucket, the same key 5.2 computes. Coarse on purpose: a finer key gives every
+  /// client a cohort of one, and a cohort of one produces rates of exactly 0% or 100%.
+  clientProfileKey String
+
+  underwritingNotes   String?
+  nextRecommendedMove String?
+
+  satisfaction ClientSatisfaction @default(not_asked)
+
+  /// The `billing.funding_outcomes` row this attempt produced, when it was approved. Set by 5.5,
+  /// which is the only thing that should create one - it is what the 60-day refund trigger runs
+  /// against, and an approval recorded here but not there is a refund that never fires.
+  billingOutcomeId String? @db.Uuid
+
+  recordedBy String   @db.Uuid
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([tenantId, clientId])
+  @@index([tenantId, engagementId])
+  @@index([tenantId, providerId, productKind])
+  @@index([tenantId, clientProfileKey])
+  @@index([tenantId, outcome, decidedAt])
+  @@map("funding_attempts")
+  @@schema("outcomes")
+}
+
+// ---------------------------------------------------------------------------
+// 7.5 Legal Hold & Record Retention
+//
+// The vault (3.2) already refuses to delete a document under legal hold, and
+// already refuses to delete one with no resolved retention schedule - saying,
+// honestly, that 7.2 and 7.5 do not exist. This module is what those refusals
+// were waiting for: the schedules, and the holds.
+//
+// Two shapes, and the asymmetry between them is the design:
+//
+//   A HOLD is a MATTER, not a flag on a document. A litigation hold covers a
+//   client's file, including the statement they upload tomorrow. Storing it as
+//   a boolean per document means propagating on placement, and anything
+//   arriving after the propagation is silently outside the hold - which is the
+//   classic way an organisation destroys evidence while believing it preserved
+//   it. Holds are therefore EVALUATED at the moment of the decision, never
+//   copied onto rows.
+//
+//   A SCHEDULE is an AUTHORISATION. Absence of a hold means not held; absence
+//   of a schedule means NOT PERMITTED TO DELETE. The two absences point in
+//   opposite directions and both are right, because a hold restricts and a
+//   schedule permits. ADR-0007 and ADR-0009 already say absence is not
+//   permission; this is the same rule read carefully enough to notice which
+//   side of it each record is on.
+// ---------------------------------------------------------------------------
+
+/// Why a hold exists. Blueprint 7.5 names litigation, complaint and regulator request; a client
+/// dispute is added because 6.3 produces them and they are the fourth thing that stops a deletion.
+enum LegalHoldKind {
+  litigation
+  complaint
+  regulator_request
+  client_dispute
+
+  @@schema("retention")
+}
+
+/// How wide a hold reaches.
+///
+/// `client` is the common case and the one a boolean-per-document design gets wrong. `tenant` is
+/// deliberately available and deliberately blunt: a regulator asking for everything is a real
+/// event, and the alternative is a hundred per-client holds somebody has to remember to place.
+enum LegalHoldScope {
+  tenant
+  client
+  document_kind
+
+  @@schema("retention")
+}
+
+/// A litigation, complaint or regulator hold.
+///
+/// **Evaluated, never propagated.** Nothing here writes to `vault.vault_documents`. The vault asks
+/// this table at the moment somebody tries to delete or export, so a document uploaded after the
+/// hold was placed is covered by it without anybody re-running anything.
+///
+/// Released rather than deleted: which hold was in force when a document was destroyed is the
+/// question a spoliation claim turns on, and a deleted row cannot answer it.
+model LegalHold {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+
+  kind  LegalHoldKind
+  scope LegalHoldScope
+
+  /// Set when `scope` is `client`. Null for a tenant-wide hold - and null MEANS tenant-wide here
+  /// rather than meaning unknown, which is why `scope` is stored explicitly beside it. A nullable
+  /// column carrying two meanings is how a hold ends up covering nothing.
+  clientId String? @db.Uuid
+
+  /// Set when `scope` is `document_kind`. Uses the vault's own enum across the schema boundary, so
+  /// a kind that exists in one module and not the other is a compile error rather than a hold that
+  /// silently matches nothing.
+  documentKind DocumentKind?
+
+  /// The matter. A case number, a complaint reference, a regulator's request id - whatever a
+  /// person would use to look it up. Required: a hold nobody can trace to a matter is a hold
+  /// nobody will ever dare release.
+  matterReference String
+
+  /// Why, in the words of whoever placed it. Read back to a court, potentially.
+  reason String
+
+  placedBy String   @db.Uuid
+  placedAt DateTime
+
+  /// Blueprint 7.5 does not ask for a cadence and one is here anyway, because a hold that outlives
+  /// its matter is the cost of getting the direction of harm right. See ADR-0042: an overdue
+  /// review KEEPS HOLDING and is flagged, exactly as 6.4's listing does and for the same reason.
+  reviewCadenceDays Int       @default(180)
+  lastReviewedAt    DateTime?
+  lastReviewedBy    String?   @db.Uuid
+
+  releasedAt    DateTime?
+  releasedBy    String?   @db.Uuid
+  releaseReason String?
+
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, releasedAt])
+  @@index([tenantId, clientId, releasedAt])
+  @@map("legal_holds")
+  @@schema("retention")
+}
+
+/// How long a document of a given kind must be kept.
+///
+/// **A schedule is an authorisation to destroy, which is why absence blocks.** The vault refuses to
+/// delete a document with no resolved schedule, and it is right to: over-retention is a liability
+/// and destroying a record a regulator was entitled to see is the irreversible one.
+///
+/// State-specific rows override the default for the same kind. `stateCode` null IS the default - a
+/// sentinel row rather than a separate table, so "what applies in Texas" is one query with an
+/// ordering rather than two queries and a merge somebody will get wrong.
+model RetentionSchedule {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+
+  documentKind DocumentKind
+
+  /// Two-letter state code, or null for the default that applies where no state rule is recorded.
+  stateCode String?
+
+  /// Months from the document's own date. Months rather than days because that is the unit every
+  /// statute is written in, and converting at write time loses which one was meant.
+  retainMonths Int
+
+  /// Provenance, per Decision D, and non-nullable for the same reason a lender rule's is: a
+  /// retention period nobody researched, presented with the same confidence as one read out of a
+  /// statute, is the failure principle 8 exists to prevent. Here it decides whether a document is
+  /// destroyed.
+  ///
+  /// `issuer_rule` is the tag for a period read from a statute or a regulator's guidance - the
+  /// enum is reused from 5.2 rather than duplicated, because Decision D makes provenance
+  /// portfolio-wide vocabulary and a second enum would drift.
+  provenanceTag ProvenanceTag
+
+  /// Populated for `issuer_rule`: the citation, when it was last checked, and by whom.
+  sourceUrl    String?
+  lastVerified DateTime?
+  verifiedBy   String?
+
+  /// Populated for `unresearched_default` - why the assumption is a reasonable one to hold.
+  rationale String?
+
+  recordedBy String   @db.Uuid
+  createdAt  DateTime @default(now())
+
+  /// Superseded rather than updated. What the schedule said when a document was destroyed is the
+  /// question an audit asks, and an overwritten row cannot answer it.
+  supersededAt DateTime?
+  supersededBy String?   @db.Uuid
+
+  @@index([tenantId, documentKind, stateCode, supersededAt])
+  @@index([tenantId, provenanceTag])
+  @@map("retention_schedules")
+  @@schema("retention")
+}
+
+/// Blueprint 7.5's "client data deletion request workflow (GDPR / CCPA analog)".
+enum DeletionRequestStatus {
+  received
+  refused
+  approved
+  completed
+
+  @@schema("retention")
+}
+
+/// A client asking for their data to be deleted.
+///
+/// Recorded even when it will be refused, and **especially** then: "we received your request on the
+/// 3rd and refused it on the 5th because these records are under a litigation hold" is the answer a
+/// regulator wants, and a request that was quietly dropped produces no answer at all.
+model DeletionRequest {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+
+  clientId String @db.Uuid
+
+  /// Who asked. A client user, or a staff member recording a request made by phone or letter.
+  requestedBy String   @db.Uuid
+  requestedAt DateTime
+
+  /// In the client's words where they gave them.
+  requestDetail String
+
+  status DeletionRequestStatus @default(received)
+
+  decidedAt DateTime?
+  decidedBy String?   @db.Uuid
+  /// Required on a refusal. What blocked it: a hold, a retention period, or both.
+  decisionReason String?
+
+  completedAt DateTime?
+  /// How many documents were destroyed. Recorded because "we deleted everything" is not a claim
+  /// anybody should have to take on trust.
+  documentsDeleted Int?
+
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, clientId, status])
+  @@map("deletion_requests")
+  @@schema("retention")
+}
+
+// ---------------------------------------------------------------------------
+// 8.4 Partner Risk Score
+//
+// Blueprint 8.4 asks for a "score across dimensions", and the dimensions it
+// lists are two different kinds of thing wearing one name:
+//
+//   claim compliance, unauthorized promises detected, documentation quality
+//     - conduct. Categorical. A partner either promised a client an approval
+//       or did not.
+//
+//   conversion rate, complaint rate, refund rate, revenue contribution
+//     - performance. Numeric, and meaningless below a sample.
+//
+// They are never combined into one figure. A single number lets revenue
+// contribution offset an unauthorized promise, which is precisely the trade
+// design principle 1 exists to forbid - and it would do it invisibly, because
+// the arithmetic gives no sign that one input was a compliance breach. So the
+// standing is worst-of over conduct, the measures are reported separately with
+// their denominators, and nothing in this module averages the two.
+//
+// See ADR-0043.
+// ---------------------------------------------------------------------------
+
+/// What a partner did. Blueprint 8.4's conduct dimensions, as an enum rather than free text,
+/// because "how many unauthorized promises has this partner made" is a query Channel Partnerships
+/// runs rather than a scan of somebody's notes.
+enum PartnerFindingKind {
+  /// A promise no partner may make: guaranteed approval, a specific amount, credit repair.
+  /// The gravest of these and the reason the enum exists - it is a Level 4 prohibited action
+  /// performed by somebody outside the authority system.
+  unauthorized_promise
+  /// Language outside the approved claims library (7.4).
+  unapproved_claim
+  /// A client complained about the partner or about how they were introduced.
+  client_complaint
+  /// Referrals arriving without the documentation the track requires.
+  documentation_gap
+  /// Brand or co-brand usage outside what was approved (8.1).
+  brand_misuse
+  /// Anything a human recorded that the list above does not cover.
+  other
+
+  @@schema("partners")
+}
+
+/// How bad. Deliberately the same four words 6.5 uses, so a reader moving between the two modules
+/// does not have to learn a second severity vocabulary.
+enum PartnerFindingSeverity {
+  critical
+  serious
+  notable
+  context
+
+  @@schema("partners")
+}
+
+/// One recorded thing a partner did.
+///
+/// The input to the standing, and append-only in practice: a finding is superseded by a
+/// `resolvedAt` rather than deleted, because "we looked into this and it was unfounded" is a
+/// different fact from "this never happened", and a partner disputing a decertification is
+/// entitled to the difference.
+model PartnerConductFinding {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+
+  partnerId String  @db.Uuid
+  partner   Partner @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+
+  kind     PartnerFindingKind
+  severity PartnerFindingSeverity
+
+  /// What happened, for the person who will read it back to the partner.
+  summary String
+
+  /// Where it came from, in the observer's words. A scanner hit, a client call, a review of a
+  /// co-branded page. A finding with no provenance is a rumour, and a standing built on rumours is
+  /// how a commercial relationship ends on somebody's recollection.
+  source String
+
+  /// The client it concerned, when it concerned one. Null for a finding about the partner's own
+  /// material rather than about a referral.
+  clientId String? @db.Uuid
+
+  occurredAt DateTime
+  recordedAt DateTime @default(now())
+  recordedBy String   @db.Uuid
+
+  /// Set when somebody investigated and closed it. A resolved finding stops counting toward the
+  /// standing and stays on the record.
+  resolvedAt      DateTime?
+  resolvedBy      String?   @db.Uuid
+  /// Required to resolve. Whether it was upheld or dismissed, and why.
+  resolutionNote  String?
+  /// Whether the investigation agreed with the finding. Null while open. A dismissed finding is
+  /// NOT deleted: a pattern of dismissed complaints about one partner is itself a signal, and it
+  /// is invisible if dismissal erases the row.
+  upheld Boolean?
+
+  @@index([tenantId, partnerId, resolvedAt])
+  @@index([tenantId, kind, occurredAt])
+  @@map("partner_conduct_findings")
+  @@schema("partners")
+}
+
+// ---------------------------------------------------------------------------
+// 6.3 Client Conduct Monitoring
+//
+// The detection layer for client-generated risk. It detects; 6.4 decides.
+//
+// The interesting decision in this module is which way STALENESS moves, and
+// the answer is not the same for every kind - which is the point ADR-0013
+// makes and the reason it says a third cadenced record has to decide
+// explicitly rather than copy a neighbour.
+//
+// A client who applied for capital behind our back while frozen, unreviewed
+// for ninety days, is still a client who did that: the pause HARDENS, because
+// nothing about the passage of time resolves it.
+//
+// A client who stopped answering the phone after funding, unreviewed for
+// ninety days, may be in trouble. Freezing service to somebody in distress is
+// the harm, not the remedy, so that one SOFTENS - toward outreach and a human,
+// not toward a stricter gate.
+//
+// The direction is therefore a property of the kind, declared in code beside
+// the kind, rather than a single rule applied to the table. See ADR-0044.
+// ---------------------------------------------------------------------------
+
+/// Blueprint 6.3's data model, as an enum.
+///
+/// Nine kinds, and they are not interchangeable: each one has its own staleness direction and its
+/// own response, so a free-text `kind` would make both unqueryable and would let a tenth kind
+/// arrive with no decision made about either.
+enum ConductBreachKind {
+  /// The client applied for capital elsewhere while placement was frozen.
+  independent_application
+  /// Debt found that the client did not disclose.
+  undisclosed_debt
+  /// Funds used for something other than what the placement was built around.
+  funds_usage_anomaly
+  /// Submitted documents that do not agree with each other or with a feed.
+  document_inconsistency
+  /// No response to a payment alert.
+  payment_alert_non_response
+  /// The client pressured staff or an agent to do something they should not.
+  staff_pressure_incident
+  /// No contact since funding.
+  post_funding_non_response
+  /// A fee dispute the record does not support.
+  unfounded_fee_dispute
+  /// Abusive conduct toward staff.
+  abuse
+
+  @@schema("risk")
+}
+
+/// One detected breach.
+///
+/// Resolved rather than deleted, like 6.4's listings, 7.5's holds and 8.4's findings: "we looked
+/// into this and it was unfounded" is a different fact from "this never happened", and a client
+/// disputing a termination is entitled to the difference.
+model ClientConductBreach {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+  clientId String @db.Uuid
+
+  kind     ConductBreachKind
+  /// Reuses 6.5's severity vocabulary, held as text and validated in code against SEVERITIES -
+  /// the same arrangement 8.1 uses for partner tracks, and for the same reason: a fifth severity
+  /// would be a decision, not a migration.
+  severity String
+
+  /// What happened, for the person who will read it back to the client.
+  summary String
+
+  /// Where the detection came from, in the observer's words. A breach with no provenance is an
+  /// accusation, and a service pause built on accusations is how a client is cut off on a rumour.
+  source String
+
+  occurredAt DateTime
+  detectedAt DateTime @default(now())
+  detectedBy String   @db.Uuid
+
+  /// How long before this breach is due for another look. Defaulted per kind in code rather than
+  /// here, because the cadence and the staleness direction are one decision and splitting them
+  /// across two files is how they drift apart.
+  reviewCadenceDays Int
+  lastReviewedAt    DateTime?
+  lastReviewedBy    String?   @db.Uuid
+
+  resolvedAt     DateTime?
+  resolvedBy     String?   @db.Uuid
+  /// Required to resolve. What was looked into and what was concluded.
+  resolutionNote String?
+  /// Whether the investigation agreed. Null while open. A dismissed breach is NOT deleted: a run
+  /// of dismissed detections against one client is a signal about the detector.
+  upheld Boolean?
+
+  /// The 6.5 observation this breach produced, so the timeline and the breach record cannot
+  /// disagree about whether something was recorded.
+  observationId String? @db.Uuid
+
+  @@index([tenantId, clientId, resolvedAt])
+  @@index([tenantId, kind, occurredAt])
+  @@map("client_conduct_breaches")
+  @@schema("risk")
+}
+
+// ---------------------------------------------------------------------------
+// 11.5 Vendor Activation Governance - ADR-0065
+//
+// One block, added by the launch-readiness slice. Firm-wide rather than per-tenant:
+// the firm signs one DPA with Plaid, and a SOC 2 report is about the vendor, not
+// about a tenant of ours.
+// ---------------------------------------------------------------------------
+
+/// The evidence a vendor gate requires before client financial data may leave this firm.
+///
+/// Specification v2 section 11.4 names three; vendor selection is the fourth because two
+/// of the four vendors have no chosen counterparty yet, and there is nothing to review
+/// the security of until somebody picks one.
+enum VendorEvidenceKind {
+  vendor_selection
+  argus_security_review
+  data_processing_agreement
+  /// SOC 2 Type II, ISO 27001 or equivalent.
+  security_attestation
+
+  @@schema("admin")
+}
+
+/// One piece of evidence, accepted by a named Level 3 human on a date.
+///
+/// **`documentReference` is required and has no empty representation.** A row here without
+/// one would be a tick-box that looks reviewed, which ADR-0065 argues is worse than the
+/// compile-time constant it replaces - the constant at least left a commit.
+///
+/// Insert-only in practice: nothing supersedes or edits a row, and withdrawal writes
+/// `withdrawnAt` rather than deleting, so "what did we rely on in March" survives.
+model VendorEvidence {
+  id String @id @default(uuid()) @db.Uuid
+
+  /// A `VendorId`. Held as text and validated in code against VENDOR_IDS, so adding a
+  /// vendor is a data change rather than a migration.
+  vendor String
+  kind   VendorEvidenceKind
+
+  /// The document this rests on - a report number, an executed agreement reference, an
+  /// attestation id. Required. There is no code path that writes an empty one.
+  documentReference String
+
+  /// Who issued the document. Not us, for three of the four kinds.
+  issuedBy String
+  issuedOn DateTime
+
+  /// When the document stops being evidence. A SOC 2 Type II covers a stated period and
+  /// does not describe the vendor afterwards. Null means the document does not expire,
+  /// which is true of an executed DPA and false of an attestation.
+  validUntil DateTime?
+
+  /// The Level 3 human who accepted it. The level is read from THIS actor at acceptance,
+  /// never from the caller - ADR-0009's rule.
+  acceptedBy String   @db.Uuid
+  acceptedAt DateTime
+
+  /// The tenant the accepting actor belongs to. Carried so an audit can find the person.
+  acceptedInTenantId String @db.Uuid
+
+  /// Withdrawal is a compensating write, never a delete.
+  withdrawnAt     DateTime?
+  withdrawnBy     String?   @db.Uuid
+  withdrawnReason String?
+
+  createdAt DateTime @default(now())
+
+  @@index([vendor, kind, withdrawnAt])
+  @@map("vendor_evidence")
+  @@schema("admin")
+}
+
+/// A WebAuthn credential held by a staff Actor - ADR-0059.
+///
+/// **There is only one kind.** A client may register a key as a second factor OR as a passkey, and
+/// `ClientMfaFactor.discoverable` keeps them apart so a second-factor credential is never promoted
+/// into a password replacement by a later flag. Staff keys exist to REMOVE the password, so they are
+/// registered discoverable and user-verifying or not at all - and the column that would have needed
+/// keeping honest does not exist, because the state it distinguished cannot occur.
+model ActorWebauthnCredential {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+
+  actorId String @db.Uuid
+  actor   Actor  @relation(fields: [actorId], references: [id], onDelete: Cascade)
+
+  /// base64url, as the browser reports it. Unique across the table: one credential, one account.
+  credentialId String @unique
+
+  /// base64url. A **public** key: a leaked database yields the value that verifies a signature,
+  /// never the one that produces it. There is no secret column here and that is the point.
+  publicKey String
+
+  /// The last counter this credential presented. Handed to the verifier, which is what makes it
+  /// enforce that the value advances. Many authenticators never implement one and always report 0.
+  signCount Int @default(0)
+
+  /// Comma-separated hints from registration, so a browser can prompt for the right thing.
+  transports String?
+
+  /// Named by the person who registered it. Two keys are indistinguishable without one, and a key
+  /// somebody cannot identify is one they will not dare remove.
+  label String
+
+  registeredAt DateTime  @default(now())
+  lastUsedAt   DateTime?
+  removedAt    DateTime?
+
+  /// Set when an assertion was refused AND the counter had not advanced, which means two
+  /// authenticators are answering for one credential. Recorded rather than acted on: it explains a
+  /// refusal that has already happened and never permits anything.
+  clonedAt DateTime?
+
+  @@index([tenantId, actorId])
+  @@map("actor_webauthn_credentials")
+  @@schema("identity")
+}
+
+/// A live ceremony challenge for a staff key.
+model ActorWebauthnChallenge {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+
+  /// **Null for a passkey sign-in**, which belongs to no actor yet - that is what discoverable
+  /// means. The column admits it rather than carrying a placeholder somebody would later have to be
+  /// told was meaningless.
+  actorId String? @db.Uuid
+  actor   Actor?  @relation(fields: [actorId], references: [id], onDelete: Cascade)
+
+  challenge String                 @unique
+  ceremony  ActorWebauthnCeremony
+
+  issuedAt   DateTime  @default(now())
+  expiresAt  DateTime
+  consumedAt DateTime?
+
+  @@index([tenantId, actorId])
+  @@map("actor_webauthn_challenges")
+  @@schema("identity")
+}
+
+enum ActorWebauthnCeremony {
+  registration
+  authentication
+
   @@schema("identity")
 }

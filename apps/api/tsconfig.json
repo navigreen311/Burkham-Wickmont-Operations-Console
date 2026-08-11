@@ -8,22 +8,86 @@
   },
   "include": ["src/**/*.ts"],
   "references": [
-    { "path": "../../packages/core" },
-    { "path": "../../packages/http" },
-    { "path": "../../packages/db" },
-    { "path": "../../packages/ledger" },
-    { "path": "../../packages/identity" },
-    { "path": "../../packages/tenancy" },
-    { "path": "../../packages/clients" },
-    { "path": "../../packages/consent" },
-    { "path": "../../packages/firewall" },
-    { "path": "../../packages/integration" },
-    { "path": "../../packages/middleware" },
-    { "path": "../../packages/placement" },
-    { "path": "../../packages/notifications" },
-    { "path": "../../packages/observability" },
-    { "path": "../../packages/risk" },
-    { "path": "../../packages/calls" },
-    { "path": "../../packages/lenders" }
+    {
+      "path": "../../packages/core"
+    },
+    {
+      "path": "../../packages/http"
+    },
+    {
+      "path": "../../packages/db"
+    },
+    {
+      "path": "../../packages/ledger"
+    },
+    {
+      "path": "../../packages/identity"
+    },
+    {
+      "path": "../../packages/tenancy"
+    },
+    {
+      "path": "../../packages/clients"
+    },
+    {
+      "path": "../../packages/consent"
+    },
+    {
+      "path": "../../packages/firewall"
+    },
+    {
+      "path": "../../packages/integration"
+    },
+    {
+      "path": "../../packages/middleware"
+    },
+    {
+      "path": "../../packages/placement"
+    },
+    {
+      "path": "../../packages/notifications"
+    },
+    {
+      "path": "../../packages/observability"
+    },
+    {
+      "path": "../../packages/risk"
+    },
+    {
+      "path": "../../packages/calls"
+    },
+    {
+      "path": "../../packages/lenders"
+    },
+    {
+      "path": "../../packages/capital"
+    },
+    {
+      "path": "../../packages/dashboards"
+    },
+    {
+      "path": "../../packages/graph"
+    },
+    {
+      "path": "../../packages/sales"
+    },
+    {
+      "path": "../../packages/partners"
+    },
+    {
+      "path": "../../packages/admin"
+    },
+    {
+      "path": "../../packages/deliverables"
+    },
+    {
+      "path": "../../packages/intelligence"
+    },
+    {
+      "path": "../../packages/interventure"
+    },
+    {
+      "path": "../../packages/warehouse"
+    }
   ]
 }
