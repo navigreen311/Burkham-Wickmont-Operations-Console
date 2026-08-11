@@ -84,14 +84,21 @@ export interface ActivityEntry {
   readonly recordedBy: string;
 }
 
-/** The trail, oldest first. Append-only: nothing updates or deletes an entry. */
+/**
+ * The trail, oldest first. Append-only: nothing updates or deletes an entry.
+ *
+ * `occurredAt` leads and `seq` breaks its ties, and that order is deliberate rather than
+ * incidental. `occurredAt` is caller-supplied and can be back-dated - a note written today about a
+ * call three weeks ago belongs three weeks ago on the trail - so insertion order cannot be the
+ * primary sort. Within one millisecond it is the only thing that decides, and since ADR-0040 it can.
+ */
 export const activityFor = async (
   tenantId: string,
   leadId: string,
 ): Promise<readonly ActivityEntry[]> => {
   const rows = await db().leadActivity.findMany({
     where: { tenantId, leadId },
-    orderBy: [{ occurredAt: 'asc' }, { id: 'asc' }],
+    orderBy: [{ occurredAt: 'asc' }, { seq: 'asc' }],
   });
 
   return rows.map((row) => ({

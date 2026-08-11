@@ -655,9 +655,18 @@ model VaultAccessLog {
 
   at DateTime @default(now())
 
+  /// Access order, from a Postgres sequence. See `LeadActivity.seq` for the argument.
+  ///
+  /// The strongest case of the four this column was added to. One request routinely writes several
+  /// entries - a read, then an export, or a refusal followed by a second attempt - inside the same
+  /// millisecond, and the order of an access log **is** the artifact: "they were refused and then
+  /// they got in" and "they got in and were later refused" are different findings, and `at` alone
+  /// cannot tell a regulator which one happened.
+  seq BigInt @unique @default(autoincrement())
+
   document VaultDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
 
-  @@index([tenantId, documentId])
+  @@index([tenantId, documentId, at, seq])
   @@index([tenantId, actorId])
   @@map("vault_access_log")
   @@schema("vault")
@@ -2122,7 +2131,20 @@ model LeadActivity {
 
   createdAt DateTime @default(now())
 
-  @@index([tenantId, leadId, occurredAt])
+  /// Insertion order, from a Postgres sequence. **The tie-break `createdAt` cannot be.**
+  ///
+  /// `occurredAt` is `timestamp(3)`. Two activities written in the same millisecond tie, and the
+  /// `{ id: 'asc' }` tie-break behind it is a random UUID - stable for a given set of rows and
+  /// unrelated to the order they arrived in. A pipeline trail is read as a sequence, so the
+  /// tie-break has to carry the meaning the reader is relying on. ADR-0034 named this and did not
+  /// fix it; ADR-0040 fixes it.
+  ///
+  /// Assignment order, not commit order: two concurrent transactions can take 5 and 6 and commit in
+  /// the other order. That is invisible to every reader here, all of which read settled rows. It
+  /// would matter to a change feed paginating on `seq > lastSeen`, and there is none.
+  seq BigInt @unique @default(autoincrement())
+
+  @@index([tenantId, leadId, occurredAt, seq])
   @@map("lead_activities")
   @@schema("sales")
 }
@@ -2527,7 +2549,15 @@ model RiskObservation {
   recordedAt DateTime @default(now())
   recordedBy String   @db.Uuid
 
-  @@index([tenantId, clientId, occurredAt])
+  /// Observation order, from a Postgres sequence. See `LeadActivity.seq` for the argument.
+  ///
+  /// 6.5 calls itself a *chronological* timeline and 6.3 writes into it in bursts - one detection
+  /// pass records several observations for one client, all stamped with the same `occurredAt`
+  /// because they describe one moment. Without this column that timeline reorders itself on every
+  /// read, which is the one thing a timeline must not do.
+  seq BigInt @unique @default(autoincrement())
+
+  @@index([tenantId, clientId, occurredAt, seq])
   @@map("risk_observations")
   @@schema("risk")
 }
@@ -3499,7 +3529,15 @@ model ClientMfaFactor {
   /// client removed their own.
   removalVerificationBasis String?
 
-  @@index([tenantId, clientUserId])
+  /// Registration order, from a Postgres sequence. See `LeadActivity.seq` for the argument.
+  ///
+  /// A client with two keys is shown a list and asked to remove one of them. `createdAt` is
+  /// `timestamp(3)` and two keys registered back to back land in the same millisecond often enough
+  /// that the settings test failed about one run in ten before this column existed. A list that
+  /// reorders itself between reloads is how somebody revokes the wrong key.
+  seq BigInt @unique @default(autoincrement())
+
+  @@index([tenantId, clientUserId, createdAt, seq])
   @@map("client_mfa_factors")
   @@schema("identity")
 }
