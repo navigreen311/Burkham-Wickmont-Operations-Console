@@ -24,6 +24,10 @@ read." See [docs/m11-portal-e2e.md](docs/m11-portal-e2e.md).
 - A **fifth CI job**, because it needs a browser binary and the other three do not. Chromium only -
   the virtual authenticator is a CDP feature. Traces on failure only, kept seven days: a trace is a
   copy of the page, and this page shows a client's file.
+- **The browser job is the only one that runs against BUILT packages.** The vitest suites alias
+  `@bwc/*` to `src` deliberately, so nothing else notices a package that compiles in isolation and
+  cannot be imported - which is how this job first failed in CI, on a `dist` every local run had
+  lying around.
 - The harness seeds a **fresh tenant per run** (the Ledger is append-only and hash-chained) and
   **one account per test that changes an account** - registering a key and turning the password off
   are permanent, and a shared account leaves the next test in a state it did not ask for. That was

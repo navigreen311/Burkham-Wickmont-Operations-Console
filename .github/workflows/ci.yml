@@ -111,6 +111,11 @@ jobs:
       - run: pnpm db:generate
       - name: Apply migrations
         run: pnpm db:deploy
+      # **The only job that runs against BUILT packages.** The vitest suites alias `@bwc/*` to `src`
+      # deliberately - dist would test stale code - so nothing else notices a package that compiles
+      # in isolation and cannot be imported. The harness resolves them the way a deployment does.
+      - name: Build packages
+        run: pnpm build
       # Chromium only. The virtual authenticator these tests rest on is a Chrome DevTools Protocol
       # feature, and a Firefox or WebKit run would cover the DOM layer - the layer with the least
       # in it - at the cost of two more browser downloads on every run.

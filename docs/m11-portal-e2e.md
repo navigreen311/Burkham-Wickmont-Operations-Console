@@ -68,6 +68,12 @@ Chromium only. The virtual authenticator is a CDP feature; a Firefox or WebKit r
 DOM layer, which is the layer with the least in it, at the cost of two more browser downloads on
 every run.
 
+**It is also the only job that runs against BUILT packages.** The vitest suites alias `@bwc/*` to
+`src` deliberately - dist would test stale code - so nothing else notices a package that compiles in
+isolation and cannot be imported. The harness resolves them the way a deployment does, which is how
+the first CI run of this job failed: `@bwc/tenancy` had no `dist`, and every local run had one lying
+around from an earlier build.
+
 ---
 
 ## Tested
