@@ -21,9 +21,16 @@ const call = async (path, body) => {
 
   const payload = await response.json().catch(() => ({ status: 'failed', reason: 'No response.' }));
 
+  // `trace` rides on every envelope a write produces, refusals included. It names the middleware
+  // step that blocked the action, which is the difference between a dead end and an instruction.
   return payload.status === 'ok'
-    ? { ok: true, data: payload.data }
-    : { ok: false, reason: payload.reason ?? 'Something went wrong.', status: payload.status };
+    ? { ok: true, data: payload.data, trace: payload.trace }
+    : {
+        ok: false,
+        reason: payload.reason ?? 'Something went wrong.',
+        status: payload.status,
+        trace: payload.trace,
+      };
 };
 
 export const signIn = (email, password, code) =>
@@ -48,3 +55,25 @@ export const clients = (search, limit, offset) => {
 export const client = (clientId) => call(`/api/console/clients/${encodeURIComponent(clientId)}`);
 export const clientRisk = (clientId) =>
   call(`/api/console/clients/${encodeURIComponent(clientId)}/risk`);
+
+/* --- writes ---------------------------------------------------------------
+ *
+ * Every one of these is refused by the middleware chain unless the signed-in actor holds the
+ * Authority Level the action declares. The page hides what it cannot do as a courtesy; the server
+ * is what makes it true.
+ */
+
+export const createClient = (legalName) => call('/api/clients', { legalName });
+
+export const transitionCompliance = (clientId, to, reason, findings) =>
+  call(`/api/clients/${encodeURIComponent(clientId)}/compliance`, {
+    to,
+    reason,
+    ...(findings && findings.length > 0 ? { findings } : {}),
+  });
+
+export const triggerFirewall = (clientId, reason) =>
+  call(`/api/clients/${encodeURIComponent(clientId)}/firewall/trigger`, { reason });
+
+export const recordConsent = (clientId, kind, scope) =>
+  call(`/api/clients/${encodeURIComponent(clientId)}/consents`, { kind, scope });

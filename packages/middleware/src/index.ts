@@ -35,6 +35,7 @@ import { checkJurisdiction, type RegulatoryClearance } from '@bwc/regulatory';
 import { scanForTenant } from '@bwc/scanner';
 import {
   failed,
+  isGovernanceAction,
   isProhibitedAction,
   ok,
   refused,
@@ -197,6 +198,21 @@ export const chain = async (
   // --- 4. Firewall + compliance state -------------------------------------
   if (request.clientId === undefined) {
     trace.push({ step: 'firewall', outcome: 'skipped', detail: 'no client in scope' });
+  } else if (isGovernanceAction(request.action)) {
+    // **The gate must not block the act of clearing the gate.** This step refuses a client in
+    // `fail`, in `needs_review`, on the Do Not Fund list, or behind a triggered Firewall - which
+    // is right for acting FOR a client and a one-way door for recording a determination ABOUT
+    // one. A client in `fail` could never be moved back to `pass`; a new client could never be
+    // assessed at all.
+    //
+    // Skipped rather than passed, and the reason travels in the trace, because a step that says
+    // `passed` here would be claiming a check ran.
+    trace.push({
+      step: 'firewall',
+      outcome: 'skipped',
+      detail:
+        'governance action: this records a determination about the client, so the gate it would clear does not gate it',
+    });
   } else {
     const client = await findClient(request.tenantId, request.clientId);
     if (client.status !== 'ok') {

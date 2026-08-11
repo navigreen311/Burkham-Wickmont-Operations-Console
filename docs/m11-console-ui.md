@@ -107,9 +107,10 @@ a risk-event meaning are all strings somebody else wrote.
 
 ## What it does not do
 
-**No writes from the page.** The actions that were already API routes — compliance transition,
-Firewall trigger, consent, placement — are now behind a session, and they have no buttons. Named as
-absent rather than half-built.
+**Writes are built** — see [`m11-console-writes.md`](m11-console-writes.md). Compliance transitions,
+the Firewall trigger, consent and opening a file all have buttons now, and every one of them goes
+through the middleware chain, which none of them did before (ADR-0033). Placement still has no
+button.
 
 **No enrolment surface.** The first Console credential is a bootstrap step through
 `beginStaffEnrolment` / `confirmStaffEnrolment`, not a self-service page. Console access is sight of

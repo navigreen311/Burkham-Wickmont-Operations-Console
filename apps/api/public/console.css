@@ -109,6 +109,21 @@ label {
   color: var(--muted);
 }
 
+select {
+  font: inherit;
+  padding: 0.5rem 0.6rem;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  width: 100%;
+  background: #fff;
+}
+
+/* The trace. Monospace because it is a machine's account of what it did, and reads as one. */
+#trace-list {
+  font-family: ui-monospace, 'Cascadia Mono', Menlo, monospace;
+  font-size: 0.88rem;
+}
+
 input {
   font: inherit;
   padding: 0.55rem 0.6rem;

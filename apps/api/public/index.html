@@ -113,6 +113,15 @@
       <p id="clients-summary"></p>
       <ul id="clients-list"></ul>
       <button id="clients-more" type="button" hidden>Show more</button>
+
+      <section id="section-new-client" hidden>
+        <h3>Open a new file</h3>
+        <form id="form-new-client">
+          <label for="new-client-name">Legal name</label>
+          <input id="new-client-name" name="legalName" type="text" required />
+          <button type="submit">Open file</button>
+        </form>
+      </section>
     </main>
 
     <!-- One client's file --------------------------------------------------- -->
@@ -135,6 +144,78 @@
       <section>
         <h3>Firewall</h3>
         <p id="client-firewall"></p>
+      </section>
+
+      <!-- Writes. Each section is present only if the signed-in actor's level permits it. -->
+      <section id="section-compliance" hidden>
+        <h3>Record a compliance determination</h3>
+        <form id="form-compliance">
+          <label for="compliance-to">New state</label>
+          <select id="compliance-to" name="to" required>
+            <option value="pending_assessment">pending_assessment</option>
+            <option value="pass">pass</option>
+            <option value="pass_with_findings">pass_with_findings</option>
+            <option value="needs_review">needs_review</option>
+            <option value="fail">fail</option>
+          </select>
+
+          <label for="compliance-reason">Reason</label>
+          <input id="compliance-reason" name="reason" type="text" required />
+
+          <label for="finding-code">Finding code (optional)</label>
+          <input id="finding-code" name="findingCode" type="text" />
+
+          <label for="finding-summary">Finding summary (optional)</label>
+          <input id="finding-summary" name="findingSummary" type="text" />
+
+          <!--
+            The consequence is written out before the click, not after. Moving a client to `fail`
+            or `needs_review` freezes placement; the operator should read what the state does
+            rather than infer it from the word.
+          -->
+          <p id="compliance-consequence" class="muted"></p>
+
+          <button type="submit" id="compliance-submit">Record</button>
+        </form>
+      </section>
+
+      <section id="section-firewall-trigger" hidden>
+        <h3>Trigger the Funding Ethics Firewall</h3>
+        <form id="form-firewall">
+          <label for="firewall-reason">Reason</label>
+          <input id="firewall-reason" name="reason" type="text" required />
+          <p class="muted">
+            This freezes placement for this client until Compliance clears it with human approval.
+            Clearing one is not offered here.
+          </p>
+          <button type="submit" id="firewall-submit">Trigger</button>
+        </form>
+      </section>
+
+      <section id="section-consent" hidden>
+        <h3>Record a consent</h3>
+        <form id="form-consent">
+          <label for="consent-kind">Kind</label>
+          <input id="consent-kind" name="kind" type="text" required />
+
+          <label for="consent-scope">Scope</label>
+          <input id="consent-scope" name="scope" type="text" required />
+
+          <p class="muted">
+            Authorisation is scoped to a specific application, never blanket. Record what the client
+            actually agreed to.
+          </p>
+          <button type="submit">Record consent</button>
+        </form>
+      </section>
+
+      <!--
+        The middleware trace for the last write attempt. Shown on a refusal as well as a success,
+        because "which step blocked this" is the first question anyone asks.
+      -->
+      <section id="section-trace" hidden>
+        <h3>What the chain did</h3>
+        <ul id="trace-list"></ul>
       </section>
 
       <section>
