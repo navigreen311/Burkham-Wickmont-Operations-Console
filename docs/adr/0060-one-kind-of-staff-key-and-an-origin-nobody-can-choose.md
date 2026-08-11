@@ -26,7 +26,7 @@ Every staff key is registered `residentKey: 'required'` and `userVerification: '
 with `requireUserVerification: true` at registration and at **every** assertion afterwards — sign-in,
 reauthentication, and the switch.
 
-There is no second-factor mode for staff, because a staff key exists to *remove* the password
+There is no second-factor mode for staff, because a staff key exists to _remove_ the password
 (ADR-0059) rather than to sit beside it. A key that only ever has to be a password replacement must
 carry possession and verification in one gesture from the moment it is registered.
 
@@ -48,7 +48,7 @@ argument:
 
 Both sit beside `CONSOLE_TENANT_ID` and `CONSOLE_TRUST_PROXY` as settings the process refuses to
 start without. `CONSOLE_ORIGIN` is additionally rejected if it carries a path, because a value that
-can never match what a browser reports fails as *"every key is broken"* rather than as a
+can never match what a browser reports fails as _"every key is broken"_ rather than as a
 configuration error — which is a long afternoon.
 
 ### `CONSOLE_RP_NAME` does take a default, and the difference is the point

@@ -34,11 +34,11 @@ would be an oracle telling an attacker which addresses to stop phishing.
 The switch requires three things, and each removes a different way for this to become a lockout or a
 lie:
 
-| | why |
-| --- | --- |
-| **two keys** | one is one lost object away from no way in at all, and the remedy is a colleague |
-| **a live assertion** | proving a key that could let them back in works *right now*, not that one is on record. ADR-0029 refuses to let somebody close the door on the strength of a credential they cannot demonstrate |
-| **a session** | the Console's own gate, applied by the route |
+|                      | why                                                                                                                                                                                             |
+| -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **two keys**         | one is one lost object away from no way in at all, and the remedy is a colleague                                                                                                                |
+| **a live assertion** | proving a key that could let them back in works _right now_, not that one is on record. ADR-0029 refuses to let somebody close the door on the strength of a credential they cannot demonstrate |
+| **a session**        | the Console's own gate, applied by the route                                                                                                                                                    |
 
 The confirmation for the switch must be a **key**, never the password. A password would prove the
 factor being retired still works, which is not what needs proving.
@@ -52,7 +52,7 @@ reset token, and no address to send one to.
 That is the trade, and it is affordable for a reason the client case does not have: **staff have a
 Level 3 colleague who is already authenticated inside the firm.**
 `restoreStaffPasswordSignIn` is one recorded act — a named human at Authority Level 3, a written
-verification basis, never the subject themselves — and it is precisely ADR-0029's *second* permitted
+verification basis, never the subject themselves — and it is precisely ADR-0029's _second_ permitted
 route rather than its forbidden first one. That ADR refuses to let an **email channel** re-open the
 door because an attacker can take an inbox; it explicitly permits a Level 3 human with a recorded
 basis. Staff have the second without having the first at all.
@@ -95,7 +95,7 @@ for the key, so its resistance is never engaged.
 
 **One key enough to switch off.** Turns the strongest protection available into the most likely
 lockout, and hands the recovery to whoever is on the telephone. ADR-0029 rejected it for a client
-who *had* an email channel; the case is stronger here.
+who _had_ an email channel; the case is stronger here.
 
 **Keep TOTP as a fallback on a passkey-only account.** It is the phishable factor. A fallback that
 defeats the property is not a fallback, it is the original problem with a longer name.

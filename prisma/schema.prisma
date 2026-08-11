@@ -3942,6 +3942,8 @@ model VendorEvidence {
   @@index([vendor, kind, withdrawnAt])
   @@map("vendor_evidence")
   @@schema("admin")
+}
+
 /// A WebAuthn credential held by a staff Actor - ADR-0059.
 ///
 /// **There is only one kind.** A client may register a key as a second factor OR as a passkey, and

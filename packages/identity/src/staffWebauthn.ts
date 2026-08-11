@@ -268,7 +268,10 @@ export const completeStaffKeyRegistration = async (input: {
   if (label.length < 2) {
     // Two keys are indistinguishable without one, and a key somebody cannot identify is one they
     // will not dare remove.
-    return refused('A key needs a name you will recognise.', 'Blueprint 11.1 - identity and access');
+    return refused(
+      'A key needs a name you will recognise.',
+      'Blueprint 11.1 - identity and access',
+    );
   }
 
   const confirmed = await confirmStaffIdentity({
@@ -337,7 +340,12 @@ export const completeStaffKeyRegistration = async (input: {
     tenantId: input.tenantId,
     type: 'identity.staff.key_registered',
     actor: { id: input.actorId, kind: 'human' },
-    payload: { actorId: input.actorId, keyId: row.id, label, confirmedWith: confirmed.value.method },
+    payload: {
+      actorId: input.actorId,
+      keyId: row.id,
+      label,
+      confirmedWith: confirmed.value.method,
+    },
   });
 
   return ok(toStaffKey(row));
@@ -767,10 +775,7 @@ export const staffSecurityPosture = async (
     keyTotal: rows.length,
     passwordSignInEnabled: disabledAt === null,
     passwordSignInDisabledAt: disabledAt?.toISOString() ?? null,
-    keysNeededToDisablePassword: Math.max(
-      0,
-      STAFF_KEYS_REQUIRED_TO_DISABLE_PASSWORD - rows.length,
-    ),
+    keysNeededToDisablePassword: Math.max(0, STAFF_KEYS_REQUIRED_TO_DISABLE_PASSWORD - rows.length),
     /**
      * The one honest summary.
      *

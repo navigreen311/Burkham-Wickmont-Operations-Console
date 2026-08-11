@@ -126,7 +126,11 @@ export const registerStaffKeyRoutes = (context: StaffKeysRouteContext): void => 
     jsonBody,
     asyncRoute(async (req, res) => {
       const body = req.body as { response?: unknown };
-      if (body.response === undefined || body.response === null || typeof body.response !== 'object') {
+      if (
+        body.response === undefined ||
+        body.response === null ||
+        typeof body.response !== 'object'
+      ) {
         // The same sentence a bad assertion gets. A message naming the missing field would tell a
         // caller what this endpoint wants, and this endpoint is reachable by anybody.
         send(

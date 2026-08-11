@@ -49,11 +49,11 @@ report `phishingResistant: true` the entire time.
 So the same end state as ADR-0030 is reached by **refusing** rather than by **destroying**, because
 the recovery paths differ:
 
-| | client | staff |
-| --- | --- | --- |
-| password after the switch | destroyed (ADR-0030) | kept, refused for auth and for confirmation |
-| why | a reset can mint a new one | nothing can mint a new one |
-| route back | reset token by email, or a Level 3 human | a Level 3 human, only |
+|                           | client                                   | staff                                       |
+| ------------------------- | ---------------------------------------- | ------------------------------------------- |
+| password after the switch | destroyed (ADR-0030)                     | kept, refused for auth and for confirmation |
+| why                       | a reset can mint a new one               | nothing can mint a new one                  |
+| route back                | reset token by email, or a Level 3 human | a Level 3 human, only                       |
 
 ### Recovery is therefore one column
 
