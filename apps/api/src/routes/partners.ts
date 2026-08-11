@@ -46,7 +46,6 @@ import {
   findPartner,
   outstandingQualifications,
   partnersFor,
-  payableToPartner,
   referralSummary,
   requirementsFor,
   standingFor,
@@ -163,16 +162,14 @@ export const registerPartnerRoutes = (context: PartnerRouteContext): void => {
       }
 
       const track = partner.value.track as PartnerTrack;
-      const [standing, referrals, aggregate, completions, claims, refer, payable] =
-        await Promise.all([
-          standingFor(tenantId, partnerId, track, at),
-          referralSummary(tenantId, partnerId),
-          aggregateStatus(tenantId, partnerId),
-          completionsFor(tenantId, partnerId),
-          approvedClaimsFor(tenantId, partnerId),
-          canRefer(tenantId, partnerId, at),
-          payableToPartner(partnerId),
-        ]);
+      const [standing, referrals, aggregate, completions, claims, refer] = await Promise.all([
+        standingFor(tenantId, partnerId, track, at),
+        referralSummary(tenantId, partnerId),
+        aggregateStatus(tenantId, partnerId),
+        completionsFor(tenantId, partnerId),
+        approvedClaimsFor(tenantId, partnerId),
+        canRefer(tenantId, partnerId, at),
+      ]);
 
       send(
         res,
@@ -197,6 +194,19 @@ export const registerPartnerRoutes = (context: PartnerRouteContext): void => {
           /** The anonymity rule, applied. See `releasableAggregate` and the module header. */
           aggregateStatus: releasableAggregate(aggregate),
           /**
+           * **No payout figure, and its absence is the point.**
+           *
+           * This read used to carry `payableToPartner`, which was 8.2's `not_built` stub taking a
+           * partner id. 8.2 now exists, and the function it became COMPUTES AND RECORDS a payout -
+           * it takes a period, a `computedBy` and an actor, and it writes. Calling it from here
+           * would mean opening a partner's page computed a payout and wrote a Ledger event, every
+           * time, attributed to whoever happened to be looking.
+           *
+           * A payout is an act with a period and an approver. It belongs on a surface that says so,
+           * and that surface is not built - 8.2 shipped as an engine. Named here rather than
+           * left as a field somebody removes without noticing what it was.
+           */
+          /**
            * What the gate says today, with its reason when it refuses.
            *
            * Two states carried separately: `permitted` is the answer, `reason` is why not. A page
@@ -209,15 +219,15 @@ export const registerPartnerRoutes = (context: PartnerRouteContext): void => {
             principle: refer.status === 'refused' ? refer.principle : null,
           },
           /**
-           * What they are owed, which is `not_built` and will stay so until 8.2.
-           *
-           * Forwarded rather than omitted because a partner page with no payout section reads as a
-           * partner who is owed nothing.
+           * Kept as a field rather than dropped, because a partner page with no payout section
+           * reads as a partner who is owed nothing - which is a different statement and not one
+           * this route can make.
            */
           payable: {
-            status: payable.status,
-            reason: payable.status === 'not_built' ? payable.reason : null,
-            module: payable.status === 'not_built' ? payable.module : null,
+            status: 'no_surface',
+            reason:
+              '8.2 Partner Agreement & Payout Center computes and RECORDS a payout: it needs a period, a computedBy and an actor. A read cannot supply those, and a page that opened would have written one. The engine exists; the surface does not.',
+            module: '8.2 Partner Agreement & Payout Center',
           },
           writes: { available: [], blocked: BLOCKED_WRITES },
         }),
