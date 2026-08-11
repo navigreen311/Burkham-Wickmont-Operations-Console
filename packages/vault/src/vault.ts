@@ -596,7 +596,10 @@ export const accessLog = async (
 ): Promise<AccessLogEntry[]> => {
   const rows = await db().vaultAccessLog.findMany({
     where: { tenantId, documentId },
-    orderBy: [{ at: 'asc' }, { id: 'asc' }],
+    // One request writes several entries - a refusal, then a retry, then a read - and they share a
+    // millisecond routinely. "Refused, then admitted" and "admitted, then refused" are different
+    // findings, so the order here is evidence and `seq` is what makes it one (ADR-0040).
+    orderBy: [{ at: 'asc' }, { seq: 'asc' }],
   });
   return rows.map((row) => ({
     actorId: row.actorId,

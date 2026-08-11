@@ -112,17 +112,11 @@ export const activeFactorsFor = async (
 ): Promise<readonly ActiveFactor[]> => {
   const factors = await db().clientMfaFactor.findMany({
     where: { tenantId, clientUserId, removedAt: null, confirmedAt: { not: null } },
-    // **`id` is the tie-break, and it buys less than it looks like it buys.** `confirmedAt` is a
-    // millisecond timestamp, so two keys confirmed in one sitting land on the same value and
-    // Postgres then returns them in whatever order it likes. A secondary key makes the result
-    // STABLE - the same rows come back in the same order every time - which is what stops a list
-    // reshuffling under a reload.
-    //
-    // It does NOT recover the order they were created in, because `id` is a random UUID. At
-    // millisecond granularity nothing here decides which of two same-millisecond rows came first,
-    // and a caller must not read one. Third sighting of the pattern ADR-0023's PR found. See
-    // ADR-0034.
-    orderBy: [{ confirmedAt: 'asc' }, { id: 'asc' }],
+    // `confirmedAt` is a millisecond timestamp, so two keys confirmed in one sitting land on the
+    // same value. The tie-break is `seq`, a Postgres sequence, which resolves that to the order the
+    // rows were actually written - the thing a random-UUID tie-break could not do however stable it
+    // made the result. ADR-0034 recorded the limitation; ADR-0040 removed it.
+    orderBy: [{ confirmedAt: 'asc' }, { seq: 'asc' }],
   });
 
   return factors.map((factor) => ({
@@ -302,7 +296,12 @@ export const confirmMfaEnrolment = async (input: {
       confirmedAt: null,
       removedAt: null,
     },
-    orderBy: [{ createdAt: 'desc' }, { id: 'asc' }],
+    // "The most recent pending factor", and it has to actually be the most recent one: two
+    // enrolments started in the same millisecond used to resolve to whichever UUID sorted higher,
+    // so this could confirm the older of the two against a code generated from the newer. `seq`
+    // descends with `createdAt` rather than against it - a tie-break sorted the other way would
+    // pick the oldest of a tied group and be wrong in exactly the same silent manner.
+    orderBy: [{ createdAt: 'desc' }, { seq: 'desc' }],
   });
   // `secretCiphertext` is nullable since WebAuthn, which has no shared secret. A pending factor
   // without one is not an authenticator app waiting to be confirmed.
