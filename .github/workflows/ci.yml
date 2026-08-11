@@ -81,6 +81,50 @@ jobs:
       - name: Unit, integration and invariant tests
         run: pnpm test
 
+  browser:
+    name: Browser end-to-end
+    runs-on: ubuntu-latest
+    # Its own job because it needs a browser binary, which the other three do not. Splitting it
+    # keeps their runtime where it was, and makes a failure here say "the page" rather than
+    # appearing as one red test among a thousand.
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: bwc_console_ci
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm db:generate
+      - name: Apply migrations
+        run: pnpm db:deploy
+      # Chromium only. The virtual authenticator these tests rest on is a Chrome DevTools Protocol
+      # feature, and a Firefox or WebKit run would cover the DOM layer - the layer with the least
+      # in it - at the cost of two more browser downloads on every run.
+      - name: Install Chromium
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Browser end-to-end tests
+        run: pnpm test:e2e
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-traces
+          path: test-results/
+          retention-days: 7
+
   invariants:
     name: Invariants (named check)
     runs-on: ubuntu-latest
