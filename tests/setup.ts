@@ -107,6 +107,11 @@ export const cleanupTenant = async (tenantId: string): Promise<void> => {
   await prisma.leadActivity.deleteMany({ where: { tenantId } });
   await prisma.lead.deleteMany({ where: { tenantId } });
   await prisma.taskNotification.deleteMany({ where: { tenantId } });
+  // 7.5: holds, schedules and deletion requests reference clients and document kinds across
+  // schema boundaries without FKs, so nothing cascades them.
+  await prisma.legalHold.deleteMany({ where: { tenantId } });
+  await prisma.retentionSchedule.deleteMany({ where: { tenantId } });
+  await prisma.deletionRequest.deleteMany({ where: { tenantId } });
   // 5.5 attempts reference the engagement, the client and a provider across three schema
   // boundaries, so there is no FK to cascade and the rows would otherwise outlive all three.
   await prisma.fundingAttempt.deleteMany({ where: { tenantId } });

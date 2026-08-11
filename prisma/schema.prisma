@@ -4012,3 +4012,209 @@ model FundingAttempt {
   @@map("funding_attempts")
   @@schema("outcomes")
 }
+
+// ---------------------------------------------------------------------------
+// 7.5 Legal Hold & Record Retention
+//
+// The vault (3.2) already refuses to delete a document under legal hold, and
+// already refuses to delete one with no resolved retention schedule - saying,
+// honestly, that 7.2 and 7.5 do not exist. This module is what those refusals
+// were waiting for: the schedules, and the holds.
+//
+// Two shapes, and the asymmetry between them is the design:
+//
+//   A HOLD is a MATTER, not a flag on a document. A litigation hold covers a
+//   client's file, including the statement they upload tomorrow. Storing it as
+//   a boolean per document means propagating on placement, and anything
+//   arriving after the propagation is silently outside the hold - which is the
+//   classic way an organisation destroys evidence while believing it preserved
+//   it. Holds are therefore EVALUATED at the moment of the decision, never
+//   copied onto rows.
+//
+//   A SCHEDULE is an AUTHORISATION. Absence of a hold means not held; absence
+//   of a schedule means NOT PERMITTED TO DELETE. The two absences point in
+//   opposite directions and both are right, because a hold restricts and a
+//   schedule permits. ADR-0007 and ADR-0009 already say absence is not
+//   permission; this is the same rule read carefully enough to notice which
+//   side of it each record is on.
+// ---------------------------------------------------------------------------
+
+/// Why a hold exists. Blueprint 7.5 names litigation, complaint and regulator request; a client
+/// dispute is added because 6.3 produces them and they are the fourth thing that stops a deletion.
+enum LegalHoldKind {
+  litigation
+  complaint
+  regulator_request
+  client_dispute
+
+  @@schema("retention")
+}
+
+/// How wide a hold reaches.
+///
+/// `client` is the common case and the one a boolean-per-document design gets wrong. `tenant` is
+/// deliberately available and deliberately blunt: a regulator asking for everything is a real
+/// event, and the alternative is a hundred per-client holds somebody has to remember to place.
+enum LegalHoldScope {
+  tenant
+  client
+  document_kind
+
+  @@schema("retention")
+}
+
+/// A litigation, complaint or regulator hold.
+///
+/// **Evaluated, never propagated.** Nothing here writes to `vault.vault_documents`. The vault asks
+/// this table at the moment somebody tries to delete or export, so a document uploaded after the
+/// hold was placed is covered by it without anybody re-running anything.
+///
+/// Released rather than deleted: which hold was in force when a document was destroyed is the
+/// question a spoliation claim turns on, and a deleted row cannot answer it.
+model LegalHold {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+
+  kind  LegalHoldKind
+  scope LegalHoldScope
+
+  /// Set when `scope` is `client`. Null for a tenant-wide hold - and null MEANS tenant-wide here
+  /// rather than meaning unknown, which is why `scope` is stored explicitly beside it. A nullable
+  /// column carrying two meanings is how a hold ends up covering nothing.
+  clientId String? @db.Uuid
+
+  /// Set when `scope` is `document_kind`. Uses the vault's own enum across the schema boundary, so
+  /// a kind that exists in one module and not the other is a compile error rather than a hold that
+  /// silently matches nothing.
+  documentKind DocumentKind?
+
+  /// The matter. A case number, a complaint reference, a regulator's request id - whatever a
+  /// person would use to look it up. Required: a hold nobody can trace to a matter is a hold
+  /// nobody will ever dare release.
+  matterReference String
+
+  /// Why, in the words of whoever placed it. Read back to a court, potentially.
+  reason String
+
+  placedBy String   @db.Uuid
+  placedAt DateTime
+
+  /// Blueprint 7.5 does not ask for a cadence and one is here anyway, because a hold that outlives
+  /// its matter is the cost of getting the direction of harm right. See ADR-0042: an overdue
+  /// review KEEPS HOLDING and is flagged, exactly as 6.4's listing does and for the same reason.
+  reviewCadenceDays Int       @default(180)
+  lastReviewedAt    DateTime?
+  lastReviewedBy    String?   @db.Uuid
+
+  releasedAt    DateTime?
+  releasedBy    String?   @db.Uuid
+  releaseReason String?
+
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, releasedAt])
+  @@index([tenantId, clientId, releasedAt])
+  @@map("legal_holds")
+  @@schema("retention")
+}
+
+/// How long a document of a given kind must be kept.
+///
+/// **A schedule is an authorisation to destroy, which is why absence blocks.** The vault refuses to
+/// delete a document with no resolved schedule, and it is right to: over-retention is a liability
+/// and destroying a record a regulator was entitled to see is the irreversible one.
+///
+/// State-specific rows override the default for the same kind. `stateCode` null IS the default - a
+/// sentinel row rather than a separate table, so "what applies in Texas" is one query with an
+/// ordering rather than two queries and a merge somebody will get wrong.
+model RetentionSchedule {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+
+  documentKind DocumentKind
+
+  /// Two-letter state code, or null for the default that applies where no state rule is recorded.
+  stateCode String?
+
+  /// Months from the document's own date. Months rather than days because that is the unit every
+  /// statute is written in, and converting at write time loses which one was meant.
+  retainMonths Int
+
+  /// Provenance, per Decision D, and non-nullable for the same reason a lender rule's is: a
+  /// retention period nobody researched, presented with the same confidence as one read out of a
+  /// statute, is the failure principle 8 exists to prevent. Here it decides whether a document is
+  /// destroyed.
+  ///
+  /// `issuer_rule` is the tag for a period read from a statute or a regulator's guidance - the
+  /// enum is reused from 5.2 rather than duplicated, because Decision D makes provenance
+  /// portfolio-wide vocabulary and a second enum would drift.
+  provenanceTag ProvenanceTag
+
+  /// Populated for `issuer_rule`: the citation, when it was last checked, and by whom.
+  sourceUrl    String?
+  lastVerified DateTime?
+  verifiedBy   String?
+
+  /// Populated for `unresearched_default` - why the assumption is a reasonable one to hold.
+  rationale String?
+
+  recordedBy String   @db.Uuid
+  createdAt  DateTime @default(now())
+
+  /// Superseded rather than updated. What the schedule said when a document was destroyed is the
+  /// question an audit asks, and an overwritten row cannot answer it.
+  supersededAt DateTime?
+  supersededBy String?   @db.Uuid
+
+  @@index([tenantId, documentKind, stateCode, supersededAt])
+  @@index([tenantId, provenanceTag])
+  @@map("retention_schedules")
+  @@schema("retention")
+}
+
+/// Blueprint 7.5's "client data deletion request workflow (GDPR / CCPA analog)".
+enum DeletionRequestStatus {
+  received
+  refused
+  approved
+  completed
+
+  @@schema("retention")
+}
+
+/// A client asking for their data to be deleted.
+///
+/// Recorded even when it will be refused, and **especially** then: "we received your request on the
+/// 3rd and refused it on the 5th because these records are under a litigation hold" is the answer a
+/// regulator wants, and a request that was quietly dropped produces no answer at all.
+model DeletionRequest {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+
+  clientId String @db.Uuid
+
+  /// Who asked. A client user, or a staff member recording a request made by phone or letter.
+  requestedBy String   @db.Uuid
+  requestedAt DateTime
+
+  /// In the client's words where they gave them.
+  requestDetail String
+
+  status DeletionRequestStatus @default(received)
+
+  decidedAt DateTime?
+  decidedBy String?   @db.Uuid
+  /// Required on a refusal. What blocked it: a hold, a retention period, or both.
+  decisionReason String?
+
+  completedAt DateTime?
+  /// How many documents were destroyed. Recorded because "we deleted everything" is not a claim
+  /// anybody should have to take on trust.
+  documentsDeleted Int?
+
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, clientId, status])
+  @@map("deletion_requests")
+  @@schema("retention")
+}

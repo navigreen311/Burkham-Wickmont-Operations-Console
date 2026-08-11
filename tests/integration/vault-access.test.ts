@@ -359,7 +359,11 @@ describe('legal hold', () => {
     await setRetention(fx.tenant.id, doc.id, new Date('2020-01-01'));
     await setLegalHold(fx.tenant.id, doc.id, 'Litigation hold', fx.human.id);
 
-    const removed = await remove(fx.tenant.id, doc.id, fx.human.id);
+    const removed = await remove({
+      tenantId: fx.tenant.id,
+      documentId: doc.id,
+      actorId: fx.human.id,
+    });
     expect(removed.status).toBe('refused');
 
     expect((await forClient(fx.tenant.id, clientId)).some((d) => d.id === doc.id)).toBe(true);
@@ -394,16 +398,27 @@ describe('legal hold', () => {
 });
 
 describe('retention', () => {
-  it('refuses deletion when no schedule has been resolved, reporting the missing module', async () => {
+  it('refuses deletion when no schedule has been resolved, and no longer calls that not_built', async () => {
     const doc = await storeClean();
 
-    const removed = await remove(fx.tenant.id, doc.id, fx.human.id);
+    const removed = await remove({
+      tenantId: fx.tenant.id,
+      documentId: doc.id,
+      actorId: fx.human.id,
+    });
 
     // Over-retention is a liability; destroying a document a regulator was entitled to see is
-    // irreversible. With no rules available, the safe default is to keep - and to say why.
-    expect(removed.status).toBe('not_built');
-    if (removed.status === 'not_built') {
-      expect(removed.module).toMatch(/Regulatory Engine|Record Retention/i);
+    // irreversible. With no schedule, the safe default is still to keep - and to say why.
+    //
+    // **The status changed and the behaviour did not, which is the point.** This used to be
+    // `not_built`, naming 7.2 and 7.5 as the modules that would resolve a schedule. 7.5 exists as
+    // of this commit, so `not_built` would now be a lie about this system's own shape - and
+    // `empty` is never `not_built`. The honest answer is `no_data`: we looked, and nobody has
+    // recorded a retention period for this document kind. See ADR-0042.
+    expect(removed.status).toBe('no_data');
+    if (removed.status === 'no_data') {
+      expect(removed.reason).toMatch(/No retention schedule is recorded/);
+      expect(removed.reason).toMatch(/bank_statement/);
     }
   });
 
@@ -411,7 +426,12 @@ describe('retention', () => {
     const doc = await storeClean();
     await setRetention(fx.tenant.id, doc.id, new Date('2030-01-01'));
 
-    const removed = await remove(fx.tenant.id, doc.id, fx.human.id, new Date('2026-08-10'));
+    const removed = await remove({
+      tenantId: fx.tenant.id,
+      documentId: doc.id,
+      actorId: fx.human.id,
+      now: new Date('2026-08-10'),
+    });
     expect(removed.status).toBe('refused');
   });
 
@@ -419,7 +439,12 @@ describe('retention', () => {
     const doc = await storeClean();
     await setRetention(fx.tenant.id, doc.id, new Date('2020-01-01'));
 
-    const removed = await remove(fx.tenant.id, doc.id, fx.human.id, new Date('2026-08-10'));
+    const removed = await remove({
+      tenantId: fx.tenant.id,
+      documentId: doc.id,
+      actorId: fx.human.id,
+      now: new Date('2026-08-10'),
+    });
     expect(removed.status).toBe('ok');
 
     // Soft-deleted: gone from listings and unreadable, with the ledger record intact.

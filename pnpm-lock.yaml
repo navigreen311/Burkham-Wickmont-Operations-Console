@@ -57,9 +57,6 @@ importers:
 
   apps/api:
     dependencies:
-      '@bwc/billing':
-        specifier: workspace:*
-        version: link:../../packages/billing
       '@bwc/calls':
         specifier: workspace:*
         version: link:../../packages/calls
@@ -69,9 +66,6 @@ importers:
       '@bwc/consent':
         specifier: workspace:*
         version: link:../../packages/consent
-      '@bwc/contracts':
-        specifier: workspace:*
-        version: link:../../packages/contracts
       '@bwc/core':
         specifier: workspace:*
         version: link:../../packages/core
@@ -114,15 +108,6 @@ importers:
       '@bwc/tenancy':
         specifier: workspace:*
         version: link:../../packages/tenancy
-      '@bwc/vault':
-        specifier: workspace:*
-        version: link:../../packages/vault
-      '@bwc/workbench':
-        specifier: workspace:*
-        version: link:../../packages/workbench
-      '@bwc/workflow':
-        specifier: workspace:*
-        version: link:../../packages/workflow
       dotenv:
         specifier: ^16.4.7
         version: 16.6.1
@@ -939,6 +924,25 @@ importers:
         specifier: ^5.8.3
         version: 5.9.3
 
+  packages/retention:
+    dependencies:
+      '@bwc/core':
+        specifier: workspace:*
+        version: link:../core
+      '@bwc/db':
+        specifier: workspace:*
+        version: link:../db
+      '@bwc/identity':
+        specifier: workspace:*
+        version: link:../identity
+      '@bwc/ledger':
+        specifier: workspace:*
+        version: link:../ledger
+    devDependencies:
+      typescript:
+        specifier: ^5.8.3
+        version: 5.9.3
+
   packages/risk:
     dependencies:
       '@bwc/core':
@@ -1038,6 +1042,9 @@ importers:
       '@bwc/ledger':
         specifier: workspace:*
         version: link:../ledger
+      '@bwc/retention':
+        specifier: workspace:*
+        version: link:../retention
       '@bwc/tenancy':
         specifier: workspace:*
         version: link:../tenancy

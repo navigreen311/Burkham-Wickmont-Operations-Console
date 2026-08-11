@@ -146,6 +146,19 @@ export const EVENT_TYPES = [
   'billing.refund.declined',
   'billing.funding_outcome.recorded',
   'billing.funding_outcome.funded',
+  // Legal Hold & Record Retention (7.5). A refused deletion request is an event because "we
+  // received your request and did not act on it" is the fact a data-subject-rights regime asks you
+  // to be able to show, and a request that was quietly dropped produces no record at all.
+  // Neither the hold's reason nor the client's request text reaches a payload: both are free text
+  // about a named person, and the Ledger is the one store here that cannot be corrected.
+  'retention.hold.placed',
+  'retention.hold.reviewed',
+  'retention.hold.released',
+  'retention.schedule.recorded',
+  'retention.deletion.requested',
+  'retention.deletion.approved',
+  'retention.deletion.refused',
+  'retention.deletion.completed',
   // Funding Outcome Ledger (5.5). `declined` and `withdrawn` are the types that did not exist
   // before this module, and they are the reason it does: a chain carrying only approvals cannot
   // answer what share of attempts were approved. The decline REASON is deliberately not in its
