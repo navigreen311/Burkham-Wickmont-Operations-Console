@@ -180,6 +180,169 @@
         <p id="obligations-summary"></p>
         <ul id="obligations-list"></ul>
       </section>
+
+      <!-- Compliance & governance surfaces: 7.2, 7.1, 5.4, 7.4 + 4.5 ---------
+        Inside the overview deliberately, and it is the whole of the integration. The existing view
+        switcher hides `view-overview` when nobody is signed in, so these blocks inherit that and no
+        module here has to know anything about `console.js` - which is a file this slice does not
+        own and another branch is editing.
+
+        Each of the four modules under /console/views/ owns exactly one block below and wires only
+        its own ids. The scripts sit here rather than in <head> so this is one contiguous edit to a
+        file two branches are changing.
+      -->
+
+      <!-- 7.2 ---------------------------------------------------------------
+        First, and not by accident. No state is activated, so middleware step 5 refuses every
+        client-facing action and the firm cannot serve anybody. This is the block that clears it.
+      -->
+      <section id="section-regulatory">
+        <h3>State activation — 7.2 Regulatory Engine</h3>
+        <p id="regulatory-headline" class="alarm"></p>
+        <p><button id="regulatory-load" type="button">Load state coverage</button></p>
+        <p id="regulatory-summary"></p>
+        <ul id="regulatory-states"></ul>
+        <p id="regulatory-priority-gap" class="muted"></p>
+
+        <section id="section-regulatory-state" hidden>
+          <h4 id="regulatory-state-name"></h4>
+          <p id="regulatory-state-standing"></p>
+          <p id="regulatory-state-module"></p>
+
+          <p id="regulatory-state-history-summary"></p>
+          <ul id="regulatory-state-history"></ul>
+
+          <p id="regulatory-state-disclosures-summary"></p>
+          <ul id="regulatory-state-disclosures"></ul>
+
+          <p id="regulatory-state-law-summary"></p>
+          <ul id="regulatory-state-law"></ul>
+
+          <!--
+            The requirement is shown above the form, from the module rather than from this markup.
+            An operator should read what activation needs before meeting the refusal that says it.
+          -->
+          <p id="regulatory-state-requires" class="muted"></p>
+
+          <form id="form-activate">
+            <label for="activate-counsel">Reviewing counsel</label>
+            <input id="activate-counsel" name="reviewedBy" type="text" required />
+
+            <label for="activate-date">Date counsel reviewed it</label>
+            <!--
+              No default, and deliberately not today's date. Defaulting it would make the system
+              assert when a person did their professional work, which is a claim nobody made.
+            -->
+            <input id="activate-date" name="reviewedAt" type="date" required />
+
+            <label for="activate-document">Document reference</label>
+            <input id="activate-document" name="documentReference" type="text" required />
+
+            <label for="activate-notes">Notes (optional)</label>
+            <input id="activate-notes" name="notes" type="text" />
+
+            <p class="muted">
+              Activation requires a <strong>human</strong> at Authority Level 3, and the level is
+              read from the recorded actor rather than from this page. A Level 3 village agent is
+              refused.
+            </p>
+            <button type="submit" id="activate-submit">Activate this state</button>
+          </form>
+
+          <form id="form-withdraw">
+            <label for="withdraw-reason">Reason for withdrawal</label>
+            <input id="withdraw-reason" name="reason" type="text" required />
+            <p class="muted">
+              Withdrawal stops client work in this state on the next action. Same authority as
+              activation and no lower.
+            </p>
+            <button type="submit" id="withdraw-submit">Withdraw this state</button>
+          </form>
+
+          <!-- Which checks ran, after an attempt. Shown on a refusal as well as a success. -->
+          <p id="regulatory-gate-note" class="muted"></p>
+          <ul id="regulatory-gate"></ul>
+        </section>
+      </section>
+
+      <!-- 7.1 --------------------------------------------------------------- -->
+      <section id="section-evidence">
+        <h3>Evidence file — 7.1 Compliance Evidence Vault</h3>
+        <form id="form-evidence">
+          <label for="evidence-client">Client id</label>
+          <input id="evidence-client" name="clientId" type="text" />
+          <button type="submit">Assemble the file</button>
+        </form>
+
+        <p id="evidence-summary"></p>
+        <p id="evidence-integrity"></p>
+        <!--
+          The coverage map, one row per source, each carrying its verdict. `empty` and `not_built`
+          both produce no rows and mean completely different things; neither is ever shown as a
+          bare count.
+        -->
+        <p id="evidence-coverage-summary"></p>
+        <ul id="evidence-coverage"></ul>
+        <p id="evidence-gaps-summary"></p>
+        <ul id="evidence-gaps"></ul>
+        <p id="evidence-sections-note" class="muted"></p>
+
+        <p id="evidence-exports-summary"></p>
+        <ul id="evidence-exports"></ul>
+        <p id="evidence-export-unavailable" class="muted"></p>
+        <p id="evidence-reconciliation"></p>
+      </section>
+
+      <!-- 5.4 --------------------------------------------------------------- -->
+      <section id="section-governance">
+        <h3>Provider governance — 5.4 Capital Product Governance Board</h3>
+        <p><button id="governance-load" type="button">Load the review queue</button></p>
+        <p id="governance-queue-summary"></p>
+        <ul id="governance-queue"></ul>
+
+        <p id="governance-restrictions-summary"></p>
+        <ul id="governance-restrictions"></ul>
+        <p id="governance-restrictions-note" class="muted"></p>
+
+        <form id="form-governance-provider">
+          <label for="governance-provider">Provider id</label>
+          <input id="governance-provider" name="providerId" type="text" />
+          <button type="submit">Open provider</button>
+        </form>
+        <p id="governance-provider-standing"></p>
+        <p id="governance-provider-record"></p>
+        <p id="governance-decisions-summary"></p>
+        <ul id="governance-decisions"></ul>
+        <p id="governance-complaints-summary"></p>
+        <ul id="governance-complaints"></ul>
+      </section>
+
+      <!-- 7.4 + 4.5 --------------------------------------------------------- -->
+      <section id="section-marketing">
+        <h3>Claim library and marketing ops — 7.4 and 4.5</h3>
+        <p><button id="marketing-load" type="button">Load the library</button></p>
+        <!--
+          `banned` is counted beside `approved`, never as a problem tally. A banned entry is the
+          Compliance Review Board having answered a question, and it is the rule the Scanner then
+          enforces on every outbound message.
+        -->
+        <p id="marketing-claims-summary"></p>
+        <p id="marketing-banned-note" class="muted"></p>
+        <ul id="marketing-claims"></ul>
+
+        <p id="marketing-proposals-summary"></p>
+        <ul id="marketing-proposals"></ul>
+        <p id="marketing-outcomes-note" class="muted"></p>
+        <p id="marketing-decision-unavailable" class="muted"></p>
+
+        <p id="marketing-assets-summary"></p>
+        <ul id="marketing-assets"></ul>
+      </section>
+
+      <script type="module" src="/console/views/regulatory.js"></script>
+      <script type="module" src="/console/views/compliance.js"></script>
+      <script type="module" src="/console/views/governance.js"></script>
+      <script type="module" src="/console/views/marketing.js"></script>
     </main>
 
     <!-- Clients ------------------------------------------------------------ -->

@@ -81,6 +81,12 @@ import {
 } from '@bwc/http';
 import type { Actor } from '@bwc/identity';
 import { readConsoleConfig, type ConsoleConfig } from './config.js';
+// Compliance and governance surfaces (7.1, 7.2, 7.4, 5.4, 4.5). Each module registers its own
+// routes against the context built at the bottom of `createApp`.
+import { registerComplianceRoutes } from './routes/compliance.js';
+import { registerRegulatoryRoutes } from './routes/regulatory.js';
+import { registerGovernanceRoutes } from './routes/governance.js';
+import { registerMarketingRoutes } from './routes/marketing.js';
 
 export interface ConsoleAppDeps {
   readonly config?: ConsoleConfig;
@@ -1033,6 +1039,23 @@ export const createApp = (deps: ConsoleAppDeps = {}): Express => {
       send(res, ok(await verifyIntegrity(actor.tenantId)));
     }),
   );
+
+  // --- Composed route modules ---------------------------------------------
+
+  /**
+   * Surfaces that live in their own files, registered against one context.
+   *
+   * The context carries the four things a route needs and nothing else: who the tenant is, the
+   * clock, the session guard, and the three helpers above. Deliberately not the whole `createApp`
+   * scope — a route module that could reach the limiter or the cookie helpers would be a route
+   * module able to change how authentication works.
+   */
+  const routeContext = { app, tenantId: config.tenantId, now, requireStaff, asyncRoute, param, jsonBody };
+
+  registerComplianceRoutes(routeContext);
+  registerRegulatoryRoutes(routeContext);
+  registerGovernanceRoutes(routeContext);
+  registerMarketingRoutes(routeContext);
 
   // --- The page -----------------------------------------------------------
 

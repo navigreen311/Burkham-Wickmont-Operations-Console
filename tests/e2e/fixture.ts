@@ -92,6 +92,10 @@ export const E2E_CONSOLE_ACCOUNTS = [
   'e2e-operator-placement-ok@example.com',
   'e2e-operator-placement-vocabulary@example.com',
   'e2e-operator-inviter@example.com',
+  // The compliance and governance surfaces (7.2, 7.1, 7.4). One per spec, for the reason above.
+  'e2e-operator-activation@example.com',
+  'e2e-operator-evidence@example.com',
+  'e2e-operator-claims@example.com',
 ] as const;
 
 /**
