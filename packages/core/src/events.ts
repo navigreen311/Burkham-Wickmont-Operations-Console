@@ -146,6 +146,16 @@ export const EVENT_TYPES = [
   'billing.refund.declined',
   'billing.funding_outcome.recorded',
   'billing.funding_outcome.funded',
+  // Funding Outcome Ledger (5.5). `declined` and `withdrawn` are the types that did not exist
+  // before this module, and they are the reason it does: a chain carrying only approvals cannot
+  // answer what share of attempts were approved. The decline REASON is deliberately not in its
+  // payload - it is free text a provider wrote about a named applicant, and the Ledger is the one
+  // store here that cannot be corrected. It stays in the attempt row.
+  'outcomes.attempt.submitted',
+  'outcomes.attempt.approved',
+  'outcomes.attempt.declined',
+  'outcomes.attempt.withdrawn',
+  'outcomes.attempt.funded',
   // Sales Motion & Engagement Tracking (1.3). The attribution events carry both sides of a
   // correction, because a payout dispute asks what changed and who changed it.
   'sales.lead.created',

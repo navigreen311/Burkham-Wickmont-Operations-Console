@@ -107,6 +107,9 @@ export const cleanupTenant = async (tenantId: string): Promise<void> => {
   await prisma.leadActivity.deleteMany({ where: { tenantId } });
   await prisma.lead.deleteMany({ where: { tenantId } });
   await prisma.taskNotification.deleteMany({ where: { tenantId } });
+  // 5.5 attempts reference the engagement, the client and a provider across three schema
+  // boundaries, so there is no FK to cascade and the rows would otherwise outlive all three.
+  await prisma.fundingAttempt.deleteMany({ where: { tenantId } });
   // Billing: credits reference billing records; records cascade from the engagement.
   await prisma.creditApplication.deleteMany({ where: { tenantId } });
   await prisma.refundRecord.deleteMany({ where: { tenantId } });
