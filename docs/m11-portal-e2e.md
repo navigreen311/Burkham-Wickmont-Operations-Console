@@ -64,14 +64,26 @@ their runtime where it was and makes a failure here say _the page_ rather than a
 test among a thousand. Traces are uploaded on failure only, and kept seven days — **a trace is a copy
 of the page, and this page shows a client's file.**
 
-**Three engines, and only one can hold a passkey.** The virtual authenticator is a Chrome DevTools
-Protocol feature, so `passkey.spec.ts` **skips itself** on Firefox and WebKit with a stated reason
-rather than quietly not existing there - a reader counting green ticks would otherwise conclude the
-coverage was three times what it is.
+**Three engines, and they do not run the same thing.**
 
-On the first three-engine run, **every existing spec passed everywhere and the two new engines found
-nothing.** That is the honest result, and it is why `cross-browser.spec.ts` exists: it holds the
-checks where an engine's own implementation is the thing under test.
+| Engine                  | Runs                                          | Why                                                                                   |
+| ----------------------- | --------------------------------------------- | ------------------------------------------------------------------------------------- |
+| **Chromium**            | Everything                                    | The only engine with a virtual authenticator, so the only one that can hold a passkey |
+| **Firefox**, **WebKit** | `cross-browser.spec.ts` and `passkey.spec.ts` | The file written for them, plus the one that reports why it cannot run                |
+
+On the run that introduced them, **every page spec passed in all three and the two new engines found
+nothing.** That is the honest result, and it is why their value is concentrated in
+`cross-browser.spec.ts` - the file where an engine's own implementation is the subject rather than
+the page's.
+
+**What that gives up, plainly:** the portal's own page specs - sign-in, the room, the message path,
+the reset path - are no longer exercised in Gecko or WebKit. They found nothing there, and that is a
+reason rather than a guarantee.
+
+`passkey.spec.ts` stays in the Firefox and WebKit list although it cannot pass there, because it
+**skips itself with a stated reason** and a reported skip is the point: an engine that cannot hold a
+passkey should say so rather than have the file silently not exist. A reader counting green ticks
+would otherwise conclude the coverage was three times what it is.
 
 | Check                                          | Why an engine is the subject                                                                                                                         |
 | ---------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -127,7 +139,13 @@ around from an earlier build.
 
 ## Tested
 
-13 specs across three engines - **33 runs and 6 explicit skips**. `pnpm test:e2e`. The vitest suite is unchanged at **1112** — the two
+13 specs. `pnpm test:e2e` runs **21 and reports 6 explicit skips** - Chromium 13, Firefox 7,
+WebKit 7. It was 33 runs when all three engines ran everything; the twelve dropped were page specs
+that had never failed outside Chromium.
+
+**The saving is in execution, not in setup.** CI still installs all three browsers, because Firefox
+and WebKit still run the file written for them - and the install is the larger share of that job's
+time. The vitest suite is unchanged at **1112** — the two
 runners never see each other's files (`*.test.ts` against `*.spec.ts`).
 
 | Spec                                        | Asserts                                                                        |

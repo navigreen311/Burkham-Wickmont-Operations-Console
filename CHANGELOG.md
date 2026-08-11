@@ -7,6 +7,21 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed - Firefox and WebKit run only the specs written for them (`ai-feature/e2e-narrow-projects`)
+
+- **Chromium runs everything; Firefox and WebKit run `cross-browser.spec.ts` and `passkey.spec.ts`.**
+  On the run that introduced them, every page spec passed in all three and **the two new engines
+  found nothing** - their value is concentrated in the file where an engine's own implementation is
+  the subject, not the page's.
+- **What this gives up, plainly:** the portal's page specs - sign-in, the room, the message path, the
+  reset path - are no longer exercised in Gecko or WebKit. They found nothing there, and that is a
+  reason rather than a guarantee.
+- `passkey.spec.ts` stays in their list although it cannot pass there, because it **skips itself with
+  a stated reason** and a reported skip is the point: an engine that cannot hold a passkey should say
+  so rather than have the file silently not exist.
+- 33 runs becomes **21 runs and 6 skips**. **The saving is in execution, not in setup** - CI still
+  installs all three browsers, and the install is the larger share of that job's time.
+
 ### Added - Firefox and WebKit runs (`ai-feature/e2e-cross-browser`)
 
 - **Three engines, and only one can hold a passkey.** The virtual authenticator is a Chrome DevTools

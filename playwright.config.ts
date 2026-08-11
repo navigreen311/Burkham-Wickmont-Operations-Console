@@ -13,6 +13,26 @@
 import { defineConfig, devices } from '@playwright/test';
 import { E2E_ORIGIN, E2E_PORT } from './tests/e2e/fixture.js';
 
+/**
+ * What each engine runs.
+ *
+ * Chromium runs everything. Firefox and WebKit run **`cross-browser.spec.ts` and `passkey.spec.ts`
+ * only**, which is the honest shape of what they were adding: on the run that introduced them,
+ * every page spec passed in all three and **the two new engines found nothing**. Their value is
+ * concentrated in the file written for them, where the engine's own implementation is the subject -
+ * whether a Content-Security-Policy is enforced rather than merely sent, and whether the page's
+ * no-WebAuthn fallback works.
+ *
+ * `passkey.spec.ts` stays in the list although it cannot pass there, because it **skips itself with
+ * a stated reason** and a reported skip is the point: an engine that cannot hold a passkey should
+ * say so rather than have the file silently not exist.
+ *
+ * **What this gives up, plainly:** the portal's own page specs - sign-in, the room, the message
+ * path, the reset path - are no longer exercised in Gecko or WebKit. They found nothing there, and
+ * that is a reason rather than a guarantee.
+ */
+const CROSS_ENGINE = /(cross-browser|passkey)\.spec\.ts$/u;
+
 export default defineConfig({
   testDir: './tests/e2e',
   testMatch: '**/*.spec.ts',
@@ -33,22 +53,11 @@ export default defineConfig({
     video: 'off',
   },
 
-  /**
-   * Three engines, and only one of them can hold a passkey.
-   *
-   * **The virtual authenticator is a Chrome DevTools Protocol feature**, so `passkey.spec.ts` skips
-   * itself on Firefox and WebKit with a stated reason rather than quietly not existing there. What
-   * the other two engines add is the layer Chromium was already covering incidentally: the page's
-   * own markup and script, under a real CSP, in engines whose form semantics and DOM behaviour are
-   * not Blink's.
-   *
-   * That is a narrower gain than the Chromium run, and it is worth being clear about rather than
-   * letting three green ticks imply three times the coverage.
-   */
   projects: [
     { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
     {
       name: 'firefox',
+      testMatch: CROSS_ENGINE,
       use: {
         ...devices['Desktop Firefox'],
         launchOptions: {
@@ -74,7 +83,7 @@ export default defineConfig({
         },
       },
     },
-    { name: 'webkit', use: { ...devices['Desktop Safari'] } },
+    { name: 'webkit', testMatch: CROSS_ENGINE, use: { ...devices['Desktop Safari'] } },
   ],
 
   webServer: {
