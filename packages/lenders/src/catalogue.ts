@@ -171,7 +171,7 @@ export const listProviders = async (
         ? { statesServed: { hasSome: [filter.state, NATIONWIDE] } }
         : {}),
     },
-    orderBy: { name: 'asc' },
+    orderBy: [{ name: 'asc' }, { id: 'asc' }],
   });
   return rows.map(toProvider);
 };
@@ -225,7 +225,7 @@ export const recordRule = async (input: RecordRuleInput): Promise<Outcome<Lender
   const row = await db().$transaction(async (tx) => {
     const current = await tx.lenderRule.findFirst({
       where: { providerId: input.providerId, ruleKey: input.ruleKey, supersededAt: null },
-      orderBy: { version: 'desc' },
+      orderBy: [{ version: 'desc' }, { id: 'asc' }],
     });
 
     if (current) {
@@ -311,7 +311,7 @@ export const currentRules = async (
 ): Promise<readonly LenderRuleRecord[]> => {
   const rows = await db().lenderRule.findMany({
     where: { tenantId, providerId, supersededAt: null },
-    orderBy: { ruleKey: 'asc' },
+    orderBy: [{ ruleKey: 'asc' }, { id: 'asc' }],
   });
   return rows.map(toRule);
 };
@@ -324,7 +324,7 @@ export const ruleHistory = async (
 ): Promise<readonly LenderRuleRecord[]> => {
   const rows = await db().lenderRule.findMany({
     where: { tenantId, providerId, ruleKey },
-    orderBy: { version: 'desc' },
+    orderBy: [{ version: 'desc' }, { id: 'asc' }],
   });
   return rows.map(toRule);
 };
@@ -528,7 +528,7 @@ export const offeringsOf = async (
 ): Promise<readonly OfferingRecord[]> => {
   const rows = await db().productOffering.findMany({
     where: { tenantId, providerId, active: true },
-    orderBy: { name: 'asc' },
+    orderBy: [{ name: 'asc' }, { id: 'asc' }],
   });
   return rows.map(toOffering);
 };
@@ -550,7 +550,7 @@ export const catalogue = async (tenantId: string): Promise<readonly CatalogueEnt
   const rows = await db().productOffering.findMany({
     where: { tenantId, active: true, provider: { active: true } },
     include: { provider: true },
-    orderBy: { name: 'asc' },
+    orderBy: [{ name: 'asc' }, { id: 'asc' }],
   });
 
   return rows.map((row) => ({

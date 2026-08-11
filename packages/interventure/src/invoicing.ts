@@ -187,7 +187,7 @@ export const awaitingRouting = async (
 ): Promise<readonly IntercompanyInvoice[]> => {
   const rows = await db().intercompanyInvoice.findMany({
     where: { tenantId, state: { in: ['drafted', 'routed_pending'] } },
-    orderBy: { raisedAt: 'asc' },
+    orderBy: [{ raisedAt: 'asc' }, { id: 'asc' }],
   });
   return rows.map(toInvoice);
 };
@@ -198,7 +198,7 @@ export const invoicesFor = async (
 ): Promise<readonly IntercompanyInvoice[]> => {
   const rows = await db().intercompanyInvoice.findMany({
     where: { tenantId, engagementId },
-    orderBy: { raisedAt: 'asc' },
+    orderBy: [{ raisedAt: 'asc' }, { id: 'asc' }],
   });
   return rows.map(toInvoice);
 };

@@ -76,7 +76,7 @@ export const communicationsFor = async (
 ): Promise<readonly CommunicationEntry[]> => {
   const rows = await db().communication.findMany({
     where: { tenantId, clientId },
-    orderBy: { occurredAt: 'asc' },
+    orderBy: [{ occurredAt: 'asc' }, { id: 'asc' }],
   });
   return rows.map(toEntry);
 };

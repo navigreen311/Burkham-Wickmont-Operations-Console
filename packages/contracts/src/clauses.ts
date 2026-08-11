@@ -87,7 +87,7 @@ export const publishClause = async (input: PublishClauseInput): Promise<Outcome<
 
   const current = await db().clause.findFirst({
     where: { tenantId: input.tenantId, key: input.key, jurisdiction, supersededAt: null },
-    orderBy: { version: 'desc' },
+    orderBy: [{ version: 'desc' }, { id: 'asc' }],
   });
 
   const row = await db().$transaction(async (tx) => {

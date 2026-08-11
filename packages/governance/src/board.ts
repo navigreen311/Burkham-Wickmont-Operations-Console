@@ -454,7 +454,7 @@ export const decisionHistory = async (
 ): Promise<readonly DecisionRecord[]> => {
   const rows = await db().governanceDecision.findMany({
     where: { tenantId, providerId },
-    orderBy: { decidedAt: 'desc' },
+    orderBy: [{ decidedAt: 'desc' }, { id: 'asc' }],
   });
   return rows.map((row) => ({
     providerId: row.providerId,

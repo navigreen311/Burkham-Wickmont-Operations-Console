@@ -141,7 +141,7 @@ export const exportHistory = async (
 ): Promise<readonly ExportRecord[]> => {
   const rows = await db().evidenceExport.findMany({
     where: { tenantId, clientId },
-    orderBy: { exportedAt: 'desc' },
+    orderBy: [{ exportedAt: 'desc' }, { id: 'asc' }],
   });
   return rows.map(toRecord);
 };

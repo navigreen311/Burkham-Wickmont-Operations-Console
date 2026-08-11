@@ -158,7 +158,7 @@ export const observationsFor = async (
 ): Promise<readonly Observation[]> => {
   const rows = await db().riskObservation.findMany({
     where: { tenantId, clientId },
-    orderBy: { occurredAt: 'asc' },
+    orderBy: [{ occurredAt: 'asc' }, { id: 'asc' }],
   });
   return rows.map(toObservation);
 };

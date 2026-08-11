@@ -143,7 +143,7 @@ export const append = async (input: LedgerEventInput): Promise<LedgerEvent> => {
 
         const tail = await tx.ledgerEvent.findFirst({
           where: { tenantId: input.tenantId },
-          orderBy: { seq: 'desc' },
+          orderBy: [{ seq: 'desc' }, { id: 'asc' }],
           select: { seq: true, signature: true },
         });
 
@@ -246,7 +246,7 @@ export const read = async (options: ReadOptions): Promise<LedgerEvent[]> => {
       ...(options.clientId !== undefined ? { clientId: options.clientId } : {}),
       ...(options.type !== undefined ? { type: options.type } : {}),
     },
-    orderBy: { seq: 'asc' },
+    orderBy: [{ seq: 'asc' }, { id: 'asc' }],
     ...(options.limit !== undefined ? { take: options.limit } : {}),
   });
   return rows.map(toEvent);

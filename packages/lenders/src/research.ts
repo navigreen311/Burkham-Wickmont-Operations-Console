@@ -217,7 +217,7 @@ export const researchWorkstreams = async (
 ): Promise<readonly ResearchRecord[]> => {
   const rows = await db().researchWorkstream.findMany({
     where: { tenantId, ...(status !== undefined ? { status } : {}) },
-    orderBy: { providerName: 'asc' },
+    orderBy: [{ providerName: 'asc' }, { id: 'asc' }],
   });
   return rows.map(toRecord);
 };

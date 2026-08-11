@@ -254,7 +254,7 @@ export const deviationsFor = async (
 ): Promise<readonly (RecordedDeviation & { engagementId: string; offerKey: string })[]> => {
   const rows = await db().pricingDeviation.findMany({
     where: { tenantId, ...(clientId !== undefined ? { clientId } : {}) },
-    orderBy: { approvedAt: 'asc' },
+    orderBy: [{ approvedAt: 'asc' }, { id: 'asc' }],
   });
   return rows.map((row) => ({
     id: row.id,

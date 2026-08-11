@@ -311,7 +311,7 @@ export const find = async (taskId: string): Promise<QueuedTask | null> => {
 export const forInstance = async (instanceId: string): Promise<QueuedTask[]> => {
   const rows = await db().workflowTask.findMany({
     where: { instanceId },
-    orderBy: { createdAt: 'asc' },
+    orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
   });
   return rows.map(toTask);
 };

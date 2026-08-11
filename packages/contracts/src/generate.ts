@@ -362,7 +362,7 @@ export const contractsForClient = async (
 ): Promise<readonly GeneratedContractRecord[]> => {
   const rows = await db().generatedContract.findMany({
     where: { tenantId, clientId },
-    orderBy: { issuedAt: 'asc' },
+    orderBy: [{ issuedAt: 'asc' }, { id: 'asc' }],
   });
 
   return rows.map((row) => ({

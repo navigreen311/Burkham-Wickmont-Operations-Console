@@ -644,7 +644,7 @@ export const registeredKeys = async (
       removedAt: null,
       confirmedAt: { not: null },
     },
-    orderBy: { createdAt: 'asc' },
+    orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
   });
 
   return factors.map((factor) => ({
@@ -706,7 +706,7 @@ const spendChallenge = async (input: {
       consumedAt: null,
       expiresAt: { gt: input.now },
     },
-    orderBy: { issuedAt: 'desc' },
+    orderBy: [{ issuedAt: 'desc' }, { id: 'asc' }],
   });
   if (!row) return null;
 

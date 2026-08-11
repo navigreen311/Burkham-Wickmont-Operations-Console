@@ -89,7 +89,7 @@ export const partnersFor = async (
       ...(filter.track !== undefined ? { track: filter.track } : {}),
       ...(filter.status !== undefined ? { status: filter.status as never } : {}),
     },
-    orderBy: { legalName: 'asc' },
+    orderBy: [{ legalName: 'asc' }, { id: 'asc' }],
   });
   return rows.map(toPartner);
 };

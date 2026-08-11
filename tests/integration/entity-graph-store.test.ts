@@ -175,15 +175,41 @@ describe('PII never leaves the store in the clear', () => {
     const events = await read({ tenantId: fx.tenant.id });
     expect(events.length).toBeGreaterThan(0);
 
+    /**
+     * Every VALUE in a payload, at any depth.
+     *
+     * The last four digits of an identifier used to be checked with `not.toContain('4321')`
+     * against the serialised payload - and **that assertion fails at random**, because a payload
+     * carries UUIDs, a UUID is hexadecimal, and four decimal digits appear in one often enough to
+     * be seen. It happened here: `ownerId: 'd221b536-aa6a-4ea3-9940-a81143c14321'`.
+     *
+     * A four-character substring search over a document full of random hex is not a test of
+     * anything; it is a coin toss that usually lands the right way up. Checking VALUES means a
+     * last-four that leaked as a field is caught and a UUID that merely spells one is not.
+     */
+    const valuesOf = (value: unknown): string[] => {
+      if (value === null || value === undefined) return [];
+      if (Array.isArray(value)) return value.flatMap(valuesOf);
+      if (typeof value === 'object') return Object.values(value).flatMap(valuesOf);
+      return [String(value)];
+    };
+
     for (const event of events) {
       const serialized = JSON.stringify(event.payload);
+
+      // Nine and ten digits. Long enough that a hex UUID spelling one by chance is not a thing
+      // that happens, so the substring search is honest at this length.
       expect(serialized, event.type).not.toContain(TEST_SSN);
       expect(serialized, event.type).not.toContain(TEST_EIN);
-      expect(serialized, event.type).not.toContain('3456');
-      expect(serialized, event.type).not.toContain('4321');
-      // The envelope format starts `v1|`; a ciphertext leaking is as bad as a plaintext,
-      // because the Ledger is retained indefinitely and keys are rotated, not retired.
+      // The envelope format starts `v1|`; a ciphertext leaking is as bad as a plaintext, because
+      // the Ledger is retained indefinitely and keys are rotated, not retired.
       expect(serialized, event.type).not.toContain('v1|');
+
+      // The last four, as a value rather than as a substring of the document.
+      for (const value of valuesOf(event.payload)) {
+        expect(value, `${event.type} carried a last-four as a value`).not.toBe('3456');
+        expect(value, `${event.type} carried a last-four as a value`).not.toBe('4321');
+      }
     }
   });
 

@@ -208,7 +208,7 @@ export const snapshotsBetween = async (
 ): Promise<readonly Snapshot[]> => {
   const rows = await db().analyticsSnapshot.findMany({
     where: { tenantId, asOf: { gte: dateOnly(from), lte: dateOnly(to) } },
-    orderBy: { asOf: 'asc' },
+    orderBy: [{ asOf: 'asc' }, { id: 'asc' }],
     include: { _count: { select: { subjects: true } } },
   });
 

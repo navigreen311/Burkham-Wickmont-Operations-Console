@@ -137,7 +137,7 @@ export const activeListing = async (
 ): Promise<Listing | null> => {
   const row = await db().doNotFundListing.findFirst({
     where: { tenantId, clientId, status: 'listed' },
-    orderBy: { listedAt: 'desc' },
+    orderBy: [{ listedAt: 'desc' }, { id: 'asc' }],
   });
   return row ? toListing(row, now) : null;
 };
@@ -150,7 +150,7 @@ export const listingHistory = async (
 ): Promise<readonly Listing[]> => {
   const rows = await db().doNotFundListing.findMany({
     where: { tenantId, clientId },
-    orderBy: { listedAt: 'asc' },
+    orderBy: [{ listedAt: 'asc' }, { id: 'asc' }],
   });
   return rows.map((row) => toListing(row, now));
 };
@@ -494,7 +494,7 @@ export const findUnconsumedOverride = async (
 ): Promise<{ id: string; justification: string; approvedBy: string } | null> => {
   const row = await db().doNotFundOverride.findFirst({
     where: { tenantId, listingId, action, consumedAt: null },
-    orderBy: { approvedAt: 'asc' },
+    orderBy: [{ approvedAt: 'asc' }, { id: 'asc' }],
   });
   return row ? { id: row.id, justification: row.justification, approvedBy: row.approvedBy } : null;
 };
@@ -549,7 +549,7 @@ export const listingsDueForReview = async (
 ): Promise<readonly Listing[]> => {
   const rows = await db().doNotFundListing.findMany({
     where: { tenantId, status: 'listed' },
-    orderBy: { listedAt: 'asc' },
+    orderBy: [{ listedAt: 'asc' }, { id: 'asc' }],
   });
   return rows.map((row) => toListing(row, now)).filter((listing) => listing.reviewOverdue);
 };

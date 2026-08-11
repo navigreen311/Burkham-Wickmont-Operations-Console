@@ -67,7 +67,7 @@ export const publishTemplate = async (input: {
   const now = input.now ?? new Date();
   const current = await db().messageTemplate.findFirst({
     where: { tenantId: input.tenantId, key: input.key, supersededAt: null },
-    orderBy: { version: 'desc' },
+    orderBy: [{ version: 'desc' }, { id: 'asc' }],
   });
 
   const row = await db().$transaction(async (tx) => {
@@ -103,7 +103,7 @@ export const currentTemplate = async (
 ): Promise<Outcome<TemplateRecord>> => {
   const row = await db().messageTemplate.findFirst({
     where: { tenantId, key, supersededAt: null },
-    orderBy: { version: 'desc' },
+    orderBy: [{ version: 'desc' }, { id: 'asc' }],
   });
   return row ? ok(toTemplate(row)) : noData(`No message template published under '${key}'.`);
 };

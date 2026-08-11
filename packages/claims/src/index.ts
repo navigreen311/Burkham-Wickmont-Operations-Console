@@ -197,7 +197,7 @@ export const activeLibrary = async (query: LibraryQuery): Promise<MarketingClaim
         ? { OR: [{ jurisdiction: ALL_JURISDICTIONS }, { jurisdiction: query.jurisdiction }] }
         : {}),
     },
-    orderBy: { phrase: 'asc' },
+    orderBy: [{ phrase: 'asc' }, { id: 'asc' }],
   });
   return rows.map(toClaim);
 };

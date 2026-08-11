@@ -300,7 +300,7 @@ export const findingsFor = async (
 > => {
   const rows = await db().intelligenceFinding.findMany({
     where: { tenantId, clientId },
-    orderBy: { createdAt: 'desc' },
+    orderBy: [{ createdAt: 'desc' }, { id: 'asc' }],
   });
   return rows.map((row) => ({
     kind: row.kind,
@@ -314,7 +314,7 @@ export const findingsFor = async (
 export const runsFor = async (tenantId: string, clientId: string): Promise<IngestionRun[]> => {
   const rows = await db().ingestionRun.findMany({
     where: { tenantId, clientId },
-    orderBy: { createdAt: 'desc' },
+    orderBy: [{ createdAt: 'desc' }, { id: 'asc' }],
   });
   return rows.map((row) => ({
     id: row.id,

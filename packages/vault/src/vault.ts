@@ -576,7 +576,7 @@ export const remove = async (
 export const forClient = async (tenantId: string, clientId: string): Promise<VaultDocument[]> => {
   const rows = await db().vaultDocument.findMany({
     where: { tenantId, clientId, deletedAt: null },
-    orderBy: { createdAt: 'desc' },
+    orderBy: [{ createdAt: 'desc' }, { id: 'asc' }],
   });
   return rows.map(toDocument);
 };
@@ -596,7 +596,7 @@ export const accessLog = async (
 ): Promise<AccessLogEntry[]> => {
   const rows = await db().vaultAccessLog.findMany({
     where: { tenantId, documentId },
-    orderBy: { at: 'asc' },
+    orderBy: [{ at: 'asc' }, { id: 'asc' }],
   });
   return rows.map((row) => ({
     actorId: row.actorId,

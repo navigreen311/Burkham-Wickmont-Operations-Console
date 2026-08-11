@@ -43,7 +43,7 @@ export const availableCredit = async (
   for (const engagement of engagements) {
     const records = await db().billingRecord.findMany({
       where: { tenantId, engagementId: engagement.id },
-      orderBy: { occurredOn: 'asc' },
+      orderBy: [{ occurredOn: 'asc' }, { id: 'asc' }],
     });
 
     const payments = records.filter((record) => record.kind === 'payment');
@@ -220,11 +220,11 @@ export const quoteUpgrade = async (input: {
   const [from, to] = await Promise.all([
     db().offerDefinition.findFirst({
       where: { tenantId: input.tenantId, key: input.fromOfferKey, supersededAt: null },
-      orderBy: { version: 'desc' },
+      orderBy: [{ version: 'desc' }, { id: 'asc' }],
     }),
     db().offerDefinition.findFirst({
       where: { tenantId: input.tenantId, key: input.toOfferKey, supersededAt: null },
-      orderBy: { version: 'desc' },
+      orderBy: [{ version: 'desc' }, { id: 'asc' }],
     }),
   ]);
 

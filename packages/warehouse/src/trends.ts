@@ -162,7 +162,7 @@ export const cohorts = async (tenantId: string): Promise<readonly string[]> => {
     where: { tenantId },
     select: { cohort: true },
     distinct: ['cohort'],
-    orderBy: { cohort: 'asc' },
+    orderBy: [{ cohort: 'asc' }, { id: 'asc' }],
   });
   return rows.map((row) => row.cohort);
 };

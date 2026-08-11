@@ -50,7 +50,7 @@ import {
   uploadDocument,
 } from '@bwc/portal';
 import { decisionQueue, workbench } from '@bwc/workbench';
-import { DEFAULT_REVIEW_CADENCE_DAYS, listClient } from '@bwc/risk';
+import { DEFAULT_REVIEW_CADENCE_DAYS } from '@bwc/risk';
 import { cleanupTenant, makeFixture, type Fixture } from '../setup.js';
 
 let fx: Fixture;
@@ -387,26 +387,21 @@ describe('11.10 the portal decides nothing', () => {
 
 describe('11.11 the founder queue is decisions, not a feed', () => {
   beforeAll(async () => {
-    await transitionComplianceState({
+    // The transition LISTS the client - Decision E, wired in ADR-0034. It used to be followed by a
+    // hand-written `listClient` here, because nothing performed the automatic one; that call is now
+    // refused, correctly, as a second determination on an already-listed client.
+    //
+    // Dated `NOW` so the review is overdue by `AFTER_CADENCE`, which is what exercises the
+    // overdue-review branch of the queue rather than leaving it a path nothing runs.
+    const moved = await transitionComplianceState({
       tenantId: fx.tenant.id,
       clientId: beta,
       to: 'fail',
       reason: 'Statements do not reconcile with stated revenue.',
       actor: HUMAN(),
-    });
-
-    // A Do Not Fund listing, so the overdue-review branch of the queue is exercised rather than
-    // left as a path nothing runs. A mutation test found this gap: emptying that branch's
-    // costOfInaction changed nothing, because the branch never executed.
-    const listed = await listClient({
-      tenantId: fx.tenant.id,
-      clientId: beta,
-      trigger: 'material_misrepresentation',
-      justification: 'Statements do not reconcile with the revenue stated on the application.',
-      listedBy: fx.human.id,
       now: NOW,
     });
-    if (listed.status !== 'ok') throw new Error(`setup: listing ${listed.status}`);
+    if (moved.status !== 'ok') throw new Error(`setup: transition ${moved.status}`);
 
     await setParameter({
       tenantId: fx.tenant.id,

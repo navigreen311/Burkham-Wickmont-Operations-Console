@@ -24,7 +24,7 @@ export const latestActive = async (
 ): Promise<{ version: number; definition: PlaybookDefinition } | null> => {
   const row = await db().playbook.findFirst({
     where: { key, status: 'active' },
-    orderBy: { version: 'desc' },
+    orderBy: [{ version: 'desc' }, { id: 'asc' }],
   });
   return row
     ? { version: row.version, definition: row.definition as unknown as PlaybookDefinition }

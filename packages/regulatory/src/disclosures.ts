@@ -93,7 +93,7 @@ export const requiredDisclosures = async (
 ): Promise<readonly RequiredDisclosure[]> => {
   const module = await db().stateModule.findFirst({
     where: { tenantId: query.tenantId, state: query.state, supersededAt: null },
-    orderBy: { version: 'desc' },
+    orderBy: [{ version: 'desc' }, { id: 'asc' }],
     include: { disclosures: true },
   });
 

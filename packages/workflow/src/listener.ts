@@ -123,7 +123,7 @@ const writeCursor = async (tenantId: string, lastSeq: number): Promise<void> => 
 export const seekToLatest = async (tenantId: string): Promise<number> => {
   const tail = await db().ledgerEvent.findFirst({
     where: { tenantId },
-    orderBy: { seq: 'desc' },
+    orderBy: [{ seq: 'desc' }, { id: 'asc' }],
     select: { seq: true },
   });
   const seq = tail?.seq ?? 0;
@@ -166,7 +166,7 @@ export const listenerPass = async (options: ListenerPassOptions): Promise<Listen
     // Bound the pass. Events this pass writes are picked up by the next one.
     const tail = await db().ledgerEvent.findFirst({
       where: { tenantId: tenant.id },
-      orderBy: { seq: 'desc' },
+      orderBy: [{ seq: 'desc' }, { id: 'asc' }],
       select: { seq: true },
     });
     const maxSeq = tail?.seq ?? 0;

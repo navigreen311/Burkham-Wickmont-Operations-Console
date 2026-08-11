@@ -301,7 +301,7 @@ export const handoffsFor = async (
 ): Promise<readonly Handoff[]> => {
   const rows = await db().crossPortfolioHandoff.findMany({
     where: { tenantId, clientId },
-    orderBy: { proposedAt: 'asc' },
+    orderBy: [{ proposedAt: 'asc' }, { id: 'asc' }],
   });
   return rows.map(toHandoff);
 };

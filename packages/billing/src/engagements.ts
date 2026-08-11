@@ -98,7 +98,7 @@ export const publishOffer = async (input: PublishOfferInput): Promise<Outcome<Of
   const now = input.now ?? new Date();
   const current = await db().offerDefinition.findFirst({
     where: { tenantId: input.tenantId, key: input.key, supersededAt: null },
-    orderBy: { version: 'desc' },
+    orderBy: [{ version: 'desc' }, { id: 'asc' }],
   });
 
   const row = await db().$transaction(async (tx) => {
@@ -144,7 +144,7 @@ export const currentOffer = async (
 ): Promise<Outcome<OfferRecord>> => {
   const row = await db().offerDefinition.findFirst({
     where: { tenantId, key, supersededAt: null },
-    orderBy: { version: 'desc' },
+    orderBy: [{ version: 'desc' }, { id: 'asc' }],
   });
   return row ? ok(toOffer(row)) : noData(`No offer published under '${key}'.`);
 };
@@ -153,7 +153,7 @@ export const currentOffer = async (
 export const ladder = async (tenantId: string): Promise<readonly OfferRecord[]> => {
   const rows = await db().offerDefinition.findMany({
     where: { tenantId, supersededAt: null },
-    orderBy: { rung: 'asc' },
+    orderBy: [{ rung: 'asc' }, { id: 'asc' }],
   });
   return rows.map(toOffer);
 };
@@ -392,7 +392,7 @@ export const recordsFor = async (
 ): Promise<readonly BillingRecordEntry[]> => {
   const rows = await db().billingRecord.findMany({
     where: { tenantId, engagementId },
-    orderBy: { occurredOn: 'asc' },
+    orderBy: [{ occurredOn: 'asc' }, { id: 'asc' }],
   });
   return rows.map(toRecord);
 };
@@ -461,7 +461,7 @@ export const engagementsForClient = async (
 ): Promise<readonly EngagementRecord[]> => {
   const rows = await db().engagement.findMany({
     where: { tenantId, clientId },
-    orderBy: { startedOn: 'asc' },
+    orderBy: [{ startedOn: 'asc' }, { id: 'asc' }],
   });
   return rows.map(toEngagement);
 };

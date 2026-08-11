@@ -190,7 +190,7 @@ export const complaintHistory = async (
 ): Promise<readonly ComplaintRecord[]> => {
   const rows = await db().providerComplaint.findMany({
     where: { tenantId, providerId },
-    orderBy: { receivedAt: 'desc' },
+    orderBy: [{ receivedAt: 'desc' }, { id: 'asc' }],
   });
   return rows.map((row) => ({
     id: row.id,

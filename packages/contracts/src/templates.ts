@@ -125,7 +125,7 @@ export const publishTemplate = async (
 
   const current = await db().contractTemplate.findFirst({
     where: { tenantId: input.tenantId, key: input.key, supersededAt: null },
-    orderBy: { version: 'desc' },
+    orderBy: [{ version: 'desc' }, { id: 'asc' }],
   });
 
   if (current === null && input.changeKind === 'editorial') {
@@ -179,7 +179,7 @@ export const currentTemplate = async (
 ): Promise<Outcome<ContractTemplateRecord>> => {
   const row = await db().contractTemplate.findFirst({
     where: { tenantId, key, supersededAt: null },
-    orderBy: { version: 'desc' },
+    orderBy: [{ version: 'desc' }, { id: 'asc' }],
   });
   return row ? ok(toTemplate(row)) : noData(`No contract template published under '${key}'.`);
 };
@@ -282,7 +282,7 @@ export const templateIsGenerable = async (
 ): Promise<{ generable: boolean; reason: string; reviewedVersion: number | null }> => {
   const reviews = await db().templateReview.findMany({
     where: { tenantId, templateKey: key, templateVersion: { lte: version } },
-    orderBy: { templateVersion: 'desc' },
+    orderBy: [{ templateVersion: 'desc' }, { id: 'asc' }],
   });
 
   const latestReview = reviews[0];
@@ -309,7 +309,7 @@ export const templateIsGenerable = async (
       version: { gt: latestReview.templateVersion, lte: version },
       changeKind: 'material',
     },
-    orderBy: { version: 'asc' },
+    orderBy: [{ version: 'asc' }, { id: 'asc' }],
   });
 
   return materialSince

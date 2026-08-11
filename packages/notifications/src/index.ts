@@ -139,7 +139,7 @@ export const openFor = async (
 ): Promise<TaskNotification[]> => {
   const rows = await db().taskNotification.findMany({
     where: { tenantId, assignedTo, status: 'open' },
-    orderBy: { createdAt: 'asc' },
+    orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
   });
   return rows.map(toNotification);
 };

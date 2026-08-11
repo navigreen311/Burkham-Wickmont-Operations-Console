@@ -7,6 +7,64 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed - a failed compliance state now lists the client, which it never has (`ai-feature/auto-list-on-fail`)
+
+- **`autoListForComplianceFail` had no production caller.** Decision E says a client whose compliance
+  state reaches `fail` routes to Do Not Fund Governance; 6.4 wrote the function, exported it, tested
+  it - and nothing called it. **For the whole life of this system, moving a client to `fail` left
+  them fundable.** The tests passed because they called the lister themselves. Surfaced in the
+  previous slice (ADR-0033) and deliberately left; fixed here as its own.
+- **The listing happens INSIDE `transitionComplianceState`** (ADR-0034). Composing it in the Console
+  route, in the middleware chain, or in a wrapper somebody is supposed to prefer all leave the plain
+  function reachable and listing nobody - and the plain one is the one named after what a caller
+  wants to do, so they will call it. **A control a caller can skip by calling a different function is
+  not a control** - the same move as 6.4's fail-closed allow-list, ADR-0019's absent invariants,
+  ADR-0007's missing governance row and ADR-0009's missing activation row.
+- **Synchronously, not through a Ledger listener.** A listener is the tidier architecture and would
+  invert the dependency the right way round, and it is the WRONG SHAPE: it makes a safety decision
+  eventually-consistent on a queue that can stop, which is the exact window 6.4 refused when it made
+  the listing automatic - _"a client whose compliance failed on a Friday stayed fundable until
+  Monday"_. Tidier architecture, weaker control; the control wins.
+- **The cost, stated: `@bwc/clients` now depends on `@bwc/risk`**, which is the wrong direction on a
+  layer diagram. Accepted knowingly - Decision E is already enforced inside `@bwc/firewall` too, so
+  the rule was never confined to one module, and there is no cycle. The alternative to one
+  wrong-direction import is a control anybody can walk past.
+- **If the listing cannot be written, the transition returns `failed`** and says the state was
+  recorded, the listing was not, and the client is NOT blocked. Nothing can be rolled back - the
+  Ledger is append-only - and what must not happen is a caller getting `ok` and believing a client is
+  blocked who is not.
+- `TransitionInput` takes an optional `now`, because the listing is dated and a listing's date is
+  what its review cadence counts from.
+
+### Fixed - the intermittent suite failures, chased down (three causes, no flakes)
+
+- Three earlier `pnpm verify` runs failed and passed on rerun **without the failing file ever being
+  captured**. Captured by running the suite in a loop with the output kept. None was a flake.
+- **A four-character substring search a UUID can satisfy by accident.** `entity-graph-store.test.ts`
+  asserted no Ledger payload contained `'4321'`, the last four of a test SSN. A payload carries
+  UUIDs, a UUID is hexadecimal, and four decimal digits turn up in one **0.1% of the time**
+  (measured over 200,000). It failed on `ownerId: 'd221b536-aa6a-4ea3-9940-a81143c14321'`. The
+  assertion now checks payload VALUES rather than a substring of the document; the nine- and
+  ten-digit identifiers are still checked as substrings, where the length makes the search honest.
+- **Ordering ties no key resolves - and a first fix that did not work.** `registeredKeys` and
+  `activityFor` ordered by a single timestamp, and two rows written in the same millisecond tie.
+  Adding `id` as a tie-break looked like the fix and is not: **`id` is a random UUID**, so it makes a
+  result stable for a given set of rows and leaves it unrelated to insertion order. The suite kept
+  failing until that was noticed.
+- **The sweep was kept anyway** - 59 files, every single-key `orderBy` given `{ id: 'asc' }` behind
+  it - because the same query now returns the same order every time against the same rows, which is
+  what stops a page reshuffling under a reload. Prisma's types were the safety net; typecheck
+  unchanged.
+- **Two over-specified tests now assert what the data can carry.** A client with two keys is owed
+  both under the names they chose, not a ruling on which of two same-millisecond registrations came
+  first. **The underlying limitation is real and NOT fixed here**: ties at millisecond granularity
+  have no defined resolution, and a monotonic sequence column is a migration on several tables -
+  named as its own slice rather than smuggled into this one.
+- **Third sighting of the pattern.** ADR-0023's PR found `orderBy: { appliedAt: 'desc' }` after it
+  had passed 23 CI runs. A sort with a non-unique key is not a sort; it is a sort most of the time -
+  and adding _any_ second key is not enough, because the tie-break has to carry the meaning the
+  caller relies on.
+
 ### Added - writes from the Console page, and the enforcement that should have been behind them (`ai-feature/console-writes`)
 
 - **THE FINDING: no write route checked an Authority Level.** `apps/api`'s own header claimed every

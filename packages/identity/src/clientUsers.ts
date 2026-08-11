@@ -446,7 +446,7 @@ export const clientUsersFor = async (
 ): Promise<readonly ClientUser[]> => {
   const rows = await db().clientUser.findMany({
     where: { tenantId, clientId },
-    orderBy: { createdAt: 'asc' },
+    orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
   });
   return rows.map(toClientUser);
 };

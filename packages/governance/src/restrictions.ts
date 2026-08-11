@@ -39,7 +39,7 @@ export interface StateRestriction {
 export const stateRestrictions = async (tenantId: string): Promise<readonly StateRestriction[]> => {
   const rows = await db().providerGovernance.findMany({
     where: { tenantId },
-    orderBy: { providerId: 'asc' },
+    orderBy: [{ providerId: 'asc' }, { id: 'asc' }],
   });
 
   return rows.map((row) => ({

@@ -529,13 +529,16 @@ export const loadGraph = async (tenantId: string, clientId: string): Promise<Gra
   const [entities, owners, edges] = await Promise.all([
     db().entity.findMany({
       where: { tenantId, clientId, active: true },
-      orderBy: { legalName: 'asc' },
+      orderBy: [{ legalName: 'asc' }, { id: 'asc' }],
     }),
     db().owner.findMany({
       where: { tenantId, clientId, active: true },
-      orderBy: { fullName: 'asc' },
+      orderBy: [{ fullName: 'asc' }, { id: 'asc' }],
     }),
-    db().graphEdge.findMany({ where: { tenantId, clientId }, orderBy: { createdAt: 'asc' } }),
+    db().graphEdge.findMany({
+      where: { tenantId, clientId },
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+    }),
   ]);
 
   return {

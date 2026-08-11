@@ -83,9 +83,9 @@ const COMPLIANCE_CONSEQUENCE = {
   pass_with_findings: 'Placement may proceed. The open findings travel with the file.',
   needs_review: 'FREEZES placement until a human resolves it in the Human Approval Console.',
   fail:
-    'BLOCKS placement. Decision E routes a failed client to Do Not Fund Governance - but see the ' +
-    'note in docs/m11-console-writes.md: the automatic listing is not wired to anything today, so ' +
-    'this does not by itself list the client.',
+    'BLOCKS placement, AND lists this client on Do Not Fund automatically (Decision E). Removing ' +
+    'that listing afterwards takes a Level 3 human and a written justification - automatic in, ' +
+    'human out - so this is not a state to pick in order to mean "needs work".',
 };
 
 /** Put the middleware trace on the page. Shown after a write, refused or not. */

@@ -91,7 +91,7 @@ export const activityFor = async (
 ): Promise<readonly ActivityEntry[]> => {
   const rows = await db().leadActivity.findMany({
     where: { tenantId, leadId },
-    orderBy: { occurredAt: 'asc' },
+    orderBy: [{ occurredAt: 'asc' }, { id: 'asc' }],
   });
 
   return rows.map((row) => ({
@@ -123,7 +123,7 @@ export const staleLeads = async (
 ): Promise<readonly StaleLead[]> => {
   const rows = await db().lead.findMany({
     where: { tenantId, stage: { notIn: ['converted', 'closed_lost'] } },
-    orderBy: { lastActivityAt: 'asc' },
+    orderBy: [{ lastActivityAt: 'asc' }, { id: 'asc' }],
   });
 
   return rows

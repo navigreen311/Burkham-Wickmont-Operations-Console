@@ -11,6 +11,7 @@
 
 import { db } from '@bwc/db';
 import { append } from '@bwc/ledger';
+import { autoListForComplianceFail } from '@bwc/risk';
 import {
   isComplianceState,
   ok,
@@ -84,6 +85,14 @@ export interface TransitionInput {
   readonly reason: string;
   readonly findings?: readonly Finding[];
   readonly actor: EventActor;
+  /**
+   * When this determination was made.
+   *
+   * Present because the automatic Do Not Fund listing below is DATED, and a listing's date is what
+   * its review cadence counts from - so a caller reconstructing a past determination has to be able
+   * to say when it happened. Defaults to now, as everywhere else that takes one.
+   */
+  readonly now?: Date;
 }
 
 /**
@@ -96,6 +105,33 @@ export interface TransitionInput {
  * There is no validation of "allowed" transitions. Any state can follow any other - a client
  * can go from fail back to pass when findings are resolved, and forcing a graph here would
  * encode a workflow that belongs in the Human Approval Console (2.4).
+ *
+ * ## `fail` lists the client, and it happens HERE
+ *
+ * Decision E says a failed compliance state routes the client to Do Not Fund Governance. 6.4 wrote
+ * `autoListForComplianceFail` to do it - and **for the whole life of this system nothing called
+ * it**, so a client moved to `fail` stayed fundable. The function was exported, tested, and dead.
+ *
+ * It is called from inside this function rather than beside it, and that is the decision worth
+ * reading (ADR-0034):
+ *
+ * **A control a caller can skip by calling a different function is not a control.** Composing it in
+ * the transport, in the middleware chain, or in a wrapper somebody is supposed to prefer all leave
+ * `transitionComplianceState` reachable and unlisted - and the next caller will reach for the plain
+ * one, because it is the one that is named after what they want to do.
+ *
+ * **Synchronously, not through a Ledger listener.** A listener is the tidier architecture and the
+ * wrong shape for this: it makes a SAFETY control eventually-consistent on a queue that can stop,
+ * which is precisely what 6.4 refused - *"a client whose compliance failed on a Friday stayed
+ * fundable until Monday"*. The listing has to be true by the time this call returns.
+ *
+ * The cost is a dependency from 1.1 to 6.4, which is the wrong direction on a layer diagram. It is
+ * accepted knowingly: Decision E is already enforced in `@bwc/firewall` too, and the alternative to
+ * one wrong-direction import is a control anybody can walk past.
+ *
+ * **If the listing cannot be written, this returns `failed` and says so.** The transition is already
+ * in the Ledger by then and the Ledger is append-only, so there is nothing to roll back - and a
+ * caller who got `ok` would believe a client was blocked who is not.
  */
 export const transitionComplianceState = async (
   input: TransitionInput,
@@ -136,6 +172,26 @@ export const transitionComplianceState = async (
     clientId: input.clientId,
     payload,
   });
+
+  if (input.to === 'fail') {
+    // Idempotent: a client already listed is left as they are. A second `fail` transition is
+    // ordinary and must not produce a second determination.
+    const listed = await autoListForComplianceFail({
+      tenantId: input.tenantId,
+      clientId: input.clientId,
+      complianceState: input.to,
+      reason: input.reason,
+      triggeredBy: input.actor,
+      ...(input.now !== undefined ? { now: input.now } : {}),
+    });
+
+    if (listed.status !== 'ok') {
+      return failed(
+        'The compliance state was recorded as Fail, and the automatic Do Not Fund listing was NOT written. This client is not blocked. List them by hand.',
+        listed.status === 'refused' ? listed.reason : `Listing returned ${listed.status}.`,
+      );
+    }
+  }
 
   return ok({
     id: row.id,
@@ -188,7 +244,12 @@ export const listClients = async (input: {
   };
 
   const [rows, total] = await Promise.all([
-    db().client.findMany({ where, orderBy: { createdAt: 'desc' }, take: limit, skip: offset }),
+    db().client.findMany({
+      where,
+      orderBy: [{ createdAt: 'desc' }, { id: 'asc' }],
+      take: limit,
+      skip: offset,
+    }),
     db().client.count({ where }),
   ]);
 
