@@ -93,21 +93,14 @@ test.describe('a passkey through a real browser', () => {
   });
 
   test('signs in with nothing but the passkey', async ({ page }) => {
-    const cdp = await attachAuthenticator(page);
+    await attachAuthenticator(page);
     await signInWithPassword(page, E2E_MUTABLE_ACCOUNTS[1]);
     await registerPasskey(page, 'E2E phone for sign-in');
 
-    // A SECOND authenticator, because that is what a client with two keys has. The first one
-    // refuses to make a second credential for this account and is right to: the registration
-    // options carry `excludeCredentials`, so an authenticator already registered declines rather
-    // than silently creating a credential the client cannot tell from the first.
-    await attachAuthenticator(page, 'usb', cdp);
-
-    await page.locator('#form-register-key').getByLabel('Name for this key').fill('E2E backup');
-    await page.locator('#form-register-key').getByLabel('Your password').fill(E2E_PASSWORD);
-    await page.getByRole('button', { name: 'Register a key' }).click();
-    await expect(page.getByRole('status')).toHaveText('Key registered.');
-
+    // **One key, deliberately.** An earlier draft registered a second here, copied from the test
+    // below that needs two - and a passwordless sign-in offers no `allowCredentials` at all, so two
+    // resident credentials for one account leave the authenticator to choose between them. That
+    // passed locally and timed out on a CI runner. This test needs exactly one key, so it has one.
     await page.getByRole('button', { name: 'Sign out' }).click();
     await expect(page.getByRole('heading', { name: 'Sign in' })).toBeVisible();
 

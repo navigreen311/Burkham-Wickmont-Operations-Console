@@ -109,7 +109,11 @@ const main = async (): Promise<void> => {
     changeLimiter: createRateLimiter({ windowSeconds: 900, maxAttempts: 10_000 }),
   });
 
-  createServer(app).listen(E2E_PORT, '127.0.0.1', () => {
+  // **No host argument, so both stacks are listened on.** Bound to `127.0.0.1` this passed
+  // Playwright's own readiness check - Node's fetch resolved `localhost` to IPv4 - and then Firefox
+  // on a CI runner resolved it to `::1` and hung until the test timed out. The harness answers on
+  // whichever `localhost` a browser picks.
+  createServer(app).listen(E2E_PORT, () => {
     // Playwright waits on the port, not on this line. It is here for a human watching the run.
     console.log(`e2e portal listening on ${E2E_ORIGIN} (tenant ${tenant.id})`);
   });

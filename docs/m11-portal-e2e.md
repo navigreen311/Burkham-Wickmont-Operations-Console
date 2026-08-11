@@ -82,6 +82,17 @@ checks where an engine's own implementation is the thing under test.
 Allowing `'unsafe-inline'` on the page policy fails the injection test in **all three** engines
 independently, which is what says the test is real rather than vacuous.
 
+### Two things only CI found
+
+**Firefox resolved `localhost` to `::1`.** The harness bound to `127.0.0.1`, which satisfied
+Playwright's own readiness check - Node's fetch picked IPv4 - and then every Firefox navigation hung
+until the test timed out. It now listens on both stacks.
+
+**A passwordless sign-in with two resident credentials is ambiguous.** One spec registered a second
+key, copied from the test below it that genuinely needs two. A passwordless ceremony sends no
+`allowCredentials` at all, so the authenticator is left to choose between them; that passed locally
+and timed out on a slower runner. The test needs exactly one key, so it has one.
+
 **It is also the only job that runs against BUILT packages.** The vitest suites alias `@bwc/*` to
 `src` deliberately - dist would test stale code - so nothing else notices a package that compiles in
 isolation and cannot be imported. The harness resolves them the way a deployment does, which is how
