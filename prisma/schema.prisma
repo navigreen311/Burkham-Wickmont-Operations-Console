@@ -4873,3 +4873,75 @@ model ClientConductBreach {
   @@map("client_conduct_breaches")
   @@schema("risk")
 }
+
+// ---------------------------------------------------------------------------
+// 11.5 Vendor Activation Governance - ADR-0065
+//
+// One block, added by the launch-readiness slice. Firm-wide rather than per-tenant:
+// the firm signs one DPA with Plaid, and a SOC 2 report is about the vendor, not
+// about a tenant of ours.
+// ---------------------------------------------------------------------------
+
+/// The evidence a vendor gate requires before client financial data may leave this firm.
+///
+/// Specification v2 section 11.4 names three; vendor selection is the fourth because two
+/// of the four vendors have no chosen counterparty yet, and there is nothing to review
+/// the security of until somebody picks one.
+enum VendorEvidenceKind {
+  vendor_selection
+  argus_security_review
+  data_processing_agreement
+  /// SOC 2 Type II, ISO 27001 or equivalent.
+  security_attestation
+
+  @@schema("admin")
+}
+
+/// One piece of evidence, accepted by a named Level 3 human on a date.
+///
+/// **`documentReference` is required and has no empty representation.** A row here without
+/// one would be a tick-box that looks reviewed, which ADR-0065 argues is worse than the
+/// compile-time constant it replaces - the constant at least left a commit.
+///
+/// Insert-only in practice: nothing supersedes or edits a row, and withdrawal writes
+/// `withdrawnAt` rather than deleting, so "what did we rely on in March" survives.
+model VendorEvidence {
+  id String @id @default(uuid()) @db.Uuid
+
+  /// A `VendorId`. Held as text and validated in code against VENDOR_IDS, so adding a
+  /// vendor is a data change rather than a migration.
+  vendor String
+  kind   VendorEvidenceKind
+
+  /// The document this rests on - a report number, an executed agreement reference, an
+  /// attestation id. Required. There is no code path that writes an empty one.
+  documentReference String
+
+  /// Who issued the document. Not us, for three of the four kinds.
+  issuedBy String
+  issuedOn DateTime
+
+  /// When the document stops being evidence. A SOC 2 Type II covers a stated period and
+  /// does not describe the vendor afterwards. Null means the document does not expire,
+  /// which is true of an executed DPA and false of an attestation.
+  validUntil DateTime?
+
+  /// The Level 3 human who accepted it. The level is read from THIS actor at acceptance,
+  /// never from the caller - ADR-0009's rule.
+  acceptedBy String   @db.Uuid
+  acceptedAt DateTime
+
+  /// The tenant the accepting actor belongs to. Carried so an audit can find the person.
+  acceptedInTenantId String @db.Uuid
+
+  /// Withdrawal is a compensating write, never a delete.
+  withdrawnAt     DateTime?
+  withdrawnBy     String?   @db.Uuid
+  withdrawnReason String?
+
+  createdAt DateTime @default(now())
+
+  @@index([vendor, kind, withdrawnAt])
+  @@map("vendor_evidence")
+  @@schema("admin")
+}

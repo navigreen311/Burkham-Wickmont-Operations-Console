@@ -52,11 +52,11 @@ Five, in order, each verified by deploying onto an empty database and running th
 against it:
 
 ```
-20260822000000_ordering_key
-20260823000000_funding_outcome_ledger
-20260824000000_legal_hold_and_retention
-20260825000000_partner_risk
-20260826000000_client_conduct_monitoring
+20260902000000_ordering_key
+20260903000000_funding_outcome_ledger
+20260904000000_legal_hold_and_retention
+20260905000000_partner_risk
+20260906000000_client_conduct_monitoring
 ```
 
 The ordering-key migration is hand-edited after generation. `ADD COLUMN ... BIGSERIAL` numbers

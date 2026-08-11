@@ -63,6 +63,7 @@ import { CAPITAL_NEEDS, type CapitalNeed } from '@bwc/lenders';
 import { activeListing, timelineFor } from '@bwc/risk';
 import { openObligations } from '@bwc/calls';
 import { VENDOR_GATES, isActivated, mode, outstandingPreconditions } from '@bwc/integration';
+import { registerIntegrationRoutes } from './routes/integrations.js';
 import {
   ACTION_MINIMUM_LEVEL,
   failed,
@@ -81,6 +82,11 @@ import {
 } from '@bwc/http';
 import type { Actor } from '@bwc/identity';
 import { readConsoleConfig, type ConsoleConfig } from './config.js';
+import { registerAdminRoutes } from './routes/admin.js';
+import { registerDeliverableRoutes } from './routes/deliverables.js';
+import { registerIntelligenceRoutes } from './routes/intelligence.js';
+import { registerInterventureRoutes } from './routes/interventure.js';
+import { registerWarehouseRoutes } from './routes/warehouse.js';
 
 export interface ConsoleAppDeps {
   readonly config?: ConsoleConfig;
@@ -357,6 +363,10 @@ export const createApp = (deps: ConsoleAppDeps = {}): Express => {
       });
     }),
   );
+
+  // 11.5 vendor activation surface - ADR-0065. Registered from its own module; this composer
+  // gains one line rather than another two hundred.
+  registerIntegrationRoutes({ app, asyncRoute, requireStaff });
 
   // --- Sign in ------------------------------------------------------------
 
@@ -1009,6 +1019,27 @@ export const createApp = (deps: ConsoleAppDeps = {}): Express => {
       send(res, result, { trace });
     }),
   );
+
+  // --- Module surfaces (11.7, 3.1, 3.3, 10.1, 11.6) ------------------------
+
+  /**
+   * The last five feature packages with no browser surface.
+   *
+   * Registered rather than written inline: this file is already a thousand lines, and the five
+   * share only the session, the clock and the tenant. Each declares the context it needs for
+   * itself.
+   *
+   * **All five are reads.** Each of these packages has working write functions that emit Ledger
+   * events, and every one must pass `chain()` with a declared action - which
+   * `ACTION_MINIMUM_LEVEL` has for none of them. Each surface reports its own blocked writes
+   * rather than showing a button that cannot work. See ADR-0063.
+   */
+  const moduleRoutes = { app, requireStaff, asyncRoute, param, tenantId: config.tenantId };
+  registerAdminRoutes(moduleRoutes);
+  registerDeliverableRoutes(moduleRoutes);
+  registerIntelligenceRoutes(moduleRoutes);
+  registerInterventureRoutes(moduleRoutes);
+  registerWarehouseRoutes(moduleRoutes);
 
   // --- Event Ledger (11.3) ------------------------------------------------
 
