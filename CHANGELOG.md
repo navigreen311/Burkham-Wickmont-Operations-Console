@@ -7,6 +7,46 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed - staff enrolment is an invitation, and the granter no longer holds the credential (`ai-feature/staff-enrolment`)
+
+- **THE FINDING: `beginStaffEnrolment` took the subject's password from the GRANTER and handed the
+  granter the subject's TOTP SECRET.** One person holding both factors of somebody else's account -
+  and nothing downstream can tell a session opened by the subject from one opened by whoever enrolled
+  them, because it is the same Actor id in the Ledger either way. Survivable as a bootstrap seam run
+  from a script; **not survivable as a screen**, because a screen is a routine - used every time
+  somebody joins, by whoever happens to be Level 3 that week, and what it hands them is permanent.
+- The same mistake ADR-0032 found, one layer in: there, a page made a missing credential
+  exploitable; here, **a page makes a badly-shaped credential API routine.**
+- **Replaced with an invitation** (ADR-0036): `inviteStaff` issues a single-use token carrying no
+  password and returning no secret; `enrolStaffFromInvitation` is where the **SUBJECT** sets their
+  own password and receives their own secret; `confirmStaffEnrolment` is unchanged. **Not a new
+  pattern - it is the one 11.1 already uses for clients** (`inviteClientUser` -> `enrolClientUser`),
+  which the staff flow had been built without.
+- **`beginStaffEnrolment` is REMOVED, not deprecated.** ADR-0034 applies directly: a control a caller
+  can skip by calling a different function is not a control, and the one that takes a password and
+  hands back a secret is the convenient one.
+- **What this does NOT fix, stated plainly:** whoever holds an unspent token can spend it, and with
+  no email provider gated the token goes back to the granter to pass on. Strictly weaker than what
+  they held before - single-use, 24 hours, spendable only to SET a credential, and spending it is
+  recorded against the subject - but not nothing. **The page says so in the banner carrying the code:
+  "Anyone holding it can spend it."** Delivery to the subject is what closes it, and it is the same
+  gap that leaves `deliverPasswordResetLink` at `not_built`.
+- 24 hours rather than the client's 72 (a colleague given sight of every file is starting on Monday);
+  re-inviting SPENDS the earlier token (two live tokens are two ways in); inviting somebody already
+  enrolled is REFUSED and names a credential reset as the act wanted instead - **an invitation that
+  quietly became a reset is a way to take over an account that already exists.**
+- **The token goes in a form field, never the URL** - a token in a URL ends up in browser history,
+  access logs and `Referer`. The enrolment routes are **unauthenticated and rate limited**: the
+  person using them has no credential yet, and a bearer token nobody rate limited is a token
+  somebody guesses. Every refusal on that path is the same sentence, missing fields included.
+- **The Ledger records two acts with two actors**: `identity.staff.invited` names the granter,
+  `identity.staff.enrolment_started` names the SUBJECT - recording the granter would say somebody set
+  a password they never saw.
+- A browser spec runs the whole journey - invite, sign out, enrol, confirm, sign in - the only place
+  the property is visible end to end: **the secret appears on a screen with no session behind it.**
+- 1199 vitest tests across 67 files (+11), 31 browser specs (+1). Migration
+  `20260821000000_staff_invitations`, verified by deploying the whole chain to an empty database.
+
 ### Added - the placement button, and the two inputs the route never asked for (`ai-feature/console-placement`)
 
 - The placement route has existed since the walking skeleton and already ran the whole middleware

@@ -19,7 +19,13 @@ import { createServer } from 'node:http';
 import { writeFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { create as createTenant } from '@bwc/tenancy';
-import { beginStaffEnrolment, confirmStaffEnrolment, createActor, totp } from '@bwc/identity';
+import {
+  confirmStaffEnrolment,
+  createActor,
+  enrolStaffFromInvitation,
+  inviteStaff,
+  totp,
+} from '@bwc/identity';
 import { base32Decode } from '@bwc/identity';
 import { create as createClient } from '@bwc/clients';
 import { createRateLimiter } from '@bwc/http';
@@ -87,12 +93,19 @@ const main = async (): Promise<void> => {
       department: 'operations',
     });
 
-    const offer = await beginStaffEnrolment({
+    // Two steps, as in life: the granter issues a token, the subject spends it.
+    const invitation = await inviteStaff({
       tenantId: tenant.id,
       actorId: actor.id,
       email,
+      invitedBy: granter.id,
+    });
+    if (invitation.status !== 'ok') throw new Error(`seed: invite ${email} (${invitation.status})`);
+
+    const offer = await enrolStaffFromInvitation({
+      tenantId: tenant.id,
+      token: invitation.value.token,
       password: E2E_CONSOLE_PASSWORD,
-      grantedBy: granter.id,
     });
     if (offer.status !== 'ok') throw new Error(`seed: enrolment ${email} (${offer.status})`);
 
@@ -112,11 +125,23 @@ const main = async (): Promise<void> => {
     secrets[email] = offer.value.secret;
   }
 
+  // An Actor with no credential row, so the browser can watch one being created. An Actor with no
+  // row cannot sign in - absence is not permission - which is exactly the state an invitation
+  // starts from.
+  const invitee = await createActor({
+    tenantId: tenant.id,
+    kind: 'human',
+    label: 'E2E invitee',
+    authorityLevel: 2,
+    department: 'operations',
+  });
+
   const handoff: ConsoleHandoff = {
     tenantId: tenant.id,
     secrets,
     clientName: E2E_CONSOLE_CLIENTS[0],
     label: LABEL,
+    inviteeActorId: invitee.id,
   };
   await writeFile(E2E_CONSOLE_HANDOFF, JSON.stringify(handoff), 'utf8');
 

@@ -47,7 +47,10 @@ import { CONSENT_KINDS, grant as grantConsent, type ConsentKind } from '@bwc/con
 import { status as firewallStatus, trigger as triggerFirewall } from '@bwc/firewall';
 import {
   authenticateStaff,
+  confirmStaffEnrolment,
+  enrolStaffFromInvitation,
   findActor,
+  inviteStaff,
   resolveStaffSession,
   revokeStaffSession,
 } from '@bwc/identity';
@@ -432,6 +435,115 @@ export const createApp = (deps: ConsoleAppDeps = {}): Express => {
       // resolve would leave the browser looking signed in.
       clearSessionCookie(res, config);
       send(res, ok({ signedOut: true }));
+    }),
+  );
+
+  /**
+   * Invite a colleague to take up a Console credential.
+   *
+   * **A Level 3 human, and the check is in the module rather than here** - the transport does not
+   * decide who may grant internal access.
+   *
+   * What comes back is a token, and the granter necessarily sees it because there is nobody else to
+   * hand it to yet. That is weaker than what the first version of this flow gave them - a password
+   * they chose and a TOTP secret they could keep - and it is not nothing. Delivering the invitation
+   * to the subject is what closes the gap, and delivery needs the email provider (ADR-0036).
+   */
+  app.post(
+    '/api/console/invitations',
+    jsonBody,
+    asyncRoute(async (req, res) => {
+      const actor = await requireStaff(req, res);
+      if (!actor) return;
+
+      const body = req.body as { actorId?: unknown; email?: unknown };
+      if (typeof body.actorId !== 'string' || typeof body.email !== 'string') {
+        send(res, refused('actorId and email are both required.', 'Input validation'));
+        return;
+      }
+
+      send(
+        res,
+        await inviteStaff({
+          tenantId: config.tenantId,
+          actorId: body.actorId,
+          email: body.email,
+          invitedBy: actor.id,
+          now: now(),
+        }),
+      );
+    }),
+  );
+
+  /**
+   * Spend an invitation: the subject sets their own password and receives their own secret.
+   *
+   * **Unauthenticated, because the person using it has no credential yet** - that is what they are
+   * here to create. On the sign-in limiter for the same reason the sign-in is: it takes a bearer
+   * token from an anonymous caller, and a token nobody rate-limited is a token somebody guesses.
+   */
+  app.post(
+    '/api/console/enrolment',
+    rateLimited('Too many attempts from this address. Try again shortly.'),
+    jsonBody,
+    asyncRoute(async (req, res) => {
+      const body = req.body as { token?: unknown; password?: unknown };
+      if (typeof body.token !== 'string' || typeof body.password !== 'string') {
+        // The same sentence a bad token gets. Naming the missing field tells a caller what the
+        // endpoint wants, and this endpoint is reachable by anybody.
+        send(
+          res,
+          refused(
+            'That invitation is not valid. Ask for a new one.',
+            'Blueprint 11.1 - identity and access',
+          ),
+        );
+        return;
+      }
+
+      send(
+        res,
+        await enrolStaffFromInvitation({
+          tenantId: config.tenantId,
+          token: body.token,
+          password: body.password,
+          now: now(),
+        }),
+      );
+    }),
+  );
+
+  /**
+   * Prove the authenticator works, which is what finishes enrolment.
+   *
+   * Unauthenticated and limited, as above: an account with an unconfirmed factor cannot sign in, so
+   * there is no session to do this from.
+   */
+  app.post(
+    '/api/console/enrolment/confirm',
+    rateLimited('Too many attempts from this address. Try again shortly.'),
+    jsonBody,
+    asyncRoute(async (req, res) => {
+      const body = req.body as { actorId?: unknown; password?: unknown; code?: unknown };
+      if (
+        typeof body.actorId !== 'string' ||
+        typeof body.password !== 'string' ||
+        typeof body.code !== 'string'
+      ) {
+        send(res, refused('That code is not valid.', 'Blueprint 11.1 - identity and access'));
+        return;
+      }
+
+      send(
+        res,
+        await confirmStaffEnrolment({
+          tenantId: config.tenantId,
+          actorId: body.actorId,
+          password: body.password,
+          code: body.code,
+          now: now(),
+        }),
+      );
     }),
   );
 

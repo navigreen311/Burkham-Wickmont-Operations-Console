@@ -27,6 +27,10 @@
     <main id="view-sign-in">
       <h2>Sign in</h2>
 
+      <p class="muted">
+        Been invited? <button id="go-enrol" type="button">Take up your invitation</button>
+      </p>
+
       <form id="form-sign-in">
         <label for="email">Email</label>
         <input id="email" name="email" type="email" autocomplete="username" required />
@@ -58,6 +62,69 @@
       </form>
     </main>
 
+    <!-- Enrolment ------------------------------------------------------------
+      For somebody who has no credential yet, which is why it sits outside the session.
+
+      The token goes in a FIELD rather than in the URL. A token in a URL ends up in browser history,
+      access logs and the Referer header - the same reason the session is a cookie and never a query
+      parameter.
+    -->
+    <main id="view-enrol" hidden>
+      <h2>Take up your invitation</h2>
+
+      <form id="form-enrol">
+        <label for="enrol-token">Invitation code</label>
+        <input id="enrol-token" name="token" type="text" autocomplete="off" required />
+
+        <label for="enrol-password">Choose a password</label>
+        <input
+          id="enrol-password"
+          name="password"
+          type="password"
+          autocomplete="new-password"
+          required
+        />
+        <p class="muted">
+          At least 12 characters. There are no composition rules — requiring a symbol and a capital
+          pushes people toward <code>Password1!</code>, which is worse at the thing the rule is for.
+        </p>
+
+        <button type="submit">Continue</button>
+      </form>
+
+      <section id="section-authenticator" hidden>
+        <h3>Add this to your authenticator</h3>
+        <!--
+          Shown once. Nobody else has seen it: the person who invited you chose neither this nor
+          your password.
+        -->
+        <p class="alarm">
+          This secret is shown once and is not recoverable. Add it to your authenticator app before
+          continuing.
+        </p>
+        <p id="enrol-secret" class="secret"></p>
+
+        <form id="form-confirm-enrol">
+          <label for="enrol-code">Code from your authenticator</label>
+          <input
+            id="enrol-code"
+            name="code"
+            type="text"
+            inputmode="numeric"
+            autocomplete="one-time-code"
+            required
+          />
+          <p class="muted">
+            A factor nobody has proved they can use is not a factor; it is a lockout waiting for the
+            first sign-in. Your account cannot be used until this verifies.
+          </p>
+          <button type="submit">Finish</button>
+        </form>
+      </section>
+
+      <p><button id="enrol-back" type="button">Back to sign in</button></p>
+    </main>
+
     <!-- Overview ----------------------------------------------------------- -->
     <main id="view-overview" hidden>
       <nav>
@@ -82,6 +149,26 @@
         <h3>Your queue</h3>
         <p id="queue-summary"></p>
         <ul id="queue-list"></ul>
+      </section>
+
+      <section id="section-invite" hidden>
+        <h3>Invite a colleague to the Console</h3>
+        <form id="form-invite">
+          <label for="invite-actor">Actor id</label>
+          <input id="invite-actor" name="actorId" type="text" required />
+
+          <label for="invite-email">Email they will sign in with</label>
+          <input id="invite-email" name="email" type="email" required />
+
+          <p class="muted">
+            Console access is sight of every client file in the firm. You are issuing a code they
+            spend themselves — <strong>you will not see their password or their authenticator
+            secret</strong>, and you cannot recover either.
+          </p>
+          <button type="submit">Invite</button>
+        </form>
+
+        <p id="invite-result" class="alarm" hidden></p>
       </section>
 
       <section>

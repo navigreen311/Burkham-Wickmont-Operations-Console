@@ -80,6 +80,15 @@ export const recordConsent = (clientId, kind, scope) =>
 
 export const vocabulary = () => call('/api/console/vocabulary');
 
+export const inviteStaff = (actorId, email) =>
+  call('/api/console/invitations', { actorId, email });
+
+/* --- enrolment, for somebody who has no credential yet --------------------- */
+
+export const enrol = (token, password) => call('/api/console/enrolment', { token, password });
+export const confirmEnrolment = (actorId, password, code) =>
+  call('/api/console/enrolment/confirm', { actorId, password, code });
+
 /**
  * Ask 5.3 for a recommendation.
  *

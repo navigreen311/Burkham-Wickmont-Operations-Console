@@ -282,6 +282,7 @@ export const EVENT_TYPES = [
   'identity.client_session.revoked',
 
   // Staff credentials for the internal Console. An Actor with no credential row cannot sign in.
+  'identity.staff.invited',
   'identity.staff.enrolment_started',
   'identity.staff.enrolled',
   'identity.staff.signed_in',

@@ -25,12 +25,13 @@ import * as api from './api.js';
 
 const $ = (id) => document.getElementById(id);
 
-const VIEWS = ['view-sign-in', 'view-overview', 'view-clients', 'view-client'];
+const VIEWS = ['view-sign-in', 'view-enrol', 'view-overview', 'view-clients', 'view-client'];
 
 const show = (view) => {
   for (const name of VIEWS) $(name).hidden = name !== view;
-  $('sign-out').hidden = view === 'view-sign-in';
-  $('who').hidden = view === 'view-sign-in';
+  const anonymous = view === 'view-sign-in' || view === 'view-enrol';
+  $('sign-out').hidden = anonymous;
+  $('who').hidden = anonymous;
 };
 
 const notice = (text) => {
@@ -184,6 +185,68 @@ $('sign-out').addEventListener('click', async () => {
   show('view-sign-in');
 });
 
+// --- enrolment --------------------------------------------------------------
+
+/** The actor whose enrolment is in progress, from the invitation just spent. */
+let enrollingActorId = null;
+
+$('go-enrol').addEventListener('click', () => {
+  notice('');
+  $('section-authenticator').hidden = true;
+  show('view-enrol');
+});
+
+$('enrol-back').addEventListener('click', () => {
+  notice('');
+  show('view-sign-in');
+});
+
+$('form-enrol').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  notice('');
+
+  const result = await api.enrol($('enrol-token').value.trim(), $('enrol-password').value);
+  if (!result.ok) {
+    notice(result.reason);
+    return;
+  }
+
+  enrollingActorId = result.data.actorId;
+
+  // Shown once, and the field that carried the token is cleared: it is spent, and a spent code
+  // left on screen looks like one that still works.
+  $('enrol-token').value = '';
+  $('enrol-secret').textContent = result.data.secret;
+  $('section-authenticator').hidden = false;
+  notice('Add the secret below to your authenticator, then enter a code from it.');
+});
+
+$('form-confirm-enrol').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  notice('');
+
+  const result = await api.confirmEnrolment(
+    enrollingActorId,
+    $('enrol-password').value,
+    $('enrol-code').value,
+  );
+  if (!result.ok) {
+    notice(result.reason);
+    return;
+  }
+
+  // Everything the enrolment touched is cleared before the sign-in view: the password, the code,
+  // and above all the secret, which is not recoverable and should not sit on a screen.
+  $('enrol-password').value = '';
+  $('enrol-code').value = '';
+  $('enrol-secret').textContent = '';
+  $('section-authenticator').hidden = true;
+  enrollingActorId = null;
+
+  show('view-sign-in');
+  notice('Enrolment complete. Sign in with your password and a code.');
+});
+
 // --- overview ---------------------------------------------------------------
 
 const enterOverview = async (announce = '') => {
@@ -235,9 +298,36 @@ const enterOverview = async (announce = '') => {
     'Nothing outstanding.',
   );
 
+  // Inviting is the same Level 3 decision the module enforces. Hidden below it as a courtesy; the
+  // module refuses regardless of what the page offered.
+  $('section-invite').hidden = mayWrite.transition_compliance_state !== true;
+
   notice(announce);
   show('view-overview');
 };
+
+$('form-invite').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  notice('');
+
+  const result = await api.inviteStaff($('invite-actor').value.trim(), $('invite-email').value.trim());
+
+  const banner = $('invite-result');
+  if (!result.ok) {
+    banner.hidden = true;
+    notice(result.reason);
+    return;
+  }
+
+  $('invite-actor').value = '';
+  $('invite-email').value = '';
+
+  // The code is shown here because there is nobody else to hand it to yet - no email provider is
+  // gated. It is single-use and expires, and it can only be spent to SET a credential.
+  banner.hidden = false;
+  banner.textContent = `Invitation code for ${result.data.email}, valid until ${result.data.expiresAt}: ${result.data.token} — pass it to them directly. Anyone holding it can spend it.`;
+  notice('Invitation issued.');
+});
 
 // --- clients ----------------------------------------------------------------
 

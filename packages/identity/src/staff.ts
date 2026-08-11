@@ -23,6 +23,22 @@
  * ADR-0009 (a state nobody activated is not active). Village agents have no row and are not meant
  * to have one: they act through the worker, which holds no session.
  *
+ * ## The granter never holds the other person's credential
+ *
+ * The first version of this file had `beginStaffEnrolment`: the granter passed the subject's
+ * password and received the subject's TOTP secret. **That hands one person both factors of somebody
+ * else's account**, and nothing downstream can tell a session opened by the subject from one opened
+ * by whoever enrolled them.
+ *
+ * It is replaced by the shape 11.1 already uses for clients: `inviteStaff` issues a single-use
+ * token, and `enrolStaffFromInvitation` is where the SUBJECT sets their own password and receives
+ * their own secret. The granter holds a token that can only be spent to set a credential, never to
+ * use one - and one that expires and cannot be spent twice.
+ *
+ * **What that does not fix, stated plainly:** whoever holds an unspent token can spend it, and with
+ * no email provider gated the token is handed back to the granter to pass on. Delivering it to the
+ * subject is what closes the gap. See ADR-0036.
+ *
  * ## A second factor is a precondition, not a setting
  *
  * A client's second factor is optional (11.10, ADR-0028): they may decide how much friction their
@@ -75,7 +91,19 @@ export const STAFF_LOCKOUT_MINUTES = 15;
 /** Enrolling somebody as staff is a Level 3 human decision. It grants sight of every client file. */
 export const STAFF_ENROLMENT_AUTHORITY_LEVEL: AuthorityLevel = 3;
 
+/**
+ * How long a staff invitation lives.
+ *
+ * Shorter than the client's 72 hours. A client is invited into their own file and may take a few
+ * days to get to it; a colleague being given sight of every file in the firm is starting on Monday,
+ * and an unspent token is the one thing in this flow anybody else can use.
+ */
+export const STAFF_INVITATION_HOURS = 24;
+
 const kek = (): KekProvider => new EnvKekProvider(MFA_SECRET_KEY_VARIABLE);
+
+/** A stored hash that cannot verify. Written at invite, replaced when the subject enrols. */
+const UNENROLLED = 'unenrolled';
 
 const normaliseEmail = (email: string): string => email.trim().toLowerCase();
 
@@ -92,6 +120,14 @@ const SIGN_IN_REFUSAL = () =>
     'Blueprint 11.1 - identity and access; failures are indistinguishable by design',
   );
 
+export interface StaffInvitation {
+  readonly actorId: string;
+  readonly email: string;
+  /** Returned once. Only its hash is stored. */
+  readonly token: string;
+  readonly expiresAt: string;
+}
+
 export interface StaffEnrolmentOffer {
   readonly actorId: string;
   readonly email: string;
@@ -102,26 +138,25 @@ export interface StaffEnrolmentOffer {
 }
 
 /**
- * Give an Actor a password and a pending second factor.
+ * Invite an Actor to take up a Console credential.
  *
- * **Enrolment is not finished here.** The row exists, the password verifies, and `enrolledAt` is
- * still null - so `authenticateStaff` refuses. What finishes it is `confirmStaffEnrolment`, which
- * takes a code the new authenticator produced. A factor nobody has proved they can use is not a
- * factor; it is a lockout waiting for the first sign-in, and on an internal console the person
- * locked out is the person who was going to do the work.
+ * **No password crosses this call and no secret comes back.** The granter names who and at what
+ * address; everything a session is opened with is chosen by the subject in
+ * `enrolStaffFromInvitation`.
  *
- * The password is checked for length only (`checkPassword`), and the secret is returned exactly
- * once. Neither is ever written to a Ledger payload.
+ * Re-inviting somebody mid-enrolment is allowed and spends the earlier token, so a re-invite does
+ * not leave two live ones. Inviting somebody already enrolled is REFUSED: getting a colleague back
+ * in is a credential reset, which is a different act with a different threat model, and a path that
+ * quietly became the other one is how an invitation ends up being a way to take over an account.
  */
-export const beginStaffEnrolment = async (input: {
+export const inviteStaff = async (input: {
   tenantId: string;
   actorId: string;
   email: string;
-  password: string;
   /** The Level 3 human granting internal access. */
-  grantedBy: string;
+  invitedBy: string;
   now?: Date;
-}): Promise<Outcome<StaffEnrolmentOffer>> => {
+}): Promise<Outcome<StaffInvitation>> => {
   const now = input.now ?? new Date();
 
   const actor = await findActor(input.actorId);
@@ -135,19 +170,16 @@ export const beginStaffEnrolment = async (input: {
     );
   }
 
-  const granter = await findActor(input.grantedBy);
-  if (!granter || granter.tenantId !== input.tenantId) {
-    return noData(`No actor ${input.grantedBy} is on record for this tenant.`);
+  const inviter = await findActor(input.invitedBy);
+  if (!inviter || inviter.tenantId !== input.tenantId) {
+    return noData(`No actor ${input.invitedBy} is on record for this tenant.`);
   }
-  if (granter.kind !== 'human' || granter.authorityLevel < STAFF_ENROLMENT_AUTHORITY_LEVEL) {
+  if (inviter.kind !== 'human' || inviter.authorityLevel < STAFF_ENROLMENT_AUTHORITY_LEVEL) {
     return refused(
       `Granting internal Console access requires a Level ${STAFF_ENROLMENT_AUTHORITY_LEVEL} human. It grants sight of every client file in the tenant.`,
       'Principle 4 - Authority Levels enforced by middleware',
     );
   }
-
-  const check = checkPassword(input.password);
-  if (!check.acceptable) return refused(check.detail, 'Blueprint 11.1 - credential quality');
 
   const email = normaliseEmail(input.email);
   if (email === '' || !email.includes('@')) {
@@ -159,22 +191,145 @@ export const beginStaffEnrolment = async (input: {
   });
   if (existing && existing.enrolledAt !== null) {
     return refused(
-      'That actor already holds a Console credential. Replacing one is a credential change, not an enrolment.',
+      'That actor already holds a Console credential. Getting them back in is a credential reset, not an invitation - a path that quietly became the other one would be a way to take over an account that already exists.',
       'Blueprint 11.1 - identity and access',
     );
   }
+
+  const clash = await db().actorCredential.findFirst({
+    where: { tenantId: input.tenantId, email, NOT: { actorId: actor.id } },
+  });
+  if (clash) {
+    return refused(
+      'That address already belongs to another Console credential in this tenant.',
+      'Blueprint 11.1 - identity and access',
+    );
+  }
+
+  const token = newToken();
+  const tokenHash = await hashToken(token);
+  const expiresAt = new Date(now.getTime() + STAFF_INVITATION_HOURS * 60 * 60 * 1000);
+
+  await db().$transaction(async (tx) => {
+    if (existing) {
+      // A restarted enrolment. Any password or pending secret from a previous attempt is cleared,
+      // because two live secrets for one account would both open it.
+      await tx.actorCredential.update({
+        where: { id: existing.id },
+        data: {
+          email,
+          passwordHash: UNENROLLED,
+          totpSecretCiphertext: null,
+          totpLastUsedStep: null,
+          failedAttempts: 0,
+          lockedUntil: null,
+        },
+      });
+    } else {
+      await tx.actorCredential.create({
+        data: {
+          actorId: actor.id,
+          tenantId: input.tenantId,
+          email,
+          // A placeholder that cannot verify: `verifyPassword` needs six `$`-separated parts
+          // beginning `scrypt`, and this is not that. An invited actor cannot sign in even if
+          // somebody guesses the empty string.
+          passwordHash: UNENROLLED,
+          createdAt: now,
+        },
+      });
+    }
+
+    // Any earlier unspent invitation is spent, so a re-invite does not leave two live tokens.
+    await tx.actorInvitation.updateMany({
+      where: { actorId: actor.id, acceptedAt: null },
+      data: { expiresAt: now },
+    });
+    await tx.actorInvitation.create({
+      data: {
+        tenantId: input.tenantId,
+        actorId: actor.id,
+        tokenHash,
+        issuedBy: inviter.id,
+        issuedAt: now,
+        expiresAt,
+      },
+    });
+  });
+
+  await append({
+    tenantId: input.tenantId,
+    type: 'identity.staff.invited',
+    actor: { id: inviter.id, kind: 'human' },
+    payload: {
+      subjectActorId: actor.id,
+      issuedBy: inviter.id,
+      expiresAt: expiresAt.toISOString(),
+    },
+  });
+
+  return ok({ actorId: actor.id, email, token, expiresAt: expiresAt.toISOString() });
+};
+
+/**
+ * Spend an invitation: set a password, and receive an authenticator secret.
+ *
+ * **The subject runs this, and it is the only place either factor is chosen.** The secret is
+ * returned once and never again - losing it before `confirmStaffEnrolment` means asking for a fresh
+ * invitation, which is deliberate: re-issuing a secret to whoever asks would be a way to replace a
+ * colleague's second factor with your own.
+ *
+ * Enrolment is still not finished here. `enrolledAt` stays null until a code from the new
+ * authenticator has verified, and an unenrolled credential cannot sign in at all.
+ */
+export const enrolStaffFromInvitation = async (input: {
+  tenantId: string;
+  token: string;
+  password: string;
+  now?: Date;
+}): Promise<Outcome<StaffEnrolmentOffer>> => {
+  const now = input.now ?? new Date();
+
+  const strength = checkPassword(input.password);
+  if (!strength.acceptable) {
+    return refused(strength.detail, 'Blueprint 11.1 - credential quality');
+  }
+
+  const tokenHash = await hashToken(input.token);
+  const invitation = await db().actorInvitation.findFirst({
+    where: { tenantId: input.tenantId, tokenHash },
+  });
+
+  // One sentence for a token that never existed, one already spent, and one expired - a caller
+  // cannot learn from this which of the three it was.
+  const generic = refused(
+    'That invitation is not valid. Ask for a new one.',
+    'Blueprint 11.1 - identity and access',
+  );
+
+  if (!invitation) return generic;
+  if (invitation.acceptedAt !== null) return generic;
+  if (invitation.expiresAt.getTime() <= now.getTime()) return generic;
+
+  const credential = await db().actorCredential.findFirst({
+    where: { tenantId: input.tenantId, actorId: invitation.actorId },
+  });
+  if (!credential) return generic;
+  if (credential.enrolledAt !== null) return generic;
+  if (credential.disabledAt !== null) return generic;
 
   const secret = base32Encode(randomBytes(SECRET_BYTES));
   const secretCiphertext = await encryptField(secret, kek());
   const passwordHash = await hashPassword(input.password);
 
-  if (existing) {
-    // A restarted enrolment. The previous pending secret is discarded rather than kept alongside:
-    // two pending secrets for one account would both open it.
-    await db().actorCredential.update({
-      where: { id: existing.id },
+  await db().$transaction(async (tx) => {
+    await tx.actorInvitation.update({
+      where: { id: invitation.id },
+      data: { acceptedAt: now },
+    });
+    await tx.actorCredential.update({
+      where: { id: credential.id },
       data: {
-        email,
         passwordHash,
         totpSecretCiphertext: secretCiphertext,
         totpLastUsedStep: null,
@@ -182,31 +337,22 @@ export const beginStaffEnrolment = async (input: {
         lockedUntil: null,
       },
     });
-  } else {
-    await db().actorCredential.create({
-      data: {
-        actorId: actor.id,
-        tenantId: input.tenantId,
-        email,
-        passwordHash,
-        totpSecretCiphertext: secretCiphertext,
-        createdAt: now,
-      },
-    });
-  }
+  });
 
   await append({
     tenantId: input.tenantId,
     type: 'identity.staff.enrolment_started',
-    actor: { id: granter.id, kind: 'human' },
-    payload: { subjectActorId: actor.id },
+    // The SUBJECT acts here, not the granter. Recording the granter would say somebody set a
+    // password they never saw.
+    actor: { id: invitation.actorId, kind: 'human' },
+    payload: { actorId: invitation.actorId },
   });
 
   return ok({
-    actorId: actor.id,
-    email,
+    actorId: invitation.actorId,
+    email: credential.email,
     secret,
-    uri: otpauthUri({ issuer: MFA_ISSUER, account: email, secretBase32: secret }),
+    uri: otpauthUri({ issuer: MFA_ISSUER, account: credential.email, secretBase32: secret }),
   });
 };
 

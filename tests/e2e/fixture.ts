@@ -91,7 +91,17 @@ export const E2E_CONSOLE_ACCOUNTS = [
   'e2e-operator-placement-refused@example.com',
   'e2e-operator-placement-ok@example.com',
   'e2e-operator-placement-vocabulary@example.com',
+  'e2e-operator-inviter@example.com',
 ] as const;
+
+/**
+ * The address the browser journey enrols at.
+ *
+ * Its Actor is seeded with **no credential at all** - the whole point of that spec is to watch one
+ * be created, by the person it belongs to.
+ */
+export const E2E_INVITEE_EMAIL = 'e2e-invitee@example.com';
+export const E2E_INVITEE_PASSWORD = 'a-long-enough-invitee-password';
 
 /**
  * The Authority Level each account holds. Level 3 unless named here.
@@ -109,7 +119,7 @@ export const E2E_CONSOLE_PASSWORD = 'a-long-enough-console-password';
  * Where the Console harness leaves what the specs need.
  *
  * **A handshake through the filesystem, and here it earns its keep.** A staff sign-in needs a code
- * derived from the TOTP secret, and that secret is generated inside `beginStaffEnrolment` - which is
+ * derived from the TOTP secret, and that secret is generated inside `enrolStaffFromInvitation` - which is
  * exactly where it should be generated, so it cannot be a constant agreed in this file. The seeding
  * process is the only one that ever sees it, and the spec process has to compute a code from it.
  *
@@ -147,6 +157,8 @@ export interface ConsoleHandoff {
   /** The read-only file. Kept for the specs that only look. */
   readonly clientName: string;
   readonly label: string;
+  /** An Actor holding no credential, for the enrolment journey. */
+  readonly inviteeActorId: string;
 }
 
 /**
@@ -157,12 +169,26 @@ export interface ConsoleHandoff {
  * step of drift in either direction, so a code for the next step verifies now AND is greater than
  * the one enrolment spent - which is what a person who waits half a minute would present.
  */
-export const nextStepCode = (secretBase32: string, now: Date = new Date()): string => {
+export const nextStepCode = (
+  secretBase32: string,
+  stepsAhead = 1,
+  now: Date = new Date(),
+): string => {
   const secret = base32Decode(secretBase32);
   if (secret === null) throw new Error('the handoff carried an unreadable secret');
-  const step = Math.floor(now.getTime() / 1000 / 30) + 1;
+  const step = Math.floor(now.getTime() / 1000 / 30) + stepsAhead;
   return totp(secret, new Date(step * 30 * 1000));
 };
+
+/**
+ * A code for the CURRENT step.
+ *
+ * For a factor that has never been used - a freshly enrolled one, whose `totpLastUsedStep` is null.
+ * Nothing has been spent yet, so the current step is available, and spending it leaves the next one
+ * free for the sign-in that follows immediately. Presenting `nextStepCode` twice in a row would be
+ * a replay of a code the first call had just spent.
+ */
+export const currentStepCode = (secretBase32: string): string => nextStepCode(secretBase32, 0);
 
 /** Open the Console. `domcontentloaded` for the reason `openPortal` gives. */
 export const openConsole = async (page: {
