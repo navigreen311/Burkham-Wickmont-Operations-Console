@@ -7,6 +7,20 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed - CI installs Chromium only (`ai-feature/e2e-chromium-only`)
+
+- Firefox and WebKit were added, narrowed to the specs written for them, and are now **dropped from
+  CI**: across every run they were present for they **found no defect of their own**, and the browser
+  job's time is dominated by installing them rather than by running anything.
+- **What that costs is smaller than it sounds.** `cross-browser.spec.ts` - the Content-Security-Policy
+  actually being enforced, and the page's no-WebAuthn fallback - **still runs on every CI run**, in
+  Chromium. What stops being continuously verified is the CROSS-ENGINE half: that Gecko and WebKit
+  enforce the policy too.
+- That half is a **manual check, not a covered one**: `pnpm exec playwright install firefox webkit`
+  then `E2E_ALL_ENGINES=1 pnpm test:e2e`. Opt-in rather than deleted, so the answer is reproducible
+  on demand - and **called a manual check rather than left to read as coverage. A control nobody runs
+  is not a control.**
+
 ### Changed - Firefox and WebKit run only the specs written for them (`ai-feature/e2e-narrow-projects`)
 
 - **Chromium runs everything; Firefox and WebKit run `cross-browser.spec.ts` and `passkey.spec.ts`.**

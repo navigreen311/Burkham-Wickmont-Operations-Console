@@ -14,24 +14,32 @@ import { defineConfig, devices } from '@playwright/test';
 import { E2E_ORIGIN, E2E_PORT } from './tests/e2e/fixture.js';
 
 /**
- * What each engine runs.
+ * What each engine runs, and which of them CI installs.
  *
- * Chromium runs everything. Firefox and WebKit run **`cross-browser.spec.ts` and `passkey.spec.ts`
- * only**, which is the honest shape of what they were adding: on the run that introduced them,
- * every page spec passed in all three and **the two new engines found nothing**. Their value is
- * concentrated in the file written for them, where the engine's own implementation is the subject -
- * whether a Content-Security-Policy is enforced rather than merely sent, and whether the page's
- * no-WebAuthn fallback works.
+ * **CI installs Chromium and nothing else.** Firefox and WebKit found no defect of their own across
+ * the runs they were present for, and the browser job's time is dominated by installing them rather
+ * than by running anything.
  *
- * `passkey.spec.ts` stays in the list although it cannot pass there, because it **skips itself with
- * a stated reason** and a reported skip is the point: an engine that cannot hold a passkey should
- * say so rather than have the file silently not exist.
+ * What that costs is smaller than it sounds, and worth stating exactly. `cross-browser.spec.ts` -
+ * the Content-Security-Policy actually being enforced, and the page's no-WebAuthn fallback - **still
+ * runs on every CI run**, in Chromium. What stops being continuously verified is the *cross-engine*
+ * half of it: that Gecko and WebKit enforce the policy too.
  *
- * **What this gives up, plainly:** the portal's own page specs - sign-in, the room, the message
- * path, the reset path - are no longer exercised in Gecko or WebKit. They found nothing there, and
- * that is a reason rather than a guarantee.
+ * That half is a **manual check**, not a covered one:
+ *
+ * ```
+ * pnpm exec playwright install firefox webkit
+ * E2E_ALL_ENGINES=1 pnpm test:e2e
+ * ```
+ *
+ * It is opt-in rather than deleted so the answer is reproducible on demand rather than re-derived,
+ * and it is called a manual check rather than left to read as coverage - a control nobody runs is
+ * not a control.
  */
 const CROSS_ENGINE = /(cross-browser|passkey)\.spec\.ts$/u;
+
+/** Opt in with `E2E_ALL_ENGINES=1`. CI does not. */
+const ALL_ENGINES = process.env['E2E_ALL_ENGINES'] !== undefined;
 
 export default defineConfig({
   testDir: './tests/e2e',
@@ -55,35 +63,40 @@ export default defineConfig({
 
   projects: [
     { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
-    {
-      name: 'firefox',
-      testMatch: CROSS_ENGINE,
-      use: {
-        ...devices['Desktop Firefox'],
-        launchOptions: {
-          firefoxUserPrefs: {
-            // **Firefox only, and only because of `localhost`.** On a CI runner about one Firefox
-            // navigation in five hung until the test timed out, on no particular test, while the
-            // ones on either side answered in under a second. Changing what the navigation waited
-            // for did not help, which puts it below the page: `localhost` resolves to both `::1`
-            // and `127.0.0.1`, and Firefox is the only one of the three engines that stalls
-            // choosing.
-            //
-            // The RP ID has to stay `localhost` - a WebAuthn relying party is a domain, never an
-            // address - so the harness cannot simply be addressed by IP. Telling Firefox to use one
-            // stack removes the choice.
-            'network.dns.disableIPv6': true,
-            // Playwright drives Firefox through an internal proxy, and `localhost` bypasses a proxy
-            // by default - so a navigation to it takes a different path from every other request
-            // the harness serves. This is the documented knob for that, and it is the fourth thing
-            // tried against a hang that survived listening on both stacks, navigating on
-            // `domcontentloaded`, and pinning DNS to one stack.
-            'network.proxy.allow_hijacking_localhost': true,
+    // Present only when asked for. See the note above `CROSS_ENGINE`.
+    ...(ALL_ENGINES
+      ? [
+          {
+            name: 'firefox',
+            testMatch: CROSS_ENGINE,
+            use: {
+              ...devices['Desktop Firefox'],
+              launchOptions: {
+                firefoxUserPrefs: {
+                  // **Firefox only, and only because of `localhost`.** On a CI runner about one Firefox
+                  // navigation in five hung until the test timed out, on no particular test, while the
+                  // ones on either side answered in under a second. Changing what the navigation waited
+                  // for did not help, which puts it below the page: `localhost` resolves to both `::1`
+                  // and `127.0.0.1`, and Firefox is the only one of the three engines that stalls
+                  // choosing.
+                  //
+                  // The RP ID has to stay `localhost` - a WebAuthn relying party is a domain, never an
+                  // address - so the harness cannot simply be addressed by IP. Telling Firefox to use one
+                  // stack removes the choice.
+                  'network.dns.disableIPv6': true,
+                  // Playwright drives Firefox through an internal proxy, and `localhost` bypasses a proxy
+                  // by default - so a navigation to it takes a different path from every other request
+                  // the harness serves. This is the documented knob for that, and it is the fourth thing
+                  // tried against a hang that survived listening on both stacks, navigating on
+                  // `domcontentloaded`, and pinning DNS to one stack.
+                  'network.proxy.allow_hijacking_localhost': true,
+                },
+              },
+            },
           },
-        },
-      },
-    },
-    { name: 'webkit', testMatch: CROSS_ENGINE, use: { ...devices['Desktop Safari'] } },
+          { name: 'webkit', testMatch: CROSS_ENGINE, use: { ...devices['Desktop Safari'] } },
+        ]
+      : []),
   ],
 
   webServer: {

@@ -139,13 +139,11 @@ around from an earlier build.
 
 ## Tested
 
-13 specs. `pnpm test:e2e` runs **21 and reports 6 explicit skips** - Chromium 13, Firefox 7,
-WebKit 7. It was 33 runs when all three engines ran everything; the twelve dropped were page specs
-that had never failed outside Chromium.
+13 specs. `pnpm test:e2e` runs **13 in Chromium**; `E2E_ALL_ENGINES=1 pnpm test:e2e` runs **21 and
+reports 6 explicit skips** across three engines.
 
-**The saving is in execution, not in setup.** CI still installs all three browsers, because Firefox
-and WebKit still run the file written for them - and the install is the larger share of that job's
-time. The vitest suite is unchanged at **1112** — the two
+The browser job was **4m23s** installing three engines. The measured figure after dropping two is in
+the pull request rather than here, because a number in a document ages badly. The vitest suite is unchanged at **1112** — the two
 runners never see each other's files (`*.test.ts` against `*.spec.ts`).
 
 | Spec                                        | Asserts                                                                        |

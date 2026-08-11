@@ -116,13 +116,16 @@ jobs:
       # in isolation and cannot be imported. The harness resolves them the way a deployment does.
       - name: Build packages
         run: pnpm build
-      # All three engines. The passkey specs skip themselves off Chromium with a stated reason -
-      # the virtual authenticator is a Chrome DevTools Protocol feature - so what Firefox and WebKit
-      # add is the layer where the ENGINE is under test: whether a Content-Security-Policy is
-      # actually enforced, and whether the page's no-WebAuthn fallback works. Each implements CSP
-      # separately, and a header is not an enforcement.
-      - name: Install browsers
-        run: pnpm exec playwright install --with-deps chromium firefox webkit
+      # Chromium only. Firefox and WebKit found no defect of their own across the runs they were
+      # present for, and this job's time is dominated by installing them rather than by running
+      # anything.
+      #
+      # `cross-browser.spec.ts` still runs on every CI run - the policy being enforced, the
+      # no-WebAuthn fallback - in Chromium. What stops being continuously verified is that GECKO and
+      # WEBKIT enforce the policy too, and that is a manual check:
+      #   pnpm exec playwright install firefox webkit && E2E_ALL_ENGINES=1 pnpm test:e2e
+      - name: Install Chromium
+        run: pnpm exec playwright install --with-deps chromium
       - name: Browser end-to-end tests
         run: pnpm test:e2e
       - if: failure()
