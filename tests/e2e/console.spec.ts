@@ -20,6 +20,7 @@ import {
   E2E_CONSOLE_HANDOFF,
   E2E_CONSOLE_ORIGIN,
   E2E_CONSOLE_PASSWORD,
+  E2E_PLACEMENT_REF,
   nextStepCode,
   openConsole,
   type ConsoleHandoff,
@@ -261,5 +262,70 @@ test.describe('an operator who may not write', () => {
     const payload = (await reply.json()) as { status: string; reason?: string };
     expect(payload.status).toBe('refused');
     expect(payload.reason).toMatch(/Authority Level/);
+  });
+});
+
+test.describe('asking for a placement from the page', () => {
+  /**
+   * The ordinary outcome, and the one an operator meets first.
+   *
+   * A client nobody has assessed is refused at the chain's gate. The page has to make that legible
+   * rather than look broken - which means the reason AND the step that produced it.
+   */
+  test('shows the refusal and the step that produced it', async ({ page }) => {
+    await signIn(page, E2E_CONSOLE_ACCOUNTS[10]);
+
+    await page.getByRole('button', { name: 'Clients', exact: true }).first().click();
+    await page.getByRole('button', { name: E2E_CONSOLE_CLIENTS[0] }).click();
+
+    const form = page.locator('#form-placement');
+    await form.getByLabel('Application reference').fill('APP-NOT-AUTHORISED');
+    await page.locator('#placement-need').selectOption('working_capital');
+    await form.getByLabel('Amount sought (whole dollars)').fill('100000');
+    await form.getByRole('button', { name: 'Request' }).click();
+
+    // Refused at step 4 - the client has never been assessed - and NOT for the missing consent,
+    // which is a check that should not have been reached.
+    await expect(page.locator('#placement-summary')).toContainText('Compliance state');
+    await expect(page.locator('#trace-list')).toContainText('firewall: blocked');
+  });
+
+  test('renders a recommendation with its rejections and disclosures', async ({ page }) => {
+    await signIn(page, E2E_CONSOLE_ACCOUNTS[11]);
+
+    await page.getByRole('button', { name: 'Clients', exact: true }).first().click();
+    await page.getByRole('button', { name: E2E_CONSOLE_CLIENTS[3] }).click();
+
+    const form = page.locator('#form-placement');
+    await form.getByLabel('Application reference').fill(E2E_PLACEMENT_REF);
+    await page.locator('#placement-need').selectOption('working_capital');
+    await form.getByLabel('Amount sought (whole dollars)').fill('100000');
+    await form.getByRole('button', { name: 'Request' }).click();
+
+    await expect(page.getByRole('status')).toHaveText('Recommendation ready.');
+    await expect(page.locator('#placement-recommendations')).toContainText(
+      'Meridian National Bank',
+    );
+    // The disclosures the Governance Board attached travel with the recommendation, because a memo
+    // that dropped them is the memo that gets sent.
+    await expect(page.locator('#placement-recommendations')).toContainText('is not a lender');
+  });
+
+  test('offers only the purposes the system recognises, and starts on none of them', async ({
+    page,
+  }) => {
+    // Its own account: a spent TOTP code cannot be presented twice, so no two specs share one.
+    await signIn(page, E2E_CONSOLE_ACCOUNTS[12]);
+
+    await page.getByRole('button', { name: 'Clients', exact: true }).first().click();
+    await page.getByRole('button', { name: E2E_CONSOLE_CLIENTS[3] }).click();
+
+    // Served by the API rather than written into the page, so the list cannot drift from the one
+    // the server will accept.
+    const options = await page.locator('#placement-need option').allTextContents();
+    expect(options).toContain('equipment_purchase');
+    // Left on the empty choice: suitability is assessed against this, so a default would be a
+    // confident recommendation for a purpose nobody stated.
+    await expect(page.locator('#placement-need')).toHaveValue('');
   });
 });

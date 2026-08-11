@@ -25,6 +25,7 @@ import { create as createClient } from '@bwc/clients';
 import { createRateLimiter } from '@bwc/http';
 import { createApp } from '../../apps/api/src/app.js';
 import type { ConsoleConfig } from '../../apps/api/src/config.js';
+import { makePlaceable } from '../helpers/placeable.js';
 import {
   E2E_CONSOLE_ACCOUNTS,
   E2E_CONSOLE_CLIENTS,
@@ -33,6 +34,7 @@ import {
   E2E_CONSOLE_ORIGIN,
   E2E_CONSOLE_PASSWORD,
   E2E_CONSOLE_PORT,
+  E2E_PLACEMENT_REF,
   type ConsoleHandoff,
 } from './fixture.js';
 
@@ -54,9 +56,22 @@ const main = async (): Promise<void> => {
   });
 
   // One per spec that changes one. See `E2E_CONSOLE_CLIENTS`.
+  const clients = new Map<string, string>();
   for (const name of E2E_CONSOLE_CLIENTS) {
-    await createClient(tenant.id, name, { id: granter.id, kind: 'human' });
+    const created = await createClient(tenant.id, name, { id: granter.id, kind: 'human' });
+    clients.set(name, created.id);
   }
+
+  // The last one gets a world a placement can succeed in - five modules have to agree, and the
+  // recipe is shared with the transport test rather than written twice.
+  const placeable = clients.get(E2E_CONSOLE_CLIENTS[3]);
+  if (placeable === undefined) throw new Error('seed: placeable client');
+  await makePlaceable({
+    tenantId: tenant.id,
+    clientId: placeable,
+    actor: { id: granter.id, kind: 'human' },
+    applicationRef: E2E_PLACEMENT_REF,
+  });
 
   process.env['MFA_SECRET_KEY'] ??=
     '00112233445566778899aabbccddeeff00112233445566778899aabbccddee00';

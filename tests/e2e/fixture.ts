@@ -88,6 +88,9 @@ export const E2E_CONSOLE_ACCOUNTS = [
   'e2e-operator-writes-firewall@example.com',
   'e2e-operator-writes-newfile@example.com',
   'e2e-operator-observer@example.com',
+  'e2e-operator-placement-refused@example.com',
+  'e2e-operator-placement-ok@example.com',
+  'e2e-operator-placement-vocabulary@example.com',
 ] as const;
 
 /**
@@ -129,7 +132,13 @@ export const E2E_CONSOLE_CLIENTS = [
   'Console End To End Holdings LLC',
   'Console Compliance Subject LLC',
   'Console Firewall Subject LLC',
+  // Built so a placement can actually succeed: an approved provider whose box it fits, a primary
+  // entity with revenue, a passing compliance state, and consent scoped to E2E_PLACEMENT_REF.
+  'Console Placement Subject LLC',
 ] as const;
+
+/** The one reference the placeable client has authorised. Any other is refused, by design. */
+export const E2E_PLACEMENT_REF = 'APP-E2E-001';
 
 export interface ConsoleHandoff {
   readonly tenantId: string;

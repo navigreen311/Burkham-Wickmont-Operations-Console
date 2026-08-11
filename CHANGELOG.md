@@ -7,6 +7,39 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added - the placement button, and the two inputs the route never asked for (`ai-feature/console-placement`)
+
+- The placement route has existed since the walking skeleton and already ran the whole middleware
+  chain, so this looked like a form and a renderer. **It was not** (ADR-0035).
+- **The route took `applicationRef` and nothing else**, and `requestRecommendation` defaults `need`
+  to `working_capital` and `requestedAmount` to **zero**. Eligibility compares the amount against
+  each offering's minimum, so the default **rejects every provider that has one** - with the reason
+  "Requested $0 is below the $25,000 minimum", which is true, useless, and produced by nobody having
+  been asked. **A button wired to that route would have been decorative**, and its rejection list
+  would have looked like a catalogue problem.
+- **The defaulted `need` is the worse of the two.** Suitability is assessed against it, so a client
+  borrowing for equipment - silently assessed as needing working capital - does not get an error.
+  They get a confident recommendation for the wrong product, with a rationale explaining why it
+  suits a purpose they never stated.
+- Both are now **required**, and the `need` select starts on an empty "Choose…": a pre-selected
+  first option is a default wearing a different hat. Amounts are **whole dollars**, which is what
+  `@bwc/lenders` stores (5.2 predates ADR-0011's integer-cents rule) - stated in the label and in
+  the route, because two money conventions in one system is what gets got wrong once, silently.
+- **The refusal is the ordinary outcome and the page treats it as an answer.** A placement runs the
+  gate, then the per-application authorisation, then the Entity Graph, then the catalogue, stopping
+  with a different reason at each - and the ORDER is deliberate: a frozen client is refused for the
+  freeze, not for a consent nobody should have been collecting. The page shows the reason and the
+  middleware trace. Rejections behind a short list are shown in full and never truncated.
+- **`GET /api/console/vocabulary`** serves the consent kinds and capital needs from the constants
+  the server validates against. A list hard-coded in the page offers a value the server will refuse
+  the moment somebody adds one, and that refusal reads as a bug in the Console. The consent form's
+  `kind` got the same treatment - it was free text, so a typo produced "unrecognised kind" on a page
+  that had invited the typo.
+- **`tests/helpers/placeable.ts`**: making a placement succeed takes five modules to agree, and the
+  transport test and the browser harness now build that world from one recipe. Two hand-built worlds
+  drift, and the one that drifts is the one nobody is looking at.
+- 1188 vitest tests across 67 files (+9), 30 browser specs (+3). No schema change.
+
 ### Fixed - a failed compliance state now lists the client, which it never has (`ai-feature/auto-list-on-fail`)
 
 - **`autoListForComplianceFail` had no production caller.** Decision E says a client whose compliance

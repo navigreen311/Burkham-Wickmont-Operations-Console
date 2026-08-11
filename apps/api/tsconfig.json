@@ -23,6 +23,7 @@
     { "path": "../../packages/notifications" },
     { "path": "../../packages/observability" },
     { "path": "../../packages/risk" },
-    { "path": "../../packages/calls" }
+    { "path": "../../packages/calls" },
+    { "path": "../../packages/lenders" }
   ]
 }

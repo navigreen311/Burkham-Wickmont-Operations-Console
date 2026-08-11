@@ -109,8 +109,8 @@ a risk-event meaning are all strings somebody else wrote.
 
 **Writes are built** — see [`m11-console-writes.md`](m11-console-writes.md). Compliance transitions,
 the Firewall trigger, consent and opening a file all have buttons now, and every one of them goes
-through the middleware chain, which none of them did before (ADR-0033). Placement still has no
-button.
+through the middleware chain, which none of them did before (ADR-0033). Placement has one too, and
+adding it turned up two inputs the route had never asked for (ADR-0035).
 
 **No enrolment surface.** The first Console credential is a bootstrap step through
 `beginStaffEnrolment` / `confirmStaffEnrolment`, not a self-service page. Console access is sight of
