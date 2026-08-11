@@ -135,6 +135,7 @@ export * from './credentials.js';
 export * from './confirmation.js';
 export * from './totp.js';
 export * from './mfa.js';
+export * from './mfaPolicy.js';
 export * from './clientUsers.js';
 export * from './emailChange.js';
 export * from './passwordChange.js';

@@ -29,9 +29,24 @@
  *
  * Each invariant carries `whyFixed`, so "why can't I change this" is answered by the system rather
  * than by whoever remembers.
+ *
+ * The one import is two constants from `@bwc/identity`, which owns the code the client MFA mandate
+ * governs. The key and the default are declared beside their enforcement rather than here, so the
+ * registry entry and the check cannot come to disagree about which key they mean.
  */
 
-export type ParameterKind = 'days' | 'hours' | 'count' | 'percent' | 'basis_points' | 'ratio';
+/**
+ * `flag` is a parameter that is on or off, carried as 0 or 1.
+ *
+ * It reuses the numeric pipeline rather than introducing a second value type: bounds of 0-1 with
+ * the whole-number rule already refuse 2 and 0.5, and the audit trail, staging, rollback and
+ * history all keep working unchanged. A boolean column beside `newValue` would have been a second
+ * representation of "the value" for every reader of a change row to remember to check.
+ */
+import { CLIENT_MFA_REQUIRED_DEFAULT, CLIENT_MFA_REQUIRED_KEY } from '@bwc/identity';
+
+export type ParameterKind =
+  'days' | 'hours' | 'count' | 'percent' | 'basis_points' | 'ratio' | 'flag';
 
 export interface Parameter {
   /** Stable key. `<package>.<CONSTANT_NAME>`, so a reader can find the code it governs. */
@@ -193,6 +208,18 @@ export const PARAMETERS: readonly Parameter[] = [
       'Two guarantees is a person with two businesses. The threshold is about when to ASK, and a finding that fires at ten has stopped being a warning.',
     owner: 'Risk & Defense',
     highRisk: false,
+  },
+  {
+    key: CLIENT_MFA_REQUIRED_KEY,
+    label: 'Require a second factor for Client Portal sign-in',
+    kind: 'flag',
+    compiledDefault: CLIENT_MFA_REQUIRED_DEFAULT,
+    minimum: 0,
+    maximum: 1,
+    boundsBasis:
+      'On or off, and off is the compiled default. Staff MFA is mandatory in code and is not this setting (ADR-0032); this one governs CLIENTS, who cannot escalate to anybody but us when they are locked out. It is a parameter rather than an invariant because it can only turn a control ON: unset, the system behaves exactly as it did before, and no value of it removes a check that exists today.',
+    owner: 'Compliance & Evidence',
+    highRisk: true,
   },
 ];
 
