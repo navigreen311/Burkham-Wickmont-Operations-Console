@@ -76,6 +76,29 @@ export default [
     rules: { 'no-console': 'off' },
   },
   {
+    /**
+     * The Client Portal's page. The only browser code in the repository.
+     *
+     * Its globals are listed here rather than added to `NODE_GLOBALS`, because `document` and
+     * `navigator` existing in server code would be a mistake nobody would catch - the point of
+     * `no-undef` is that a global has to be declared somewhere, and where it is declared says where
+     * it is allowed to be used.
+     */
+    files: ['apps/portal-api/public/**/*.js'],
+    languageOptions: {
+      ecmaVersion: 2023,
+      sourceType: 'module',
+      globals: {
+        document: 'readonly',
+        window: 'readonly',
+        navigator: 'readonly',
+        fetch: 'readonly',
+        atob: 'readonly',
+        btoa: 'readonly',
+      },
+    },
+  },
+  {
     files: ['tests/**/*.ts'],
     rules: {
       // Tests deliberately construct values the public types forbid, to check runtime behaviour.

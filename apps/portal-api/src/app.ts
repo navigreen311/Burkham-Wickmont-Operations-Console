@@ -22,6 +22,8 @@
  */
 
 import express, { type Express, type NextFunction, type Request, type Response } from 'express';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import helmet from 'helmet';
 import {
   changePassword,
@@ -204,6 +206,9 @@ const NEEDS_CONFIRMATION = (): Outcome<never> =>
     'Blueprint 11.1 - a credential change needs a credential',
   );
 
+/** Where this module sits, so the page can be found relative to it rather than to the cwd. */
+const currentDirectory = dirname(fileURLToPath(import.meta.url));
+
 export const createPortalApp = (deps: PortalAppDeps): Express => {
   const config = deps.config ?? readConfig();
   const now = deps.now ?? ((): Date => new Date());
@@ -271,16 +276,65 @@ export const createPortalApp = (deps: PortalAppDeps): Express => {
   app.set('trust proxy', config.trustProxy);
   app.disable('x-powered-by');
 
-  app.use(
-    helmet({
-      // Nothing here serves a document, so the strictest CSP costs nothing and is one fewer thing
-      // to weaken later when somebody adds a page.
-      contentSecurityPolicy: {
-        directives: { defaultSrc: ["'none'"], frameAncestors: ["'none'"] },
+  /**
+   * The API's policy: nothing, from anywhere.
+   *
+   * `default-src 'none'` was chosen when nothing here served a document (ADR-0022). A JSON route
+   * still serves no document, so it keeps the strictest policy - **the relaxation the page needs
+   * must not leak onto the routes that do not need it**, and a test asserts it does not.
+   */
+  const apiHelmet = helmet({
+    contentSecurityPolicy: {
+      // **`useDefaults: false`, and that is a fix rather than a preference.** ADR-0022 called this
+      // "the strictest CSP" and it was not: helmet merges its defaults under whatever is named, so
+      // the header this API has been sending all along carried `script-src 'self'`,
+      // `style-src 'self' https: 'unsafe-inline'` and `img-src 'self' data:`. Harmless on a route
+      // that renders no document, and not what the ADR said. Now the header is only what is written.
+      useDefaults: false,
+      directives: {
+        defaultSrc: ["'none'"],
+        frameAncestors: ["'none'"],
+        baseUri: ["'none'"],
+        formAction: ["'none'"],
       },
-      referrerPolicy: { policy: 'no-referrer' },
-    }),
-  );
+    },
+    referrerPolicy: { policy: 'no-referrer' },
+  });
+
+  /**
+   * The page's policy: this origin, and nothing inline.
+   *
+   * `script-src 'self'` and `style-src 'self'` with **no `'unsafe-inline'` and no nonce**. A nonce is
+   * a mechanism to keep correct on every response; having nothing inline at all is a mechanism that
+   * cannot be got wrong, and the document has no `<script>` body and no `style=` attribute.
+   *
+   * `default-src 'none'` stays, so an image, a font, or a fetch to any other host is still refused.
+   * `form-action 'none'` is added because every submission goes through `fetch` - a form that posted
+   * anywhere would be a form nobody wrote.
+   */
+  const pageHelmet = helmet({
+    contentSecurityPolicy: {
+      // Written out rather than merged, for the same reason: the policy in force should be the
+      // policy in the source. Note `style-src 'self'` WITHOUT `'unsafe-inline'`, which helmet's
+      // default would have added.
+      useDefaults: false,
+      directives: {
+        defaultSrc: ["'none'"],
+        scriptSrc: ["'self'"],
+        scriptSrcAttr: ["'none'"],
+        styleSrc: ["'self'"],
+        connectSrc: ["'self'"],
+        imgSrc: ["'none'"],
+        objectSrc: ["'none'"],
+        formAction: ["'none'"],
+        baseUri: ["'none'"],
+        frameAncestors: ["'none'"],
+      },
+    },
+    referrerPolicy: { policy: 'no-referrer' },
+  });
+
+  app.use('/portal', apiHelmet);
 
   /**
    * Liveness. Unauthenticated and deliberately empty.
@@ -1068,6 +1122,29 @@ export const createPortalApp = (deps: PortalAppDeps): Express => {
           receivedAt: now(),
         }),
       );
+    }),
+  );
+
+  /**
+   * The browser UI.
+   *
+   * **Served by this process, because the session cookie is `SameSite=Strict`** - a page on another
+   * origin sends no cookie at all with a cross-site request, which is the CSRF control ADR-0022
+   * chose. Hosting the UI elsewhere would mean weakening `SameSite`, paying for the feature with the
+   * protection that made it necessary.
+   *
+   * Plain files: no bundler, no framework, no build step, and therefore no build output anybody has
+   * to remember to regenerate.
+   */
+  app.use(
+    pageHelmet,
+    express.static(join(currentDirectory, '..', 'public'), {
+      extensions: ['html'],
+      index: 'index.html',
+      // A page that changed while a client was reading it is a page whose script and markup
+      // disagree. Short, so a deploy is visible, and revalidated rather than trusted.
+      maxAge: 0,
+      etag: true,
     }),
   );
 

@@ -7,6 +7,44 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added - a browser UI for the Client Portal (`ai-feature/portal-ui`)
+
+**A deliberate departure from a standing decision.** Since PR #1 the note has read "Never built by
+design: the UI for any surface." It is set aside on the owner's instruction, and ADR-0031 records
+that rather than letting a future reader conclude the rule was forgotten. See
+[docs/m11-portal-ui.md](docs/m11-portal-ui.md).
+
+- The case for lifting it now: **WebAuthn cannot be exercised at all without a browser.**
+  `navigator.credentials` is the only thing that produces an assertion, so five slices of
+  server-side work were unreachable by any client this repository contained.
+- **This process serves the page, because the cookie decided it.** The session cookie is
+  `SameSite=Strict`, so a page on another origin sends NO cookie with a cross-site request - a
+  separately hosted UI would have to weaken it, paying for the protection with the feature that made
+  it necessary.
+- **Nothing inline, so the policy barely moves.** `script-src 'self'` and `style-src 'self'` with no
+  `'unsafe-inline'` and **no nonce** - a nonce has to be produced, threaded and matched on every
+  response, and having no inline code at all is a mechanism that cannot be got wrong. The relaxation
+  applies to the DOCUMENT: `/portal/*` keeps the strict policy, asserted.
+- **No framework and no build step.** Plain ES modules served as files: no bundler, no dependency, no
+  build output to regenerate, and no supply chain in front of the page that holds a session.
+- `encoding.js` is where a browser integration is actually wrong or right - the server speaks
+  base64url and `navigator.credentials` speaks `ArrayBuffer`, and it does not complain about a
+  string, it produces a credential for the wrong challenge. **The failure looks like a working
+  ceremony**, so the transforms are pure, have no DOM, and are checked against payloads a real
+  software authenticator produced.
+- Structural checks: nothing assigned to a markup-writing property (including in comments, which is
+  why the comment describing the rule does not name them), no inline script or style or `on…=`
+  attribute, nothing loaded from another host, and **every route the page names is probed against the
+  app** - a page written against a renamed endpoint fails in a browser and passes every server test.
+
+**Fixed - `default-src 'none'` was not the strictest policy, and had not been since ADR-0022.**
+Helmet merges its defaults underneath whatever directives are named, so the header this API has been
+sending all along also carried `script-src 'self'`, `style-src 'self' https: 'unsafe-inline'`,
+`img-src 'self' data:` and `form-action 'self'`. Harmless on a route that renders no document, and
+not what the ADR said. Both policies now set `useDefaults: false`, so the header in force is the
+header in the source. Found by writing a test that asserted the API policy contained no `script-src`
+and watching it fail.
+
 ### Added - accounts with no password at all (`ai-feature/passwordless-accounts`)
 
 ADR-0029 stopped the password authenticating anybody and deliberately left the hash, naming the

@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Burkham Wickmont — Client Portal</title>
+    <!--
+      No inline style and no inline script anywhere in this document. The Content-Security-Policy
+      allows 'self' and nothing else, with no 'unsafe-inline' and no nonce: a nonce is a mechanism to
+      keep correct on every response, and having nothing inline is a mechanism that cannot be got
+      wrong.
+    -->
+    <link rel="stylesheet" href="/portal.css" />
+    <script type="module" src="/portal.js"></script>
+  </head>
+
+  <body>
+    <header>
+      <h1>Burkham Wickmont</h1>
+      <button id="sign-out" type="button" hidden>Sign out</button>
+    </header>
+
+    <p id="notice" role="status" hidden></p>
+
+    <!-- Sign in ------------------------------------------------------------ -->
+    <main id="view-sign-in">
+      <h2>Sign in</h2>
+
+      <form id="form-password">
+        <label for="email">Email</label>
+        <input id="email" name="email" type="email" autocomplete="username" required />
+
+        <label for="password">Password</label>
+        <input
+          id="password"
+          name="password"
+          type="password"
+          autocomplete="current-password"
+          required
+        />
+
+        <button type="submit">Sign in</button>
+      </form>
+
+      <p>
+        <button id="use-passkey" type="button">Sign in with a passkey</button>
+      </p>
+
+      <form id="form-mfa" hidden>
+        <h3>One more step</h3>
+        <label for="code">Code from your authenticator</label>
+        <input id="code" name="code" inputmode="numeric" autocomplete="one-time-code" />
+        <button type="submit">Continue</button>
+        <button id="use-key" type="button">Use a security key instead</button>
+      </form>
+
+      <details>
+        <summary>Forgotten your password?</summary>
+        <form id="form-reset">
+          <label for="reset-email">Email</label>
+          <input id="reset-email" name="reset-email" type="email" required />
+          <button type="submit">Send a reset link</button>
+        </form>
+      </details>
+    </main>
+
+    <!-- The room ----------------------------------------------------------- -->
+    <main id="view-room" hidden>
+      <h2 id="room-client"></h2>
+
+      <nav>
+        <button id="go-settings" type="button">Security settings</button>
+      </nav>
+
+      <section>
+        <h3>Documents</h3>
+        <ul id="room-documents"></ul>
+      </section>
+
+      <section>
+        <h3>Deliverables</h3>
+        <ul id="room-deliverables"></ul>
+      </section>
+
+      <section>
+        <h3>Not shown here</h3>
+        <!-- 11.10 carries what it withheld and why: a room that silently omitted would assert there
+             was nothing there. -->
+        <ul id="room-withheld"></ul>
+      </section>
+
+      <section>
+        <h3>Send a message</h3>
+        <form id="form-message">
+          <label for="message-subject">Subject</label>
+          <input id="message-subject" name="message-subject" />
+
+          <label for="message-body">Message</label>
+          <textarea id="message-body" name="message-body" rows="4" required></textarea>
+
+          <button type="submit">Send</button>
+        </form>
+      </section>
+    </main>
+
+    <!-- Security settings --------------------------------------------------- -->
+    <main id="view-settings" hidden>
+      <h2>Security</h2>
+
+      <nav>
+        <button id="go-room" type="button">Back to your room</button>
+      </nav>
+
+      <section>
+        <h3>Sign-in</h3>
+        <p id="settings-summary"></p>
+      </section>
+
+      <section>
+        <h3>Security keys</h3>
+        <ul id="settings-keys"></ul>
+
+        <form id="form-register-key">
+          <label for="key-label">Name for this key</label>
+          <input id="key-label" name="key-label" required />
+
+          <label for="key-confirm">Your password</label>
+          <input id="key-confirm" name="key-confirm" type="password" autocomplete="current-password" />
+
+          <label>
+            <input id="key-discoverable" name="key-discoverable" type="checkbox" checked />
+            Let this key sign me in on its own
+          </label>
+
+          <button type="submit">Register a key</button>
+        </form>
+      </section>
+
+      <section>
+        <h3>Turn the password off</h3>
+        <p>
+          A passkey beside a live password is a convenience. Turning the password off is what makes it
+          a protection — an account is as strong as the weakest way in that it accepts.
+        </p>
+        <form id="form-disable-password">
+          <label for="disable-password">Your password</label>
+          <input
+            id="disable-password"
+            name="disable-password"
+            type="password"
+            autocomplete="current-password"
+            required
+          />
+          <button type="submit">Turn password sign-in off</button>
+        </form>
+
+        <form id="form-remove-password">
+          <button type="submit">Remove the password entirely</button>
+        </form>
+      </section>
+    </main>
+
+    <footer>
+      <p>
+        This portal shows what has been delivered to you. Anything withheld is listed rather than
+        omitted.
+      </p>
+    </footer>
+  </body>
+</html>

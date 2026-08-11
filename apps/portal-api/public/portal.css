@@ -1,0 +1,139 @@
+/*
+ * No framework, no reset, no build step.
+ *
+ * A portal that shows a client their own file needs to be legible on a phone and readable by a
+ * screen reader; it does not need a design system, and one would arrive with a bundler.
+ */
+
+:root {
+  --ink: #16202a;
+  --muted: #5b6b7a;
+  --line: #d7dee5;
+  --accent: #1f4e79;
+  --warn: #8a2b2b;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0 auto;
+  padding: 1.5rem 1rem 4rem;
+  max-width: 44rem;
+  font: 16px/1.6 system-ui, -apple-system, 'Segoe UI', sans-serif;
+  color: var(--ink);
+}
+
+header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 0.75rem;
+}
+
+h1 {
+  font-size: 1.25rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  margin: 0;
+}
+
+h2 {
+  font-size: 1.4rem;
+  margin: 1.5rem 0 0.5rem;
+}
+
+h3 {
+  font-size: 1.05rem;
+  margin: 1.5rem 0 0.5rem;
+}
+
+section {
+  border-top: 1px solid var(--line);
+  padding-top: 0.5rem;
+}
+
+/* The status line. Not coloured green or red: it carries refusals that are neither errors nor
+   successes - a `not_built` says a capability is missing, which is a fact rather than a fault. */
+#notice {
+  border-left: 3px solid var(--accent);
+  background: #f4f7fa;
+  padding: 0.75rem 1rem;
+  margin: 1rem 0;
+}
+
+form {
+  display: grid;
+  gap: 0.4rem;
+  margin: 0.75rem 0 1.25rem;
+}
+
+label {
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+
+input,
+textarea {
+  font: inherit;
+  padding: 0.55rem 0.6rem;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  width: 100%;
+}
+
+input[type='checkbox'] {
+  width: auto;
+  margin-right: 0.4rem;
+}
+
+button {
+  font: inherit;
+  padding: 0.55rem 1rem;
+  border: 1px solid var(--accent);
+  border-radius: 3px;
+  background: var(--accent);
+  color: #fff;
+  cursor: pointer;
+  justify-self: start;
+}
+
+button[type='button'] {
+  background: #fff;
+  color: var(--accent);
+}
+
+#form-remove-password button {
+  border-color: var(--warn);
+  background: #fff;
+  color: var(--warn);
+}
+
+ul {
+  margin: 0.25rem 0 1rem;
+  padding-left: 1.2rem;
+}
+
+li {
+  margin: 0.2rem 0;
+}
+
+nav {
+  margin: 0.5rem 0 1rem;
+}
+
+details summary {
+  cursor: pointer;
+  color: var(--accent);
+}
+
+footer {
+  margin-top: 3rem;
+  border-top: 1px solid var(--line);
+  padding-top: 0.75rem;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
