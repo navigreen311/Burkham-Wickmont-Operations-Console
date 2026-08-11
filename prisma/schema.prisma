@@ -16,7 +16,7 @@ generator client {
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
-  schemas  = ["tenancy", "identity", "ledger", "clients", "consent", "firewall", "workflow", "notifications", "deliverables", "claims", "vault", "intelligence", "lenders", "governance", "graph", "regulatory", "contracts", "billing", "sales", "evidence", "comms", "risk", "partners", "calls", "marketing", "interventure", "admin", "warehouse"]
+  schemas  = ["tenancy", "identity", "ledger", "clients", "consent", "firewall", "workflow", "notifications", "deliverables", "claims", "vault", "intelligence", "lenders", "governance", "graph", "regulatory", "contracts", "billing", "sales", "evidence", "comms", "risk", "partners", "calls", "marketing", "interventure", "admin", "warehouse", "outcomes", "retention"]
 }
 
 // ---------------------------------------------------------------------------
@@ -3892,4 +3892,123 @@ model ActorInvitation {
   @@index([tenantId, actorId])
   @@map("actor_invitations")
   @@schema("identity")
+}
+
+// ---------------------------------------------------------------------------
+// 5.5 Funding Outcome Ledger
+//
+// The module that gives 9.1 a denominator. Every other table in this system
+// that touches placement records an APPROVAL - `billing.funding_outcomes` has
+// an approved credit limit and an approval date and no column for a denial -
+// so an approval rate computed from what existed would read 100% forever.
+// Arithmetically correct, completely meaningless, and the single most damaging
+// sentence a dashboard here could produce, because "our approval rate is 100%"
+// is exactly the claim 7.4 bans.
+//
+// So the record is an ATTEMPT, and its outcome is one of the things that can
+// happen to an attempt. A declined attempt is a row, not an absence.
+// ---------------------------------------------------------------------------
+
+/// What happened to an attempt.
+///
+/// `pending` is a real state, not a placeholder: an application sitting with a provider is a fact
+/// about the world, and it must not count in either half of a rate. `withdrawn` is excluded from
+/// the denominator for the reason 5.2 already gives - a withdrawn application was never decided,
+/// and counting it as a non-approval makes a provider look worse the more clients change their minds.
+enum FundingAttemptOutcome {
+  pending
+  approved
+  declined
+  withdrawn
+
+  @@schema("outcomes")
+}
+
+/// Blueprint 5.5 lists "client satisfaction" in the data model.
+///
+/// Categorical, and with an explicit `not_asked`. A numeric satisfaction score would invite exactly
+/// the averaging Decision E forbids elsewhere, and a nullable number would make "we did not ask"
+/// indistinguishable from a zero once anybody aggregated it.
+enum ClientSatisfaction {
+  not_asked
+  delighted
+  satisfied
+  dissatisfied
+
+  @@schema("outcomes")
+}
+
+/// One attempt to place one client with one provider.
+///
+/// **`requestedCents` and `approvedCreditLimitCents` are different columns and neither is derived
+/// from the other.** This is the Seek Capital lesson in its original form: `creditLimit` is what was
+/// asked for, `approvedCreditLimit` is what was granted, and a success fee computed against the
+/// first is a revenue-integrity bug that looks like a rounding difference. The CHECK constraints in
+/// this table's migration make the wrong shapes unwritable rather than merely discouraged.
+///
+/// Time to approval and time to funding are NOT stored. They are differences between columns that
+/// are already here, and a stored duration is a second copy that goes stale the moment a date is
+/// corrected.
+model FundingAttempt {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+
+  clientId String @db.Uuid
+
+  /// The engagement the fee hangs off. Required: an attempt with no engagement cannot produce a
+  /// success fee, cannot produce a refund entitlement, and is invisible to 1.4 - which is the
+  /// state that let approvals and refunds disagree in the first place.
+  engagementId String @db.Uuid
+
+  /// The 5.2 provider. Not an FK: `lenders` is another module's schema and this one does not reach
+  /// into it - the provider is read through `@bwc/lenders`, and the id is carried here so the
+  /// feedback loop can be written back through the same door.
+  providerId  String      @db.Uuid
+  productKind ProductKind
+
+  /// What the client asked for. **Never the basis of a fee.**
+  requestedCents Int
+
+  submittedAt DateTime
+
+  outcome   FundingAttemptOutcome @default(pending)
+  decidedAt DateTime?
+
+  /// What was granted. Null while pending, null on a decline, and the only figure a success fee may
+  /// compute against. Null is not zero: a declined attempt was not approved for nothing, it was not
+  /// approved.
+  approvedCreditLimitCents Int?
+
+  /// Required on a decline, in the provider's words where they gave them. A decline with no stated
+  /// reason teaches 5.2 nothing and gives the client no adverse-action explanation.
+  declineReason String?
+
+  fundedOn    DateTime?
+  fundedCents Int?
+
+  /// Coarse cohort bucket, the same key 5.2 computes. Coarse on purpose: a finer key gives every
+  /// client a cohort of one, and a cohort of one produces rates of exactly 0% or 100%.
+  clientProfileKey String
+
+  underwritingNotes   String?
+  nextRecommendedMove String?
+
+  satisfaction ClientSatisfaction @default(not_asked)
+
+  /// The `billing.funding_outcomes` row this attempt produced, when it was approved. Set by 5.5,
+  /// which is the only thing that should create one - it is what the 60-day refund trigger runs
+  /// against, and an approval recorded here but not there is a refund that never fires.
+  billingOutcomeId String? @db.Uuid
+
+  recordedBy String   @db.Uuid
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([tenantId, clientId])
+  @@index([tenantId, engagementId])
+  @@index([tenantId, providerId, productKind])
+  @@index([tenantId, clientProfileKey])
+  @@index([tenantId, outcome, decidedAt])
+  @@map("funding_attempts")
+  @@schema("outcomes")
 }

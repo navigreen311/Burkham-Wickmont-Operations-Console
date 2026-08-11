@@ -236,8 +236,8 @@ describe('9.1 the compliance KPI is a distribution', () => {
   });
 });
 
-describe('9.1 an approval rate is refused, not computed', () => {
-  it('withholds the placement approval rate and names 5.5', async () => {
+describe('9.1 an approval rate is refused until it can be computed honestly', () => {
+  it('still withholds the rate, now on sample size rather than on a missing denominator', async () => {
     const dashboard = await executiveDashboard({
       tenantId: fx.tenant.id,
       period: PERIOD,
@@ -245,12 +245,21 @@ describe('9.1 an approval rate is refused, not computed', () => {
     });
     if (dashboard.status !== 'ok') return;
 
-    // THE ASSERTION THIS FILE EXISTS FOR. Only approvals are recorded, so any rate computed from
-    // the table reads 100% forever - which is both meaningless and the claim the Marketing Claim
-    // Library bans.
+    // **The refusal changed reason, and that is the whole of 5.5.**
+    //
+    // This used to assert `/100% forever/`: only approvals were recorded, so the denominator could
+    // only ever equal the numerator and no honest rate existed at any sample size. 5.5 records the
+    // ATTEMPT, so a decline is a row and the denominator is real - see ADR-0041.
+    //
+    // The value is still null here because this fixture has decided nothing, and the note now says
+    // how many decided attempts would make the figure appear. That is the distinction the `Metric`
+    // type exists to carry: "we cannot measure this" and "we have not measured enough of it yet"
+    // are different sentences, and only the second one tells the reader what to do.
     expect(dashboard.value.placementApprovalRate.value).toBeNull();
-    expect(dashboard.value.placementApprovalRate.note).toMatch(/100% forever/);
-    expect(dashboard.value.placementApprovalRate.basis.unmeasured.join(' ')).toMatch(/5\.5/);
+    expect(dashboard.value.placementApprovalRate.note).toMatch(/10 are needed/);
+    expect(dashboard.value.placementApprovalRate.basis.denominator).toBe(0);
+    // And the old refusal is gone rather than merely reworded: nothing here is waiting on 5.5.
+    expect(dashboard.value.placementApprovalRate.basis.unmeasured).toEqual([]);
   });
 
   it('reports what it can measure under a different name', async () => {

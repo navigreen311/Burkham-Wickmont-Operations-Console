@@ -1,8 +1,8 @@
 {
-  "name": "@bwc/dashboards",
+  "name": "@bwc/outcomes",
   "version": "0.1.0",
   "private": true,
-  "description": "9.1 Executive KPI Dashboard and 9.2 Unit Economics Dashboard.",
+  "description": "5.5 Funding Outcome Ledger - every funding attempt and what happened to it.",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -20,7 +20,8 @@
     "@bwc/billing": "workspace:*",
     "@bwc/core": "workspace:*",
     "@bwc/db": "workspace:*",
-    "@bwc/outcomes": "workspace:*"
+    "@bwc/ledger": "workspace:*",
+    "@bwc/lenders": "workspace:*"
   },
   "devDependencies": {
     "typescript": "^5.8.3"
