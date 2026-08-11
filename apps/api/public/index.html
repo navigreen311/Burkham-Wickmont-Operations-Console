@@ -70,6 +70,26 @@
 
         <button type="submit">Sign in</button>
       </form>
+
+      <!-- Signing in with a security key (ADR-0059) -------------------------
+        Below the password form rather than above it, because most accounts still use the password
+        today. An account that has turned password sign-in off is refused up there in the same
+        sentence as a wrong password, and this is where it succeeds instead.
+      -->
+      <section id="section-sign-in-passkey">
+        <h3>Security key</h3>
+        <p class="muted">
+          A key signs the origin it was used at, so a proxy site cannot relay it the way it can
+          relay a password and a six-digit code.
+        </p>
+        <button id="sign-in-passkey" type="button">Use a security key</button>
+        <!--
+          Deliberately NOT `role="status"`. `#notice` already carries it and the existing specs match
+          it unscoped, so a second live region on this page resolves to two elements and breaks specs
+          this slice does not touch.
+        -->
+        <p id="passkey-notice"></p>
+      </section>
     </main>
 
     <!-- Enrolment ------------------------------------------------------------
@@ -346,6 +366,78 @@
         <h4>Writes this Console cannot offer</h4>
         <ul id="deliverables-blocked"></ul>
       </details>
+      <!-- Security keys (ADR-0059) ------------------------------------------
+        Inside the overview so the existing view switcher hides it when nobody is signed in - this
+        slice does not own `console.js` and does not touch it.
+      -->
+      <section id="section-security">
+        <h3>Your security keys</h3>
+
+        <!--
+          One sentence from the server saying which state this account is in. Registering keys does
+          NOT make an account phishing resistant while a password still signs it in, and a count
+          shown as a finished state would say otherwise.
+        -->
+        <p id="security-posture" class="alarm"></p>
+        <p><button id="security-load" type="button">Load</button></p>
+        <p id="security-summary"></p>
+        <ul id="security-keys"></ul>
+        <p id="security-notice"></p>
+
+        <form id="form-register-key">
+          <label for="key-label">Name this key</label>
+          <input id="key-label" name="label" type="text" required />
+
+          <label for="security-password">Your password (or leave blank to use a key you hold)</label>
+          <input id="security-password" name="password" type="password" autocomplete="current-password" />
+          <p class="muted">
+            A live session is not enough to add a key. A key added from a stolen session is one the
+            thief holds and you never hear about. Once password sign-in is off, this field stops
+            working and a key is the only confirmation — a phishable secret must not be able to
+            register a new key.
+          </p>
+          <button type="submit">Register a key</button>
+        </form>
+
+        <p id="security-switch-state" class="muted"></p>
+
+        <!--
+          Wrapped in a SECTION rather than hidden directly.
+
+          `console.css` sets `form { display: grid }`, which overrides the user agent's
+          `[hidden] { display: none }` - so a `<form hidden>` is still on the screen. Sections are
+          not styled that way, so hiding one works. The stylesheet is not this slice's to change.
+        -->
+        <section id="section-disable-password" hidden>
+        <form id="form-disable-password">
+          <p class="alarm">
+            This stops your password and your authenticator code signing you in at all. A correct
+            password will be refused. If you then lose every key, the only route back is a colleague
+            at Authority Level 3 — there is no self-service reset and no email to send one to.
+          </p>
+          <button type="submit" id="disable-password-submit">
+            Turn password sign-in off for my account
+          </button>
+        </form>
+        </section>
+
+        <form id="form-restore-password">
+          <h4>Restore a colleague's password sign-in</h4>
+          <label for="restore-actor">Their actor id</label>
+          <input id="restore-actor" name="actorId" type="text" />
+
+          <label for="restore-basis">How you verified it is really them</label>
+          <input id="restore-basis" name="verificationBasis" type="text" />
+          <p class="muted">
+            Level 3 only, and never your own account. This puts a phishable factor back on an account
+            that deliberately removed it, so the basis is recorded in the Event Ledger.
+          </p>
+          <button type="submit">Restore</button>
+        </form>
+      </section>
+
+      <script type="module" src="/console/views/signin.js"></script>
+      <script type="module" src="/console/views/security.js"></script>
     </main>
 
     <!-- Clients ------------------------------------------------------------ -->

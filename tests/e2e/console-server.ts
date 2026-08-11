@@ -40,6 +40,7 @@ import {
   E2E_CONSOLE_ORIGIN,
   E2E_CONSOLE_PASSWORD,
   E2E_CONSOLE_PORT,
+  E2E_CONSOLE_RP_ID,
   E2E_PLACEMENT_REF,
   type ConsoleHandoff,
 } from './fixture.js';
@@ -158,6 +159,11 @@ const main = async (): Promise<void> => {
     rateLimitStore: 'memory',
     // As in deployment. The browser signs in.
     devActorHeader: false,
+    // The relying party. `localhost` is a secure context without a certificate, which is why the
+    // harness is addressed that way at all - see `E2E_CONSOLE_RP_ID`.
+    rpId: E2E_CONSOLE_RP_ID,
+    rpName: 'Burkham Wickmont Console',
+    origin: E2E_CONSOLE_ORIGIN,
   };
 
   const app = createApp({

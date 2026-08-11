@@ -67,6 +67,15 @@ export const E2E_CONSOLE_PORT = 4301;
 export const E2E_CONSOLE_ORIGIN = `http://localhost:${E2E_CONSOLE_PORT}`;
 
 /**
+ * The Console's relying party.
+ *
+ * `localhost`, for the reason `E2E_RP_ID` gives: WebAuthn needs a secure context and `localhost` is
+ * one without a certificate. A relying party is a DOMAIN, never an address, so the harness cannot
+ * simply be addressed by IP.
+ */
+export const E2E_CONSOLE_RP_ID = 'localhost';
+
+/**
  * One Console account per spec that signs in.
  *
  * The same reasoning as `E2E_MUTABLE_ACCOUNTS`, arriving from a different direction. A TOTP code is
@@ -94,6 +103,11 @@ export const E2E_CONSOLE_ACCOUNTS = [
   'e2e-operator-inviter@example.com',
   /** The last five module panels: 11.7, 3.1, 3.3, 10.1, 11.6. Reads only, so one account does. */
   'e2e-operator-final@example.com',
+  // Staff security keys (ADR-0059). One per spec, and each of these specs CHANGES its account -
+  // registering a key is permanent and turning the password off is more so.
+  'e2e-operator-key-registers@example.com',
+  'e2e-operator-key-signs-in@example.com',
+  'e2e-operator-key-turns-off@example.com',
 ] as const;
 
 /**
