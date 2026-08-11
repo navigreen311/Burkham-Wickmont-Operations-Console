@@ -66,6 +66,9 @@ importers:
       '@bwc/capital':
         specifier: workspace:*
         version: link:../../packages/capital
+      '@bwc/claims':
+        specifier: workspace:*
+        version: link:../../packages/claims
       '@bwc/clients':
         specifier: workspace:*
         version: link:../../packages/clients
@@ -84,9 +87,15 @@ importers:
       '@bwc/deliverables':
         specifier: workspace:*
         version: link:../../packages/deliverables
+      '@bwc/evidence':
+        specifier: workspace:*
+        version: link:../../packages/evidence
       '@bwc/firewall':
         specifier: workspace:*
         version: link:../../packages/firewall
+      '@bwc/governance':
+        specifier: workspace:*
+        version: link:../../packages/governance
       '@bwc/graph':
         specifier: workspace:*
         version: link:../../packages/graph
@@ -111,6 +120,9 @@ importers:
       '@bwc/lenders':
         specifier: workspace:*
         version: link:../../packages/lenders
+      '@bwc/marketing':
+        specifier: workspace:*
+        version: link:../../packages/marketing
       '@bwc/middleware':
         specifier: workspace:*
         version: link:../../packages/middleware
@@ -126,6 +138,9 @@ importers:
       '@bwc/placement':
         specifier: workspace:*
         version: link:../../packages/placement
+      '@bwc/regulatory':
+        specifier: workspace:*
+        version: link:../../packages/regulatory
       '@bwc/risk':
         specifier: workspace:*
         version: link:../../packages/risk

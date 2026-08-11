@@ -88,6 +88,21 @@
     },
     {
       "path": "../../packages/warehouse"
+    },
+    {
+      "path": "../../packages/claims"
+    },
+    {
+      "path": "../../packages/evidence"
+    },
+    {
+      "path": "../../packages/governance"
+    },
+    {
+      "path": "../../packages/marketing"
+    },
+    {
+      "path": "../../packages/regulatory"
     }
   ]
 }
