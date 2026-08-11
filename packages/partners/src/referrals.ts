@@ -15,11 +15,12 @@
  * stops there. The absence is a refusal with a name, not a silence.
  */
 
-import { noData, notBuilt, ok, type Outcome } from '@bwc/core';
+import { noData, ok, type EventActor, type Outcome } from '@bwc/core';
 import { leadsAttributedTo } from './attributed.js';
 import { findPartner } from './partners.js';
 import { requireCertification, type CertificationStanding } from './certification.js';
 import { assessPartner } from './risk.js';
+import { computePayout, type PayoutComputation } from './payouts.js';
 
 /**
  * May this partner refer a client right now?
@@ -125,14 +126,29 @@ export const referralSummary = async (
 /**
  * What this partner is owed.
  *
- * `not_built`, deliberately and permanently until 8.2 ships. Blueprint 8.2 owns referral fee
- * terms, the state restrictions on referral fees, payout approval and clawback on refunds - and
- * every one of those is required before a number here would mean anything. Half of it is not a
- * smaller version of the whole: a fee computed without the state restriction is a figure that
- * looks payable and may be unlawful to pay.
+ * **This was `not_built` for the whole of V1, and the sentence it refused with became 8.2's
+ * specification** - "a figure produced without them would look payable without anybody having
+ * checked whether it is lawful to pay". `computePayout` is that check, so this now delegates
+ * rather than refusing.
+ *
+ * It stays here, under the name the rest of the system already used, because a capability that
+ * arrives under a new name leaves every reader who remembers the old one believing it is still
+ * missing.
+ *
+ * The signature grew a tenant and a period, and both are load-bearing: there is no such thing as
+ * "what this partner is owed" without a window, and a figure that silently meant "since the
+ * beginning of time" would be paid twice.
  */
-export const payableToPartner = async (partnerId: string): Promise<Outcome<never>> =>
-  notBuilt(
-    '8.2 Partner Agreement & Payout Center (V1.5)',
-    `Referrals attributed to partner ${partnerId} are tracked, but referral fee terms, the state-by-state restrictions on referral fees, payout approval and refund clawback all live in 8.2, which is deferred to V1.5. A figure produced without them would look payable without anybody having checked whether it is lawful to pay.`,
-  );
+export const payableToPartner = async (
+  tenantId: string,
+  partnerId: string,
+  period: { start: Date; end: Date },
+  by: { computedBy: string; actor: EventActor },
+): Promise<Outcome<PayoutComputation>> =>
+  computePayout({
+    tenantId,
+    partnerId,
+    period,
+    computedBy: by.computedBy,
+    actor: by.actor,
+  });

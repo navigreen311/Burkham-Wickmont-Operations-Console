@@ -152,10 +152,11 @@ const renderOne = async (partnerId) => {
 
   // What they are owed, which is `not_built` until 8.2. Rendered rather than omitted: a partner
   // page with no payout section reads as a partner who is owed nothing.
+  // 8.2 Partner Agreement & Payout Center exists as an engine and has no surface. A payout is an
+  // act with a period and an approver, so it cannot be a line on a read page - see the note in
+  // routes/partners.ts.
   $('partner-detail-payable').textContent =
-    data.payable.status === 'not_built'
-      ? `Payout: not built — ${data.payable.reason}`
-      : `Payout: ${data.payable.status}`;
+    'Payout: no surface yet. 8.2 computes and records payouts; doing that needs a period and an approver, which a page that only reads cannot supply.';
 
   status.textContent = '';
   $('partner-detail').hidden = false;

@@ -17,3 +17,4 @@ export * from './activation.js';
 export * from './disclosures.js';
 export * from './check.js';
 export * from './seed.js';
+export * from './referralFees.js';

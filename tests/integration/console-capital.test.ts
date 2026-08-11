@@ -517,9 +517,15 @@ describe('8.1 - a stage breakdown is suppressed below the cohort', () => {
 
     // `not_built` until 8.2, and carried rather than omitted: a partner page with no payout
     // section reads as a partner who is owed nothing.
+    // **This asserted `not_built` when it was written, and 8.2 has since shipped as an engine.**
+    // The function this field used to call now COMPUTES AND RECORDS a payout - period, computedBy,
+    // actor - so a read that called it would write a Ledger event every time somebody opened a
+    // partner page. The field stays (a missing payout section reads as a partner owed nothing) and
+    // it now says the engine exists and the surface does not.
     const payable = data['payable'] as Record<string, unknown>;
-    expect(payable['status']).toBe('not_built');
+    expect(payable['status']).toBe('no_surface');
     expect(String(payable['reason'])).toMatch(/8\.2/);
+    expect(String(payable['reason'])).toMatch(/RECORDS/);
   });
 
   it('lists partners with the curriculum they are measured against', async () => {

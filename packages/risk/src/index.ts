@@ -25,3 +25,4 @@ export * from './classify.js';
 export * from './observations.js';
 export * from './timeline.js';
 export * from './conduct.js';
+export * from './alerts.js';

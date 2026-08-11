@@ -30,3 +30,4 @@ export * from './conflicts.js';
 export * from './pricing.js';
 export * from './handoff.js';
 export * from './invoicing.js';
+export * from './opportunities.js';

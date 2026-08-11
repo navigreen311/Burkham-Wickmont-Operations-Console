@@ -232,6 +232,38 @@ export const EVENT_TYPES = [
   // about one partner is itself a signal.
   'partner.finding.recorded',
   'partner.finding.resolved',
+  // Partner Agreement & Payout Center (8.2). The payout payload carries the STATES a period drew
+  // on and never the clients - a jurisdiction is not PII and a client list is. `computed` and
+  // `approved` are separate because the computation is unattended and the approval is the only
+  // point a person sees the figure; an audit asking "who authorised this money" needs the second
+  // one to be its own row. `declined` exists for ADR-0041's reason: a payout somebody refused to
+  // approve is a thing that happened, and inferring it from the absence of an approval loses who
+  // decided and why.
+  // Risk & Defense Alerts (6.1). The tier and whether it freezes funding travel; the summary does
+  // not, because it is free text about a named client. `acknowledged` is its own type because
+  // acknowledging is not resolving, and an audit asking "who looked at this and when" is a
+  // different question from "who decided it was over".
+  // Cost & Performance Governance (11.9). Source and provenance travel; the vendor reference does
+  // not, because a model version is a procurement detail and this is a per-client ledger.
+  'admin.cost.recorded',
+  // Cross-Portfolio Opportunity Engine (10.2). No clientId on any of these: they travel to a
+  // portfolio-level reader and principle 5 gives Gardner PII-stripped aggregates. `routed` carries
+  // `consentVerifiedAt` because the whole control is that consent was read AT that moment, and
+  // `routing_refused` is a row for the same reason a decline is (ADR-0041).
+  'interventure.opportunity.detected',
+  'interventure.opportunity.gardner_approved',
+  'interventure.opportunity.gardner_declined',
+  'interventure.opportunity.routed',
+  'interventure.opportunity.routing_refused',
+  'risk.alert.raised',
+  'risk.alert.acknowledged',
+  'risk.alert.resolved',
+  'partner.agreement.drafted',
+  'partner.agreement.activated',
+  'partner.payout.computed',
+  'partner.payout.approved',
+  'partner.payout.declined',
+  'partner.payout.clawback_recorded',
   // Call Recording & Promise Tracking (4.3). `recording.refused` is an event because "we wanted
   // to record this call and the client's state would not let us" is evidence, the same way a
   // blocked send is. No transcript text reaches the Ledger; excerpts stay in the obligation row.
