@@ -84,7 +84,21 @@ export const E2E_CONSOLE_ACCOUNTS = [
   'e2e-operator-file@example.com',
   'e2e-operator-signout@example.com',
   'e2e-operator-refusal@example.com',
+  'e2e-operator-writes-compliance@example.com',
+  'e2e-operator-writes-firewall@example.com',
+  'e2e-operator-writes-newfile@example.com',
+  'e2e-operator-observer@example.com',
 ] as const;
+
+/**
+ * The Authority Level each account holds. Level 3 unless named here.
+ *
+ * `e2e-operator-observer` is Level 0 on purpose: it is the account that proves the page offers no
+ * write it cannot perform, and - more importantly - that the server refuses the write anyway.
+ */
+export const E2E_CONSOLE_LEVELS: Readonly<Record<string, 0 | 1 | 2 | 3>> = {
+  'e2e-operator-observer@example.com': 0,
+};
 
 export const E2E_CONSOLE_PASSWORD = 'a-long-enough-console-password';
 
@@ -101,10 +115,27 @@ export const E2E_CONSOLE_PASSWORD = 'a-long-enough-console-password';
  */
 export const E2E_CONSOLE_HANDOFF = join(tmpdir(), 'bwc-e2e-console.json');
 
+/**
+ * One client per spec that CHANGES a client.
+ *
+ * The same lesson as `E2E_MUTABLE_ACCOUNTS`, reached a third time. A compliance transition and a
+ * triggered Firewall are both permanent, so a spec sharing the read-only client would leave the
+ * one that reads it asserting against a state it did not ask for - and the failure would look like
+ * a flake rather than like two specs fighting over one row.
+ *
+ * The first entry is the file every read-only spec looks at. Nothing writes to it.
+ */
+export const E2E_CONSOLE_CLIENTS = [
+  'Console End To End Holdings LLC',
+  'Console Compliance Subject LLC',
+  'Console Firewall Subject LLC',
+] as const;
+
 export interface ConsoleHandoff {
   readonly tenantId: string;
   /** The base32 secret per account email, as an authenticator would be given it. */
   readonly secrets: Readonly<Record<string, string>>;
+  /** The read-only file. Kept for the specs that only look. */
   readonly clientName: string;
   readonly label: string;
 }

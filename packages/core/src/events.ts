@@ -27,6 +27,16 @@ export const EVENT_TYPES = [
   'placement.refused',
   // Authority enforcement (2.1)
   'authority.action_blocked',
+  /**
+   * The counterpart, added when the Console grew buttons.
+   *
+   * The Ledger has always recorded what the chain REFUSED and never what it permitted, so an audit
+   * could see the attempts that failed and not the ones that succeeded - and on a staff console
+   * the second question is the more common one. Written by step 6 when a governance action is
+   * authorised; the module that performs the action still writes its own outcome event, because
+   * "this actor was allowed to try" and "this is what happened" are different facts.
+   */
+  'authority.action_authorised',
   // Tenant isolation (11.2)
   'tenancy.cross_tenant_access_blocked',
   // Workflow Engine (2.2) - Decision C. The Engine writes these and listens for others.

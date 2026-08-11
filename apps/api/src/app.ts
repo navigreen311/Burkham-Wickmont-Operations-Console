@@ -24,8 +24,10 @@
  * headers and the page; **every decision belongs to the module that owns it.** A route that
  * consulted a rule directly would be a rule with two homes.
  *
- * Every route acting on a client still goes through the middleware chain, because the chain is
- * where authority, tenancy, the Firewall, the compliance gate and event emission are enforced.
+ * **Every write now goes through the middleware chain, and until this slice none of them did.** The
+ * sentence that stood here claimed otherwise and was simply wrong: `chain()` ran in exactly two
+ * places in the whole system, and the compliance transition, the Firewall trigger and the consent
+ * grant called their modules directly with no Authority Level checked at all. See `authorised`.
  *
  * @see docs/adr/0032-a-console-is-what-makes-a-missing-credential-exploitable.md
  */
@@ -52,11 +54,20 @@ import {
 import { read as readLedger, verifyIntegrity } from '@bwc/ledger';
 import { openFor } from '@bwc/notifications';
 import { systemHealth } from '@bwc/observability';
+import { chain, type StepTrace } from '@bwc/middleware';
 import { requestRecommendation } from '@bwc/placement';
 import { activeListing, timelineFor } from '@bwc/risk';
 import { openObligations } from '@bwc/calls';
 import { VENDOR_GATES, isActivated, mode, outstandingPreconditions } from '@bwc/integration';
-import { failed, isComplianceState, noData, ok, refused, type ComplianceState } from '@bwc/core';
+import {
+  ACTION_MINIMUM_LEVEL,
+  failed,
+  isComplianceState,
+  noData,
+  ok,
+  refused,
+  type ComplianceState,
+} from '@bwc/core';
 import {
   createRateLimiter,
   createSharedRateLimiter,
@@ -146,6 +157,20 @@ const asyncRoute =
       );
     });
   };
+
+/**
+ * The writes this page offers, and the only actions `authorised` is ever called with.
+ *
+ * A list rather than a lookup over the whole catalogue: most of `ACTION_MINIMUM_LEVEL` is agent
+ * work with no button, and reporting `may_submit_lender_packet: true` to a page that cannot submit
+ * one would be describing a capability that does not exist here.
+ */
+const CONSOLE_WRITES = [
+  'create_client_record',
+  'transition_compliance_state',
+  'record_client_consent',
+  'trigger_firewall',
+] as const satisfies readonly (keyof typeof ACTION_MINIMUM_LEVEL)[];
 
 const positiveInteger = (raw: unknown, fallback: number): number => {
   if (typeof raw !== 'string') return fallback;
@@ -417,6 +442,22 @@ export const createApp = (deps: ConsoleAppDeps = {}): Express => {
           label: actor.label,
           authorityLevel: actor.authorityLevel,
           department: actor.department,
+          /**
+           * The writes this actor's level permits.
+           *
+           * **A courtesy to the page, never the enforcement.** The chain refuses regardless of what
+           * was offered, and the tests assert that directly rather than through the page - a UI that
+           * hid a button would otherwise be indistinguishable from a UI that had a gate behind it.
+           *
+           * Offering an action that will certainly be refused is its own small harm, though: it
+           * teaches people that refusals are noise.
+           */
+          mayWrite: Object.fromEntries(
+            CONSOLE_WRITES.map((action) => [
+              action,
+              actor.authorityLevel >= ACTION_MINIMUM_LEVEL[action],
+            ]),
+          ),
         }),
       );
     }),
@@ -544,14 +585,61 @@ export const createApp = (deps: ConsoleAppDeps = {}): Express => {
     }),
   );
 
-  // --- Clients ------------------------------------------------------------
+  // --- Writes -------------------------------------------------------------
+
+  /**
+   * Every write goes through the middleware chain, and until this slice **none of them did**.
+   *
+   * The header of this file used to claim otherwise. `chain()` ran in exactly two places in the
+   * whole system - `@bwc/placement` and `@bwc/comms` - while the compliance transition, the
+   * Firewall trigger and the consent grant called their modules directly. **No Authority Level was
+   * checked on any of them**, so a Level 0 observer with a session could move a client to `pass`.
+   *
+   * That was reachable only with `curl` while there were no buttons. Adding buttons is what makes
+   * it one click, which is the same shape as the credential this Console was given last slice: the
+   * page does not create the gap, it collects on it.
+   *
+   * `eventType` is `authority.action_authorised` rather than the action's own event. The chain
+   * records that the actor was ALLOWED to try; the module that performs the action still writes
+   * what happened. Two different facts, and passing the module's own event here would write it
+   * twice - once before the work and once after.
+   */
+  const authorised = async (
+    req: Request,
+    res: Response,
+    input: { action: keyof typeof ACTION_MINIMUM_LEVEL; clientId?: string },
+  ): Promise<{ actor: Actor; trace: readonly StepTrace[] } | undefined> => {
+    const actor = await requireStaff(req, res);
+    if (!actor) return undefined;
+
+    const { result, trace } = await chain({
+      actorId: actor.id,
+      tenantId: config.tenantId,
+      action: input.action,
+      ...(input.clientId !== undefined ? { clientId: input.clientId } : {}),
+      eventType: 'authority.action_authorised',
+      eventPayload: { action: input.action },
+    });
+
+    if (result.status !== 'ok') {
+      // The trace travels with the refusal, refusals included - "which step blocked this" is the
+      // first question anyone asks, and on a page it is the difference between a dead end and an
+      // instruction.
+      send(res, result, { trace });
+      return undefined;
+    }
+
+    return { actor, trace };
+  };
 
   app.post(
     '/api/clients',
     jsonBody,
     asyncRoute(async (req, res) => {
-      const actor = await requireStaff(req, res);
-      if (!actor) return;
+      // Authorised BEFORE the body is inspected. A caller with no session who was told
+      // "legalName is required" would have learned that the route exists and what it wants.
+      const permitted = await authorised(req, res, { action: 'create_client_record' });
+      if (!permitted) return;
 
       const body = req.body as { legalName?: unknown };
       if (typeof body.legalName !== 'string' || body.legalName.trim() === '') {
@@ -559,11 +647,11 @@ export const createApp = (deps: ConsoleAppDeps = {}): Express => {
         return;
       }
 
-      const client = await createClient(actor.tenantId, body.legalName.trim(), {
-        id: actor.id,
-        kind: actor.kind,
+      const client = await createClient(config.tenantId, body.legalName.trim(), {
+        id: permitted.actor.id,
+        kind: permitted.actor.kind,
       });
-      send(res, ok(client));
+      send(res, ok(client), { trace: permitted.trace });
     }),
   );
 
@@ -581,8 +669,12 @@ export const createApp = (deps: ConsoleAppDeps = {}): Express => {
     '/api/clients/:clientId/compliance',
     jsonBody,
     asyncRoute(async (req, res) => {
-      const actor = await requireStaff(req, res);
-      if (!actor) return;
+      const clientId = param(req, 'clientId');
+      const permitted = await authorised(req, res, {
+        action: 'transition_compliance_state',
+        clientId,
+      });
+      if (!permitted) return;
 
       const body = req.body as {
         to?: unknown;
@@ -608,13 +700,14 @@ export const createApp = (deps: ConsoleAppDeps = {}): Express => {
       send(
         res,
         await transitionComplianceState({
-          tenantId: actor.tenantId,
-          clientId: param(req, 'clientId'),
+          tenantId: config.tenantId,
+          clientId,
           to: body.to as ComplianceState,
           reason: body.reason,
           findings: body.findings ?? [],
-          actor: { id: actor.id, kind: actor.kind },
+          actor: { id: permitted.actor.id, kind: permitted.actor.kind },
         }),
+        { trace: permitted.trace },
       );
     }),
   );
@@ -625,8 +718,12 @@ export const createApp = (deps: ConsoleAppDeps = {}): Express => {
     '/api/clients/:clientId/consents',
     jsonBody,
     asyncRoute(async (req, res) => {
-      const actor = await requireStaff(req, res);
-      if (!actor) return;
+      const clientId = param(req, 'clientId');
+      const permitted = await authorised(req, res, {
+        action: 'record_client_consent',
+        clientId,
+      });
+      if (!permitted) return;
 
       const body = req.body as { kind?: unknown; scope?: unknown };
       if (typeof body.kind !== 'string' || typeof body.scope !== 'string') {
@@ -640,12 +737,13 @@ export const createApp = (deps: ConsoleAppDeps = {}): Express => {
       send(
         res,
         await grantConsent({
-          tenantId: actor.tenantId,
-          clientId: param(req, 'clientId'),
+          tenantId: config.tenantId,
+          clientId,
           kind: body.kind as ConsentKind,
           scope: body.scope,
-          actor: { id: actor.id, kind: actor.kind },
+          actor: { id: permitted.actor.id, kind: permitted.actor.kind },
         }),
+        { trace: permitted.trace },
       );
     }),
   );
@@ -665,21 +763,25 @@ export const createApp = (deps: ConsoleAppDeps = {}): Express => {
     '/api/clients/:clientId/firewall/trigger',
     jsonBody,
     asyncRoute(async (req, res) => {
-      const actor = await requireStaff(req, res);
-      if (!actor) return;
+      const clientId = param(req, 'clientId');
+      const permitted = await authorised(req, res, { action: 'trigger_firewall', clientId });
+      if (!permitted) return;
+
       const body = req.body as { reason?: unknown };
       if (typeof body.reason !== 'string' || body.reason.trim() === '') {
         send(res, refused('reason is required to trigger the Firewall.', 'Principle 7'));
         return;
       }
+
       send(
         res,
         ok(
-          await triggerFirewall(actor.tenantId, param(req, 'clientId'), body.reason, {
-            id: actor.id,
-            kind: actor.kind,
+          await triggerFirewall(config.tenantId, clientId, body.reason, {
+            id: permitted.actor.id,
+            kind: permitted.actor.kind,
           }),
         ),
+        { trace: permitted.trace },
       );
     }),
   );

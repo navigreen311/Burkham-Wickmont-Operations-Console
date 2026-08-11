@@ -16,11 +16,17 @@
  *
  * **The page's relaxed policy does not leak onto the API.** The same assertion the portal makes,
  * because the same mistake is available here.
+ *
+ * **Every write is refused below the Authority Level its action declares.** Added when the Console
+ * grew buttons, and the assertion that would have failed before this slice: the write routes called
+ * their modules directly, so a Level 0 observer with a session could move a client to `pass`.
  */
 
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createServer, type Server } from 'node:http';
 import { create as createClient } from '@bwc/clients';
+import { read as readLedger } from '@bwc/ledger';
+import { transitionComplianceState } from '@bwc/clients';
 import {
   MFA_SECRET_KEY_VARIABLE,
   STAFF_MAX_FAILED_ATTEMPTS,
@@ -511,5 +517,226 @@ describe('configuration the Console refuses to guess', () => {
     clear();
     complete();
     expect(readConsoleConfig().devActorHeader).toBe(false);
+  });
+});
+
+/**
+ * A signed-in operator at a chosen Authority Level.
+ *
+ * Each gets its own Actor, its own credential and its own authenticator, so the level under test is
+ * the only thing that differs - and so no two of them share a TOTP step.
+ */
+const operatorAt = async (level: 0 | 1 | 2 | 3, label: string): Promise<string> => {
+  const actor = await createActor({
+    tenantId: fx.tenant.id,
+    kind: 'human',
+    label,
+    authorityLevel: level,
+  });
+  const email = `${label.replace(/\s+/gu, '-').toLowerCase()}@example.com`;
+
+  const offer = await beginStaffEnrolment({
+    tenantId: fx.tenant.id,
+    actorId: actor.id,
+    email,
+    password: PASSWORD,
+    grantedBy: fx.human.id,
+    now: at(),
+  });
+  if (offer.status !== 'ok') throw new Error(`operator: ${offer.reason}`);
+  const secret = base32Decode(offer.value.secret);
+  if (!secret) throw new Error('operator: secret');
+
+  const confirmed = await confirmStaffEnrolment({
+    tenantId: fx.tenant.id,
+    actorId: actor.id,
+    password: PASSWORD,
+    code: totp(secret, at()),
+    now: at(),
+  });
+  if (confirmed.status !== 'ok') throw new Error(`operator: ${confirmed.reason}`);
+
+  offsetMs += 31_000;
+  const signedIn = await call('/api/console/sign-in', {
+    body: { email, password: PASSWORD, code: totp(secret, at()) },
+  });
+  if (signedIn.json['status'] !== 'ok') throw new Error(`operator: sign-in ${signedIn.body}`);
+  return (signedIn.headers.get('set-cookie') ?? '').split(';')[0] as string;
+};
+
+/** Every write the Console offers, with the level its action declares. */
+const WRITES = [
+  {
+    name: 'create a client',
+    level: 2,
+    path: () => '/api/clients',
+    body: { legalName: 'Level Test LLC' },
+  },
+  {
+    name: 'transition compliance',
+    level: 3,
+    path: (id: string) => `/api/clients/${id}/compliance`,
+    body: { to: 'pass', reason: 'a reason' },
+  },
+  {
+    name: 'record consent',
+    level: 2,
+    path: (id: string) => `/api/clients/${id}/consents`,
+    body: { kind: 'placement_authorization', scope: 'APP-1' },
+  },
+  {
+    name: 'trigger the Firewall',
+    level: 1,
+    path: (id: string) => `/api/clients/${id}/firewall/trigger`,
+    body: { reason: 'a reason' },
+  },
+] as const;
+
+describe('a write is refused below the level its action declares', () => {
+  let observer: string;
+
+  beforeAll(async () => {
+    observer = await operatorAt(0, 'observer');
+  });
+
+  it.each(WRITES)('refuses $name for a Level 0 observer', async (write) => {
+    const reply = await call(write.path(clientId), {
+      body: write.body,
+      headers: { cookie: observer },
+    });
+
+    expect(reply.json['status'], write.name).toBe('refused');
+    expect(String(reply.json['reason']), write.name).toMatch(/Authority Level/);
+
+    // THE ASSERTION THIS BLOCK EXISTS FOR. Before this slice these routes called their modules
+    // directly and every one of them would have returned `ok`.
+    const trace = reply.json['trace'] as { step: string; outcome: string }[];
+    expect(
+      trace.some((step) => step.step === 'authority_level' && step.outcome === 'blocked'),
+    ).toBe(true);
+  });
+
+  it('permits exactly what the level reaches, and no more', async () => {
+    // Level 1 is the interesting one: it may raise a Firewall and may not move a compliance state.
+    const preparer = await operatorAt(1, 'preparer');
+
+    const firewall = await call(`/api/clients/${clientId}/firewall/trigger`, {
+      body: { reason: 'level 1 may do this' },
+      headers: { cookie: preparer },
+    });
+    expect(firewall.json['status'], firewall.body).toBe('ok');
+
+    const compliance = await call(`/api/clients/${clientId}/compliance`, {
+      body: { to: 'pass', reason: 'level 1 may not do this' },
+      headers: { cookie: preparer },
+    });
+    expect(compliance.json['status']).toBe('refused');
+  });
+
+  it('reports what the actor may write, and it agrees with what happens', async () => {
+    const reply = await call('/api/console/me', { headers: { cookie: observer } });
+    const mayWrite = (reply.json['data'] as { mayWrite: Record<string, boolean> }).mayWrite;
+
+    // A courtesy to the page, never the enforcement - so it is asserted to AGREE with the refusals
+    // above rather than asserted instead of them.
+    expect(mayWrite['trigger_firewall']).toBe(false);
+    expect(mayWrite['transition_compliance_state']).toBe(false);
+    expect(mayWrite['create_client_record']).toBe(false);
+    expect(mayWrite['record_client_consent']).toBe(false);
+  });
+});
+
+describe('the gate does not block the act that clears the gate', () => {
+  it('lets a failed client be moved back to pass', async () => {
+    const cookie = await signIn();
+
+    const failing = (
+      await createClient(fx.tenant.id, 'One Way Door LLC', {
+        id: fx.human.id,
+        kind: 'human',
+      })
+    ).id;
+
+    const failed = await call(`/api/clients/${failing}/compliance`, {
+      body: { to: 'fail', reason: 'findings unresolved' },
+      headers: { cookie },
+    });
+    expect(failed.json['status'], failed.body).toBe('ok');
+
+    // Step 4 refuses any client that is not `pass`/`pass_with_findings`. Run a compliance
+    // transition through it unchanged and a failed client can NEVER be restored - the gate blocks
+    // the only act that could clear it, and a new client in `pending_assessment` could never be
+    // assessed at all.
+    const restored = await call(`/api/clients/${failing}/compliance`, {
+      body: { to: 'pass', reason: 'findings resolved' },
+      headers: { cookie },
+    });
+    expect(restored.json['status'], restored.body).toBe('ok');
+
+    const trace = restored.json['trace'] as { step: string; outcome: string; detail?: string }[];
+    const firewallStep = trace.find((step) => step.step === 'firewall');
+    // Skipped rather than passed, and the reason travels with it: a step reporting `passed` would
+    // be claiming a check ran.
+    expect(firewallStep?.outcome).toBe('skipped');
+    expect(firewallStep?.detail).toMatch(/governance action/);
+  });
+
+  it('still refuses a client-facing action for the same failed client', async () => {
+    const cookie = await signIn();
+
+    const blocked = (
+      await createClient(fx.tenant.id, 'Still Blocked LLC', {
+        id: fx.human.id,
+        kind: 'human',
+      })
+    ).id;
+    await transitionComplianceState({
+      tenantId: fx.tenant.id,
+      clientId: blocked,
+      to: 'fail',
+      reason: 'findings unresolved',
+      actor: { id: fx.human.id, kind: 'human' },
+    });
+
+    // The skip is scoped to governance actions, not a hole in step 4. A placement for the same
+    // client is refused AT STEP 4 - the step that let the transition through.
+    const placement = await call(`/api/clients/${blocked}/placements`, {
+      body: { applicationRef: 'APP-BLOCKED' },
+      headers: { cookie },
+    });
+    expect(placement.json['status']).toBe('refused');
+
+    // **Asserting the STEP, not just the refusal.** A placement for a failed client would be
+    // refused anyway - the placement module checks consent of its own - so a bare `refused` here
+    // passes whether or not step 4 ran. Widening `GOVERNANCE_ACTIONS` to include
+    // `draft_recommendation` survived exactly that weaker assertion.
+    const trace = placement.json['trace'] as { step: string; outcome: string }[];
+    expect(trace.some((step) => step.step === 'firewall' && step.outcome === 'blocked')).toBe(true);
+  });
+});
+
+describe('the Ledger records what was permitted, not only what was refused', () => {
+  it('writes authority.action_authorised beside the module event', async () => {
+    const cookie = await signIn();
+
+    const subject = (
+      await createClient(fx.tenant.id, 'Ledger Witness LLC', {
+        id: fx.human.id,
+        kind: 'human',
+      })
+    ).id;
+
+    const done = await call(`/api/clients/${subject}/firewall/trigger`, {
+      body: { reason: 'witnessed' },
+      headers: { cookie },
+    });
+    expect(done.json['status'], done.body).toBe('ok');
+
+    const events = await readLedger({ tenantId: fx.tenant.id, clientId: subject });
+    const types = events.map((event) => event.type);
+
+    // Two facts, not one: the actor was allowed to try, and this is what happened.
+    expect(types).toContain('authority.action_authorised');
+    expect(types).toContain('firewall.triggered');
   });
 });

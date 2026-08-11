@@ -27,14 +27,15 @@ import { createApp } from '../../apps/api/src/app.js';
 import type { ConsoleConfig } from '../../apps/api/src/config.js';
 import {
   E2E_CONSOLE_ACCOUNTS,
+  E2E_CONSOLE_CLIENTS,
   E2E_CONSOLE_HANDOFF,
+  E2E_CONSOLE_LEVELS,
   E2E_CONSOLE_ORIGIN,
   E2E_CONSOLE_PASSWORD,
   E2E_CONSOLE_PORT,
   type ConsoleHandoff,
 } from './fixture.js';
 
-const CLIENT_NAME = 'Console End To End Holdings LLC';
 const LABEL = 'E2E operations lead';
 
 const main = async (): Promise<void> => {
@@ -52,7 +53,10 @@ const main = async (): Promise<void> => {
     department: 'operations',
   });
 
-  await createClient(tenant.id, CLIENT_NAME, { id: granter.id, kind: 'human' });
+  // One per spec that changes one. See `E2E_CONSOLE_CLIENTS`.
+  for (const name of E2E_CONSOLE_CLIENTS) {
+    await createClient(tenant.id, name, { id: granter.id, kind: 'human' });
+  }
 
   process.env['MFA_SECRET_KEY'] ??=
     '00112233445566778899aabbccddeeff00112233445566778899aabbccddee00';
@@ -64,7 +68,7 @@ const main = async (): Promise<void> => {
       tenantId: tenant.id,
       kind: 'human',
       label: LABEL,
-      authorityLevel: 3,
+      authorityLevel: E2E_CONSOLE_LEVELS[email] ?? 3,
       department: 'operations',
     });
 
@@ -96,7 +100,7 @@ const main = async (): Promise<void> => {
   const handoff: ConsoleHandoff = {
     tenantId: tenant.id,
     secrets,
-    clientName: CLIENT_NAME,
+    clientName: E2E_CONSOLE_CLIENTS[0],
     label: LABEL,
   };
   await writeFile(E2E_CONSOLE_HANDOFF, JSON.stringify(handoff), 'utf8');

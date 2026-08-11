@@ -7,6 +7,57 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added - writes from the Console page, and the enforcement that should have been behind them (`ai-feature/console-writes`)
+
+- **THE FINDING: no write route checked an Authority Level.** `apps/api`'s own header claimed every
+  route acting on a client went through the middleware chain. It did not - `chain()` ran in TWO
+  PLACES in the whole system (`@bwc/placement` and `@bwc/comms`), while the compliance transition,
+  the Firewall trigger and the consent grant called their modules directly. **A Level 0 observer
+  with a Console session could move a client to `pass`.** That sentence was written forward into the
+  file in the previous slice without being checked, which is the more useful half of the finding: a
+  comment describing a control is not a control.
+- **And the obvious fix is a trap.** Step 4 refuses a client who is Do Not Fund listed, behind a
+  triggered Firewall, or in any compliance state but `pass`/`pass_with_findings` - so routing a
+  compliance transition through it unchanged means a client in `fail` can NEVER be moved back, a
+  client in `needs_review` can never be resolved, and **every new client, in `pending_assessment`,
+  can never be assessed at all.** A gate that blocks the act of clearing the gate is a trap, and it
+  is the kind only discovered by the person it traps.
+- **`GOVERNANCE_ACTIONS` (ADR-0033).** Actions that RECORD A DETERMINATION about a client rather than
+  acting for or upon one. Step 4 is skipped for those; steps 1, 2, 3 and 6 are not - authentication,
+  tenant scope, **the Authority Level** and the Ledger event all still apply, which is the whole of
+  what was missing. **A table rather than a flag on the call**: an option is a thing a caller can
+  pass, and the first caller who wants step 4 out of the way for its own reasons will pass it. Same
+  shape as `RISK_EVENT_CLASSIFICATION` and `DO_NOT_FUND_PERMITTED_ACTIONS`. The trace says `skipped`
+  and carries the reason - a step reporting `passed` would be claiming a check ran.
+- **Four actions added to `ACTION_MINIMUM_LEVEL`**: `transition_compliance_state` (3),
+  `record_client_consent` (2), `create_client_record` (2), `trigger_firewall` (**1** - the Firewall
+  STOPS things, and a Firewall nobody raised is a placement that should have been frozen, while one
+  raised in error is visible and takes a human to clear). **These levels are a judgement and a person
+  should confirm them**; the reasoning sits beside each entry so the argument is with the reasoning
+  rather than the number.
+- **New Ledger event `authority.action_authorised`.** The Ledger has always recorded what the chain
+  REFUSED and never what it PERMITTED, so an audit could see the attempts that failed and not the
+  ones that succeeded. The module still writes its own outcome event: "this actor was allowed to
+  try" and "this is what happened" are different facts.
+- **The page**: compliance transition (with the consequence written out before the click and the
+  submit button reading `Record: fail` rather than `Record`), Firewall trigger, consent, and opening
+  a new file. **The middleware trace is shown after every write, successes included** - a page that
+  only explained failures would leave an operator unable to see which checks their action passed.
+  The dropdown opens on the state the client is already in.
+- **Actions above the actor's level are not offered - and that is a courtesy, never the control.**
+  `mayWrite` comes from `/api/console/me`; the browser test takes the Level 0 session, posts the
+  write directly, and is refused. **Authorisation now runs before body validation**, so an
+  unauthenticated caller is not told what a route wants.
+- **A test that asserted only `refused` was passing for the wrong reason.** Widening
+  `GOVERNANCE_ACTIONS` to a client-facing action survived it, because the placement module refuses a
+  failed client on its own account too. The assertion now names the STEP that blocked it.
+- **NOT FIXED, and named: `autoListForComplianceFail` has no production caller.** Decision E says a
+  failed compliance state routes to Do Not Fund Governance; the function is exported, tested and
+  called by nothing. Moving a client to `fail` does not list them. The fix is a layering decision
+  worth its own slice, so what this slice does instead is stop the page implying otherwise - the
+  consequence text says the automatic listing is not wired today.
+- 1178 vitest tests across 67 files (+9), 27 browser specs (+4). No schema change, no migration.
+
 ### Added - the internal Console UI, and the staff credential it could not ship without (`ai-feature/console-ui`)
 
 - **The finding this slice starts from.** `apps/api` has taken the acting staff member from an

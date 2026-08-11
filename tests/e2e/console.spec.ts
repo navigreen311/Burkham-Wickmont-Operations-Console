@@ -16,6 +16,7 @@ import { expect, test, type Page } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 import {
   E2E_CONSOLE_ACCOUNTS,
+  E2E_CONSOLE_CLIENTS,
   E2E_CONSOLE_HANDOFF,
   E2E_CONSOLE_ORIGIN,
   E2E_CONSOLE_PASSWORD,
@@ -173,5 +174,92 @@ test.describe('the policy the Console page runs under', () => {
     const pagePolicy = document.headers()['content-security-policy'] ?? '';
     expect(pagePolicy).toContain("script-src 'self'");
     expect(pagePolicy).not.toContain('unsafe-inline');
+  });
+});
+
+test.describe('writing from the page', () => {
+  test('records a compliance determination and shows what the chain did', async ({ page }) => {
+    await signIn(page, E2E_CONSOLE_ACCOUNTS[6]);
+
+    await page.getByRole('button', { name: 'Clients', exact: true }).first().click();
+    // Its own file: this spec changes one permanently.
+    await page.getByRole('button', { name: E2E_CONSOLE_CLIENTS[1] }).click();
+
+    const form = page.locator('#form-compliance');
+
+    // The dropdown starts on the state the client is already in, so nobody reads the first option
+    // as the current value.
+    await expect(page.locator('#compliance-to')).toHaveValue('pending_assessment');
+
+    // The consequence is on the page before the click, and the button says what it will do.
+    await page.locator('#compliance-to').selectOption('needs_review');
+    await expect(page.locator('#compliance-consequence')).toContainText('FREEZES placement');
+    await expect(page.locator('#compliance-submit')).toHaveText('Record: needs_review');
+
+    await page.locator('#compliance-to').selectOption('pass');
+    await form.getByLabel('Reason').fill('assessed and clear');
+    await page.locator('#compliance-submit').click();
+
+    await expect(page.getByRole('status')).toHaveText('Compliance state recorded: pass.');
+    await expect(page.locator('#client-compliance')).toContainText('pass');
+
+    // The trace is shown on a success too. A page that only explained failures would leave an
+    // operator unable to see which checks their action actually passed.
+    await expect(page.locator('#trace-list')).toContainText('authority_level: passed');
+    await expect(page.locator('#trace-list')).toContainText('firewall: skipped');
+  });
+
+  test('triggers the Firewall and the file says so', async ({ page }) => {
+    await signIn(page, E2E_CONSOLE_ACCOUNTS[7]);
+
+    await page.getByRole('button', { name: 'Clients', exact: true }).first().click();
+    await page.getByRole('button', { name: E2E_CONSOLE_CLIENTS[2] }).click();
+
+    await page.locator('#form-firewall').getByLabel('Reason').fill('a conflict was reported');
+    await page.locator('#firewall-submit').click();
+
+    await expect(page.getByRole('status')).toContainText('Placement is frozen');
+    await expect(page.locator('#client-firewall')).toContainText('a conflict was reported');
+  });
+
+  test('opens a new file from the clients view', async ({ page }) => {
+    await signIn(page, E2E_CONSOLE_ACCOUNTS[8]);
+
+    await page.getByRole('button', { name: 'Clients', exact: true }).first().click();
+    await page.locator('#new-client-name').fill('Opened From The Page LLC');
+    await page.getByRole('button', { name: 'Open file' }).click();
+
+    await expect(page.getByRole('status')).toContainText('Opened From The Page LLC');
+    await expect(page.locator('#clients-list')).toContainText('Opened From The Page LLC');
+  });
+});
+
+test.describe('an operator who may not write', () => {
+  test('is offered no write, and is refused one anyway', async ({ page, request }) => {
+    const seed = await signIn(page, E2E_CONSOLE_ACCOUNTS[9]);
+
+    await page.getByRole('button', { name: 'Clients', exact: true }).first().click();
+    // Level 0 cannot open a file either.
+    await expect(page.locator('#section-new-client')).toBeHidden();
+
+    await page.getByRole('button', { name: seed.clientName }).click();
+    await expect(page.locator('#section-compliance')).toBeHidden();
+    await expect(page.locator('#section-firewall-trigger')).toBeHidden();
+    await expect(page.locator('#section-consent')).toBeHidden();
+
+    // **And the hiding is not the control.** The same account, posting the same write directly,
+    // is refused by the chain - which is the assertion that would still hold if somebody deleted
+    // every `hidden` attribute on the page.
+    const cookies = await page.context().cookies();
+    const session = cookies.find((cookie) => cookie.name === 'bwc_console_session');
+    expect(session).toBeDefined();
+
+    const reply = await request.post(`${E2E_CONSOLE_ORIGIN}/api/clients`, {
+      headers: { cookie: `bwc_console_session=${session?.value ?? ''}` },
+      data: { legalName: 'Should Not Exist LLC' },
+    });
+    const payload = (await reply.json()) as { status: string; reason?: string };
+    expect(payload.status).toBe('refused');
+    expect(payload.reason).toMatch(/Authority Level/);
   });
 });
