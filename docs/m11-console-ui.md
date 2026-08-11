@@ -35,9 +35,10 @@ So the UI and the credential are one slice. The ordering **is** the decision.
 | **Factors**           | a password **and** a TOTP code, in one request                                                                                    |
 | **Second factor**     | a **precondition**, not a setting. `enrolledAt` is null until a code verifies, and an unenrolled credential cannot sign in at all |
 | **Who may hold one**  | a **human** Actor. A Village agent is refused — it acts through the worker, which holds no session                                |
-| **Who may grant one** | a Level 3 human. It grants sight of every client file in the firm                                                                 |
+| **Who may grant one** | a Level 3 human, who issues an **invitation** and never sees the password or the secret (ADR-0036)                                |
 | **Session**           | 8 hours absolute, 15 minutes idle                                                                                                 |
 | **Absence**           | an Actor with no credential row cannot sign in. Absence is not permission                                                         |
+| **Invitation**        | single-use, 24 hours, spendable only to SET a credential — never to use one                                                       |
 
 **A client may decide how much friction their own file is worth (ADR-0028); a staff member may
 not.** The reason is blast radius rather than seniority, and it is why there is no route that turns
@@ -112,9 +113,11 @@ the Firewall trigger, consent and opening a file all have buttons now, and every
 through the middleware chain, which none of them did before (ADR-0033). Placement has one too, and
 adding it turned up two inputs the route had never asked for (ADR-0035).
 
-**No enrolment surface.** The first Console credential is a bootstrap step through
-`beginStaffEnrolment` / `confirmStaffEnrolment`, not a self-service page. Console access is sight of
-every client file in the firm.
+**Enrolment is built** — see
+[ADR-0036](adr/0036-the-granter-must-not-hold-the-credential.md). A Level 3 human invites; the
+**subject** sets their own password and receives their own authenticator secret, so the granter
+holds neither. The very first credential is still a bootstrap step, because inviting needs a Level 3
+human who is already an Actor.
 
 **No WebAuthn for staff.** Better than TOTP, because it is phishing-resistant and TOTP is not
 (ADR-0028) — deferred because it needs a relying-party origin the internal deployment has not been

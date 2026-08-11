@@ -31,7 +31,8 @@ import {
   MFA_SECRET_KEY_VARIABLE,
   STAFF_MAX_FAILED_ATTEMPTS,
   base32Decode,
-  beginStaffEnrolment,
+  enrolStaffFromInvitation,
+  inviteStaff,
   confirmStaffEnrolment,
   createActor,
   disableStaffCredential,
@@ -114,6 +115,42 @@ const call = async (
 };
 
 /** Sign in and return the cookie header a browser would send back. */
+
+/**
+ * Invite an actor and spend the invitation, returning what the SUBJECT would hold.
+ *
+ * Two calls where there used to be one, because two people are involved: the granter issues a
+ * token, and the subject turns it into a password and a secret. A test helper that collapsed them
+ * would be a test that could not tell the difference.
+ */
+const inviteAndEnrol = async (input: {
+  tenantId: string;
+  actorId: string;
+  email: string;
+  password: string;
+  invitedBy: string;
+  now?: Date;
+}): Promise<{ secret: string }> => {
+  const invitation = await inviteStaff({
+    tenantId: input.tenantId,
+    actorId: input.actorId,
+    email: input.email,
+    invitedBy: input.invitedBy,
+    ...(input.now !== undefined ? { now: input.now } : {}),
+  });
+  if (invitation.status !== 'ok') throw new Error(`invite: ${JSON.stringify(invitation)}`);
+
+  const offer = await enrolStaffFromInvitation({
+    tenantId: input.tenantId,
+    token: invitation.value.token,
+    password: input.password,
+    ...(input.now !== undefined ? { now: input.now } : {}),
+  });
+  if (offer.status !== 'ok') throw new Error(`enrol: ${JSON.stringify(offer)}`);
+
+  return { secret: offer.value.secret };
+};
+
 const signIn = async (): Promise<string> => {
   const reply = await call('/api/console/sign-in', { body: freshCredentials() });
   expect(reply.json['status'], reply.body).toBe('ok');
@@ -133,16 +170,15 @@ beforeAll(async () => {
     })
   ).id;
 
-  const offer = await beginStaffEnrolment({
+  const enrolled = await inviteAndEnrol({
     tenantId: fx.tenant.id,
     actorId: fx.human.id,
     email: EMAIL,
     password: PASSWORD,
-    grantedBy: fx.human.id,
+    invitedBy: fx.human.id,
   });
-  if (offer.status !== 'ok') throw new Error(`setup: enrolment - ${offer.reason}`);
 
-  const decoded = base32Decode(offer.value.secret);
+  const decoded = base32Decode(enrolled.secret);
   if (!decoded) throw new Error('setup: secret');
   secret = decoded;
 
@@ -361,15 +397,14 @@ describe('a credential that has been withdrawn', () => {
       authorityLevel: 3,
     });
 
-    const offer = await beginStaffEnrolment({
+    const enrolled = await inviteAndEnrol({
       tenantId: fx.tenant.id,
       actorId: spare.id,
       email: 'leaving-person@example.com',
       password: PASSWORD,
-      grantedBy: fx.human.id,
+      invitedBy: fx.human.id,
     });
-    if (offer.status !== 'ok') throw new Error('setup');
-    const theirSecret = base32Decode(offer.value.secret);
+    const theirSecret = base32Decode(enrolled.secret);
     if (!theirSecret) throw new Error('setup');
     const confirmed = await confirmStaffEnrolment({
       tenantId: fx.tenant.id,
@@ -541,16 +576,15 @@ const operatorAt = async (level: 0 | 1 | 2 | 3, label: string): Promise<string> 
   });
   const email = `${label.replace(/\s+/gu, '-').toLowerCase()}@example.com`;
 
-  const offer = await beginStaffEnrolment({
+  const enrolled = await inviteAndEnrol({
     tenantId: fx.tenant.id,
     actorId: actor.id,
     email,
     password: PASSWORD,
-    grantedBy: fx.human.id,
+    invitedBy: fx.human.id,
     now: at(),
   });
-  if (offer.status !== 'ok') throw new Error(`operator: ${offer.reason}`);
-  const secret = base32Decode(offer.value.secret);
+  const secret = base32Decode(enrolled.secret);
   if (!secret) throw new Error('operator: secret');
 
   const confirmed = await confirmStaffEnrolment({
@@ -938,5 +972,99 @@ describe('the closed vocabularies the page offers', () => {
   it('is behind a session like everything else', async () => {
     const reply = await call('/api/console/vocabulary');
     expect(reply.json['status']).toBe('refused');
+  });
+});
+
+describe('the enrolment surface', () => {
+  it('needs a session to invite, and a Level 3 one at that', async () => {
+    const anonymous = await call('/api/console/invitations', {
+      body: { actorId: fx.human.id, email: 'nope@example.com' },
+    });
+    expect(anonymous.json['status']).toBe('refused');
+    expect(anonymous.json['reason']).toBe('Sign in to continue.');
+
+    const observer = await operatorAt(0, 'invite-observer');
+    const target = await createActor({
+      tenantId: fx.tenant.id,
+      kind: 'human',
+      label: 'Would Be Staff',
+      authorityLevel: 3,
+    });
+    const refused = await call('/api/console/invitations', {
+      body: { actorId: target.id, email: 'would-be-staff@example.com' },
+      headers: { cookie: observer },
+    });
+    expect(refused.json['status']).toBe('refused');
+    expect(String(refused.json['reason'])).toMatch(/Level 3/);
+  });
+
+  it('runs the whole journey: invite, enrol, confirm, sign in', async () => {
+    const cookie = await signIn();
+    const email = 'journey-person@example.com';
+
+    const target = await createActor({
+      tenantId: fx.tenant.id,
+      kind: 'human',
+      label: 'Journey Person',
+      authorityLevel: 2,
+    });
+
+    const invited = await call('/api/console/invitations', {
+      body: { actorId: target.id, email },
+      headers: { cookie },
+    });
+    expect(invited.json['status'], invited.body).toBe('ok');
+    const invitation = invited.json['data'] as { token: string };
+
+    // **The invitation carries no secret.** The granter has a code that sets a credential, not one
+    // that uses one.
+    expect(invited.body).not.toMatch(/"secret"/);
+
+    // Unauthenticated from here: the subject has no credential yet, which is what they are here to
+    // create.
+    const enrolled = await call('/api/console/enrolment', {
+      body: { token: invitation.token, password: 'a-long-enough-new-password' },
+    });
+    expect(enrolled.json['status'], enrolled.body).toBe('ok');
+    const offer = enrolled.json['data'] as { actorId: string; secret: string };
+
+    const secret = base32Decode(offer.secret);
+    if (!secret) throw new Error('secret');
+
+    // Still cannot sign in: the factor is unproved.
+    const early = await call('/api/console/sign-in', {
+      body: { email, password: 'a-long-enough-new-password', code: totp(secret, at()) },
+    });
+    expect(early.json['status']).toBe('refused');
+
+    const confirmed = await call('/api/console/enrolment/confirm', {
+      body: {
+        actorId: offer.actorId,
+        password: 'a-long-enough-new-password',
+        code: totp(secret, at()),
+      },
+    });
+    expect(confirmed.json['status'], confirmed.body).toBe('ok');
+
+    offsetMs += 31_000;
+    const signedIn = await call('/api/console/sign-in', {
+      body: { email, password: 'a-long-enough-new-password', code: totp(secret, at()) },
+    });
+    expect(signedIn.json['status'], signedIn.body).toBe('ok');
+    expect((signedIn.json['data'] as { authorityLevel: number }).authorityLevel).toBe(2);
+  });
+
+  it('refuses a bad token in the same words as an expired one', async () => {
+    const reply = await call('/api/console/enrolment', {
+      body: { token: 'not-a-token-anybody-issued', password: 'a-long-enough-new-password' },
+    });
+    expect(reply.json['status']).toBe('refused');
+    expect(reply.json['reason']).toBe('That invitation is not valid. Ask for a new one.');
+  });
+
+  it('refuses a missing field in the same words, naming nothing', async () => {
+    const reply = await call('/api/console/enrolment', { body: { token: 'something' } });
+    // The endpoint is reachable by anybody. Naming the field it wants tells them what it wants.
+    expect(reply.json['reason']).toBe('That invitation is not valid. Ask for a new one.');
   });
 });

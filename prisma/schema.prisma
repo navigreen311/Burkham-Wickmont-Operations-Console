@@ -61,8 +61,9 @@ model Actor {
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
-  credential ActorCredential?
-  sessions   ActorSession[]
+  credential  ActorCredential?
+  sessions    ActorSession[]
+  invitations ActorInvitation[]
 
   @@index([tenantId])
   @@map("actors")
@@ -3819,5 +3820,38 @@ model ActorSession {
 
   @@index([tenantId, actorId])
   @@map("actor_sessions")
+  @@schema("identity")
+}
+
+/// An invitation to take up a Console credential.
+///
+/// **The granter never sees the password or the authenticator secret.** They see this token, which
+/// is single-use, expiring, and can only be spent to SET a credential - not to use one. The subject
+/// chooses their own password and receives their own secret when they spend it.
+///
+/// That is a weaker thing to hold than what the first version of this flow handed a granter, and it
+/// is not nothing: whoever holds an unspent token can spend it. What closes that is delivering it to
+/// the subject rather than to the person who created it, and delivery needs the email provider
+/// nothing here has yet. See ADR-0036.
+model ActorInvitation {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+
+  actorId String @db.Uuid
+  actor   Actor  @relation(fields: [actorId], references: [id], onDelete: Cascade)
+
+  /// SHA-256 of the token. The token is returned once, at issue, and never stored.
+  tokenHash String @unique
+
+  /// Who issued it. A Level 3 human, checked at issue.
+  issuedBy  String   @db.Uuid
+  issuedAt  DateTime @default(now())
+  expiresAt DateTime
+
+  /// Single use. Set when spent; a second attempt with the same token is refused.
+  acceptedAt DateTime?
+
+  @@index([tenantId, actorId])
+  @@map("actor_invitations")
   @@schema("identity")
 }

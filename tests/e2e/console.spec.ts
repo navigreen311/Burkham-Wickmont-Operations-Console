@@ -20,7 +20,10 @@ import {
   E2E_CONSOLE_HANDOFF,
   E2E_CONSOLE_ORIGIN,
   E2E_CONSOLE_PASSWORD,
+  E2E_INVITEE_EMAIL,
+  E2E_INVITEE_PASSWORD,
   E2E_PLACEMENT_REF,
+  currentStepCode,
   nextStepCode,
   openConsole,
   type ConsoleHandoff,
@@ -327,5 +330,75 @@ test.describe('asking for a placement from the page', () => {
     // Left on the empty choice: suitability is assessed against this, so a default would be a
     // confident recommendation for a purpose nobody stated.
     await expect(page.locator('#placement-need')).toHaveValue('');
+  });
+});
+
+test.describe('taking up an invitation', () => {
+  /**
+   * The whole journey in one browser: a Level 3 operator issues a code, and somebody who has no
+   * credential at all turns it into one and signs in.
+   *
+   * **What this spec is really asserting is what the granter never sees.** The invite banner
+   * carries a code; the password and the authenticator secret are chosen and shown on the other
+   * side of the sign-out, in a view that has no session behind it.
+   */
+  test('invite, enrol, confirm, sign in', async ({ page }) => {
+    const seed = await signIn(page, E2E_CONSOLE_ACCOUNTS[13]);
+
+    await page.locator('#invite-actor').fill(seed.inviteeActorId);
+    await page.locator('#invite-email').fill(E2E_INVITEE_EMAIL);
+    await page.getByRole('button', { name: 'Invite', exact: true }).click();
+
+    await expect(page.getByRole('status')).toHaveText('Invitation issued.');
+    const banner = await page.locator('#invite-result').textContent();
+    expect(banner).toContain(E2E_INVITEE_EMAIL);
+    // The granter is told, on the page, that whoever holds this can spend it.
+    expect(banner).toContain('Anyone holding it can spend it');
+
+    const code = (banner ?? '').split(': ').pop()?.split(' —')[0]?.trim() ?? '';
+    expect(code.length).toBeGreaterThan(20);
+
+    // Out of the session entirely: the invitee is not this operator.
+    await page.getByRole('button', { name: 'Sign out' }).click();
+    await page.getByRole('button', { name: 'Take up your invitation' }).click();
+
+    await page.locator('#enrol-token').fill(code);
+    await page.locator('#enrol-password').fill(E2E_INVITEE_PASSWORD);
+    await page.getByRole('button', { name: 'Continue' }).click();
+
+    // Shown once, and only here. Nobody who issued the invitation has seen this.
+    await expect(page.locator('#section-authenticator')).toBeVisible();
+    const secret = (await page.locator('#enrol-secret').textContent()) ?? '';
+    expect(secret.length).toBeGreaterThan(20);
+
+    // The spent code is cleared from the field: a spent code left on screen looks like one that
+    // still works.
+    await expect(page.locator('#enrol-token')).toHaveValue('');
+
+    // The CURRENT step: this factor has never been used, so nothing is spent yet - and spending
+    // the current one leaves the next free for the sign-in immediately below.
+    await page.locator('#enrol-code').fill(currentStepCode(secret));
+    await page.getByRole('button', { name: 'Finish' }).click();
+
+    await expect(page.getByRole('status')).toHaveText(
+      'Enrolment complete. Sign in with your password and a code.',
+    );
+    // The secret is off the screen once it is confirmed. It is not recoverable, and it should not
+    // sit on a monitor in an office.
+    await expect(page.locator('#enrol-secret')).toHaveText('');
+
+    const form = page.locator('#form-sign-in');
+    await form.getByLabel('Email').fill(E2E_INVITEE_EMAIL);
+    await form.getByLabel('Password').fill(E2E_INVITEE_PASSWORD);
+    await form.getByLabel('Authenticator code').fill(nextStepCode(secret));
+    await form.getByRole('button', { name: 'Sign in' }).click();
+
+    await expect(page.getByRole('heading', { name: 'Today' })).toBeVisible();
+    await expect(page.locator('#who')).toContainText('E2E invitee');
+    await expect(page.locator('#who')).toContainText('Level 2');
+
+    // Level 2 cannot invite anybody else. The section is not offered - and the module refuses
+    // regardless, which `console-transport.test.ts` asserts directly.
+    await expect(page.locator('#section-invite')).toBeHidden();
   });
 });

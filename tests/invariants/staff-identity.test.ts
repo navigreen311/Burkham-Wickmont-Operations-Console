@@ -11,6 +11,7 @@
  *   five failures lock the credential                      - and the message never says so
  *   a session re-reads the actor and the credential        - "revoke now" means now
  *   no credential material reaches a Ledger payload
+ *   the GRANTER never holds the subject's password or secret   - ADR-0036
  */
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -21,12 +22,14 @@ import {
   MFA_SECRET_KEY_VARIABLE,
   STAFF_LOCKOUT_MINUTES,
   STAFF_MAX_FAILED_ATTEMPTS,
+  STAFF_INVITATION_HOURS,
   STAFF_SESSION_ABSOLUTE_HOURS,
   STAFF_SESSION_IDLE_MINUTES,
   activeStaffSessions,
   authenticateStaff,
   base32Decode,
-  beginStaffEnrolment,
+  enrolStaffFromInvitation,
+  inviteStaff,
   confirmStaffEnrolment,
   createActor,
   disableStaffCredential,
@@ -62,12 +65,19 @@ const enrol = async (
   });
   const email = nextEmail();
 
-  const offer = await beginStaffEnrolment({
+  const invitation = await inviteStaff({
     tenantId: fx.tenant.id,
     actorId: actor.id,
     email,
+    invitedBy: fx.human.id,
+    now: at,
+  });
+  if (invitation.status !== 'ok') throw new Error(`invite: ${invitation.reason}`);
+
+  const offer = await enrolStaffFromInvitation({
+    tenantId: fx.tenant.id,
+    token: invitation.value.token,
     password: PASSWORD,
-    grantedBy: fx.human.id,
     now: at,
   });
   if (offer.status !== 'ok') throw new Error(`enrol: ${offer.reason}`);
@@ -109,12 +119,11 @@ describe('who may hold a Console credential', () => {
       authorityLevel: 1,
     });
 
-    const offer = await beginStaffEnrolment({
+    const offer = await inviteStaff({
       tenantId: fx.tenant.id,
       actorId: agent.id,
       email: nextEmail(),
-      password: PASSWORD,
-      grantedBy: fx.human.id,
+      invitedBy: fx.human.id,
     });
 
     expect(offer.status).toBe('refused');
@@ -131,32 +140,40 @@ describe('who may hold a Console credential', () => {
       authorityLevel: 3,
     });
 
-    const offer = await beginStaffEnrolment({
+    const offer = await inviteStaff({
       tenantId: fx.tenant.id,
       actorId: target.id,
       email: nextEmail(),
-      password: PASSWORD,
       // Level 1 Village agent from the fixture.
-      grantedBy: fx.agent.id,
+      invitedBy: fx.agent.id,
     });
 
     expect(offer.status).toBe('refused');
     if (offer.status === 'refused') expect(offer.reason).toMatch(/Level 3/);
   });
 
-  it('refuses a password shorter than the floor', async () => {
+  it('refuses a password shorter than the floor, at the step that sets one', async () => {
     const target = await createActor({
       tenantId: fx.tenant.id,
       kind: 'human',
       label: 'Short',
       authorityLevel: 3,
     });
-    const offer = await beginStaffEnrolment({
+
+    // The invitation carries no password at all - that is the point of it - so the length floor
+    // lives where the subject chooses one.
+    const invitation = await inviteStaff({
       tenantId: fx.tenant.id,
       actorId: target.id,
       email: nextEmail(),
+      invitedBy: fx.human.id,
+    });
+    if (invitation.status !== 'ok') throw new Error('invite');
+
+    const offer = await enrolStaffFromInvitation({
+      tenantId: fx.tenant.id,
+      token: invitation.value.token,
       password: 'short',
-      grantedBy: fx.human.id,
     });
     expect(offer.status).toBe('refused');
   });
@@ -467,5 +484,233 @@ describe('nothing credential-shaped reaches the Ledger', () => {
     // The email is a credential half on this surface: it is what an attacker needs before a
     // password is worth guessing, and the Ledger has the actor id, which is the useful fact.
     expect(written).not.toContain(who.email);
+  });
+});
+
+describe('an invitation, and what the granter does not get', () => {
+  it('carries no password and returns no secret', async () => {
+    const target = await createActor({
+      tenantId: fx.tenant.id,
+      kind: 'human',
+      label: 'Invitee',
+      authorityLevel: 3,
+    });
+
+    const invitation = await inviteStaff({
+      tenantId: fx.tenant.id,
+      actorId: target.id,
+      email: nextEmail(),
+      invitedBy: fx.human.id,
+    });
+
+    expect(invitation.status).toBe('ok');
+    if (invitation.status !== 'ok') return;
+
+    // THE ASSERTION THIS BLOCK EXISTS FOR. The first version of this flow took the subject's
+    // password from the granter and handed back the subject's TOTP secret - one person holding
+    // both factors of somebody else's account, with nothing downstream able to tell their session
+    // from the subject's.
+    const returned = JSON.stringify(invitation.value);
+    expect(returned).not.toContain('secret');
+    expect(Object.keys(invitation.value).sort()).toEqual([
+      'actorId',
+      'email',
+      'expiresAt',
+      'token',
+    ]);
+  });
+
+  it('cannot be spent twice', async () => {
+    const target = await createActor({
+      tenantId: fx.tenant.id,
+      kind: 'human',
+      label: 'Twice',
+      authorityLevel: 3,
+    });
+    const invitation = await inviteStaff({
+      tenantId: fx.tenant.id,
+      actorId: target.id,
+      email: nextEmail(),
+      invitedBy: fx.human.id,
+    });
+    if (invitation.status !== 'ok') throw new Error('invite');
+
+    const first = await enrolStaffFromInvitation({
+      tenantId: fx.tenant.id,
+      token: invitation.value.token,
+      password: PASSWORD,
+    });
+    expect(first.status).toBe('ok');
+
+    // A code read over a shoulder, or kept by whoever passed it on, is worth nothing once spent.
+    const second = await enrolStaffFromInvitation({
+      tenantId: fx.tenant.id,
+      token: invitation.value.token,
+      password: 'a-different-long-password',
+    });
+    expect(second.status).toBe('refused');
+  });
+
+  it('expires', async () => {
+    const target = await createActor({
+      tenantId: fx.tenant.id,
+      kind: 'human',
+      label: 'Expiring',
+      authorityLevel: 3,
+    });
+    const issued = new Date();
+    const invitation = await inviteStaff({
+      tenantId: fx.tenant.id,
+      actorId: target.id,
+      email: nextEmail(),
+      invitedBy: fx.human.id,
+      now: issued,
+    });
+    if (invitation.status !== 'ok') throw new Error('invite');
+
+    const late = later(issued, (STAFF_INVITATION_HOURS + 1) * 60 * 60 * 1000);
+    const spent = await enrolStaffFromInvitation({
+      tenantId: fx.tenant.id,
+      token: invitation.value.token,
+      password: PASSWORD,
+      now: late,
+    });
+    expect(spent.status).toBe('refused');
+  });
+
+  it('spends the earlier one when somebody is re-invited', async () => {
+    const target = await createActor({
+      tenantId: fx.tenant.id,
+      kind: 'human',
+      label: 'Reinvited',
+      authorityLevel: 3,
+    });
+    const email = nextEmail();
+
+    const first = await inviteStaff({
+      tenantId: fx.tenant.id,
+      actorId: target.id,
+      email,
+      invitedBy: fx.human.id,
+    });
+    if (first.status !== 'ok') throw new Error('invite');
+
+    const second = await inviteStaff({
+      tenantId: fx.tenant.id,
+      actorId: target.id,
+      email,
+      invitedBy: fx.human.id,
+    });
+    if (second.status !== 'ok') throw new Error('reinvite');
+
+    // Two live tokens for one account would be two ways in, and the person who kept the first
+    // would still have one after the second was issued.
+    const stale = await enrolStaffFromInvitation({
+      tenantId: fx.tenant.id,
+      token: first.value.token,
+      password: PASSWORD,
+    });
+    expect(stale.status).toBe('refused');
+
+    const fresh = await enrolStaffFromInvitation({
+      tenantId: fx.tenant.id,
+      token: second.value.token,
+      password: PASSWORD,
+    });
+    expect(fresh.status).toBe('ok');
+  });
+
+  it('refuses to invite somebody already enrolled', async () => {
+    const who = await enrol();
+    await confirm(who, who.at);
+
+    const again = await inviteStaff({
+      tenantId: fx.tenant.id,
+      actorId: who.actorId,
+      email: who.email,
+      invitedBy: fx.human.id,
+    });
+
+    // An invitation and a reset are different acts with different threat models. A path that
+    // quietly became the other one would be a way to take over an account that already exists.
+    expect(again.status).toBe('refused');
+    if (again.status === 'refused') expect(again.reason).toMatch(/credential reset/);
+  });
+
+  it('leaves an invited actor unable to sign in until they have done both halves', async () => {
+    const target = await createActor({
+      tenantId: fx.tenant.id,
+      kind: 'human',
+      label: 'Half Way',
+      authorityLevel: 3,
+    });
+    const email = nextEmail();
+    const invitation = await inviteStaff({
+      tenantId: fx.tenant.id,
+      actorId: target.id,
+      email,
+      invitedBy: fx.human.id,
+    });
+    if (invitation.status !== 'ok') throw new Error('invite');
+
+    // Invited and nothing more: the stored hash is a sentinel that cannot verify, so no password
+    // opens this account - including the empty one.
+    const beforeAnything = await authenticateStaff({
+      tenantId: fx.tenant.id,
+      email,
+      password: '',
+      code: '000000',
+    });
+    expect(beforeAnything.status).toBe('refused');
+
+    const offer = await enrolStaffFromInvitation({
+      tenantId: fx.tenant.id,
+      token: invitation.value.token,
+      password: PASSWORD,
+    });
+    if (offer.status !== 'ok') throw new Error('enrol');
+    const secret = base32Decode(offer.value.secret);
+    if (!secret) throw new Error('secret');
+
+    // Password set, factor unproved. Still refused - this is the precondition, not a setting.
+    const at = new Date();
+    const halfway = await authenticateStaff({
+      tenantId: fx.tenant.id,
+      email,
+      password: PASSWORD,
+      code: totp(secret, at),
+      now: at,
+    });
+    expect(halfway.status).toBe('refused');
+  });
+
+  it('records the SUBJECT as the actor who set the credential', async () => {
+    const target = await createActor({
+      tenantId: fx.tenant.id,
+      kind: 'human',
+      label: 'Subject',
+      authorityLevel: 3,
+    });
+    const invitation = await inviteStaff({
+      tenantId: fx.tenant.id,
+      actorId: target.id,
+      email: nextEmail(),
+      invitedBy: fx.human.id,
+    });
+    if (invitation.status !== 'ok') throw new Error('invite');
+    await enrolStaffFromInvitation({
+      tenantId: fx.tenant.id,
+      token: invitation.value.token,
+      password: PASSWORD,
+    });
+
+    const events = await read({ tenantId: fx.tenant.id });
+    const invited = events.filter((event) => event.type === 'identity.staff.invited');
+    const started = events.filter((event) => event.type === 'identity.staff.enrolment_started');
+
+    // Two acts, two actors. Recording the granter on the second would say somebody set a password
+    // they never saw.
+    expect(invited.some((event) => event.actor.id === fx.human.id)).toBe(true);
+    expect(started.some((event) => event.actor.id === target.id)).toBe(true);
   });
 });
