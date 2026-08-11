@@ -64,9 +64,23 @@ their runtime where it was and makes a failure here say _the page_ rather than a
 test among a thousand. Traces are uploaded on failure only, and kept seven days — **a trace is a copy
 of the page, and this page shows a client's file.**
 
-Chromium only. The virtual authenticator is a CDP feature; a Firefox or WebKit run would cover the
-DOM layer, which is the layer with the least in it, at the cost of two more browser downloads on
-every run.
+**Three engines, and only one can hold a passkey.** The virtual authenticator is a Chrome DevTools
+Protocol feature, so `passkey.spec.ts` **skips itself** on Firefox and WebKit with a stated reason
+rather than quietly not existing there - a reader counting green ticks would otherwise conclude the
+coverage was three times what it is.
+
+On the first three-engine run, **every existing spec passed everywhere and the two new engines found
+nothing.** That is the honest result, and it is why `cross-browser.spec.ts` exists: it holds the
+checks where an engine's own implementation is the thing under test.
+
+| Check                                          | Why an engine is the subject                                                                                                                         |
+| ---------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **An injected inline script does not run**     | `portal-ui.test.ts` can only assert the header was sent. Chromium, Gecko and WebKit each decide separately whether to enforce it                     |
+| **A script from another origin does not load** | What makes "no CDN" a rule rather than a preference                                                                                                  |
+| **The no-WebAuthn fallback**                   | Every ceremony in `portal.js` sits behind a capability check, and the Chromium specs all attach an authenticator - so the guard had never been false |
+
+Allowing `'unsafe-inline'` on the page policy fails the injection test in **all three** engines
+independently, which is what says the test is real rather than vacuous.
 
 **It is also the only job that runs against BUILT packages.** The vitest suites alias `@bwc/*` to
 `src` deliberately - dist would test stale code - so nothing else notices a package that compiles in
@@ -78,7 +92,7 @@ around from an earlier build.
 
 ## Tested
 
-9 specs: 3 passkey, 6 page. `pnpm test:e2e`. The vitest suite is unchanged at **1112** — the two
+13 specs across three engines - **33 runs and 6 explicit skips**. `pnpm test:e2e`. The vitest suite is unchanged at **1112** — the two
 runners never see each other's files (`*.test.ts` against `*.spec.ts`).
 
 | Spec                                        | Asserts                                                                        |
@@ -94,5 +108,5 @@ runners never see each other's files (`*.test.ts` against `*.spec.ts`).
 
 ## Not built
 
-Firefox and WebKit runs. Visual regression. A test for the document download path, which needs a
+Visual regression. A test for the document download path, which needs a
 scanned document in the Vault and is covered server-side by `client-vault-access.test.ts`.

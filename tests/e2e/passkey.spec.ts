@@ -68,6 +68,19 @@ const registerPasskey = async (page: Page, label: string): Promise<void> => {
 };
 
 test.describe('a passkey through a real browser', () => {
+  /**
+   * Chromium only, and **said out loud rather than arranged silently.**
+   *
+   * The virtual authenticator is a Chrome DevTools Protocol feature; Firefox and WebKit have no
+   * equivalent, so there is no way to hold a credential in them. A file that simply lived in a
+   * chromium-only project would report nothing on the other two, and a reader counting green ticks
+   * would conclude the coverage was three times what it is.
+   */
+  test.skip(
+    ({ browserName }) => browserName !== 'chromium',
+    'the virtual authenticator is a Chrome DevTools Protocol feature; Firefox and WebKit have no equivalent',
+  );
+
   test('registers, and the account then reports it', async ({ page }) => {
     await attachAuthenticator(page);
     await signInWithPassword(page, E2E_MUTABLE_ACCOUNTS[0]);

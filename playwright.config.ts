@@ -33,14 +33,22 @@ export default defineConfig({
     video: 'off',
   },
 
+  /**
+   * Three engines, and only one of them can hold a passkey.
+   *
+   * **The virtual authenticator is a Chrome DevTools Protocol feature**, so `passkey.spec.ts` skips
+   * itself on Firefox and WebKit with a stated reason rather than quietly not existing there. What
+   * the other two engines add is the layer Chromium was already covering incidentally: the page's
+   * own markup and script, under a real CSP, in engines whose form semantics and DOM behaviour are
+   * not Blink's.
+   *
+   * That is a narrower gain than the Chromium run, and it is worth being clear about rather than
+   * letting three green ticks imply three times the coverage.
+   */
   projects: [
-    {
-      name: 'chromium',
-      // Chromium only, and that is a decision rather than an omission: the virtual authenticator
-      // these tests rest on is a Chrome DevTools Protocol feature. A Firefox or WebKit run would
-      // cover the DOM layer, which is the layer with the least in it.
-      use: { ...devices['Desktop Chrome'] },
-    },
+    { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
+    { name: 'firefox', use: { ...devices['Desktop Firefox'] } },
+    { name: 'webkit', use: { ...devices['Desktop Safari'] } },
   ],
 
   webServer: {

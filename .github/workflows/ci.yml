@@ -116,11 +116,13 @@ jobs:
       # in isolation and cannot be imported. The harness resolves them the way a deployment does.
       - name: Build packages
         run: pnpm build
-      # Chromium only. The virtual authenticator these tests rest on is a Chrome DevTools Protocol
-      # feature, and a Firefox or WebKit run would cover the DOM layer - the layer with the least
-      # in it - at the cost of two more browser downloads on every run.
-      - name: Install Chromium
-        run: pnpm exec playwright install --with-deps chromium
+      # All three engines. The passkey specs skip themselves off Chromium with a stated reason -
+      # the virtual authenticator is a Chrome DevTools Protocol feature - so what Firefox and WebKit
+      # add is the layer where the ENGINE is under test: whether a Content-Security-Policy is
+      # actually enforced, and whether the page's no-WebAuthn fallback works. Each implements CSP
+      # separately, and a header is not an enforcement.
+      - name: Install browsers
+        run: pnpm exec playwright install --with-deps chromium firefox webkit
       - name: Browser end-to-end tests
         run: pnpm test:e2e
       - if: failure()
