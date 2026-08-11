@@ -2,7 +2,7 @@
   "name": "@bwc/api",
   "version": "0.1.0",
   "private": true,
-  "description": "Express host. Wires the middleware chain and serializes Outcome. No business logic.",
+  "description": "The internal Console: Express host and the staff-facing page. Wires the middleware chain and serializes Outcome; no business logic.",
   "type": "module",
   "main": "./dist/server.js",
   "scripts": {
@@ -12,6 +12,7 @@
     "start": "node dist/server.js"
   },
   "dependencies": {
+    "@bwc/calls": "workspace:*",
     "@bwc/clients": "workspace:*",
     "@bwc/consent": "workspace:*",
     "@bwc/core": "workspace:*",
@@ -22,7 +23,10 @@
     "@bwc/integration": "workspace:*",
     "@bwc/ledger": "workspace:*",
     "@bwc/middleware": "workspace:*",
+    "@bwc/notifications": "workspace:*",
+    "@bwc/observability": "workspace:*",
     "@bwc/placement": "workspace:*",
+    "@bwc/risk": "workspace:*",
     "@bwc/tenancy": "workspace:*",
     "dotenv": "^16.4.7",
     "express": "^5.1.0",

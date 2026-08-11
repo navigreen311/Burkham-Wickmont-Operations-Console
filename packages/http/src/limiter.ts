@@ -1,6 +1,11 @@
 /**
  * Per-source rate limiting for the unauthenticated path.
  *
+ * **In `@bwc/http` because two surfaces need it and a second copy would be a second control.**
+ * It began in `apps/portal-api`, where the only unauthenticated path was; the internal Console has
+ * one now too, and a limiter pasted into a second app is exactly the shape `packages/identity`'s
+ * own rate-limit header warns about - two counters, one of which somebody changes.
+ *
  * **This is not lockout, and neither substitutes for the other.**
  *
  * 11.1 locks an account after five consecutive failures. That protects the ACCOUNT, and it does

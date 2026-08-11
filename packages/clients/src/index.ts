@@ -145,6 +145,69 @@ export const transitionComplianceState = async (
   });
 };
 
+export interface ClientPage {
+  readonly clients: readonly Client[];
+  /** How many the tenant holds in total, so a page can say what it is a page OF. */
+  readonly total: number;
+}
+
+/** The largest page this will return, whatever is asked for. */
+export const MAX_CLIENT_PAGE = 100;
+
+/**
+ * A page of the tenant's clients, newest first.
+ *
+ * Added for the Console, which needs a list before it can offer a file. **Tenant-scoped with no way
+ * to ask for another tenant's** - the parameter is not optional and there is no "all clients" call
+ * to reach for by mistake.
+ *
+ * `total` travels with the page rather than being left to the caller to count. A list that silently
+ * showed the first fifty of four hundred would read as the whole book, and the person reading it is
+ * deciding what needs attention today.
+ *
+ * A row whose stored state is not a recognised compliance state is REPORTED rather than dropped:
+ * `find` already returns `failed` for one, and a list that quietly omitted it would hide the client
+ * whose record is broken - which is the client somebody most needs to see.
+ */
+export const listClients = async (input: {
+  tenantId: string;
+  limit?: number;
+  offset?: number;
+  /** Case-insensitive match on legal name. */
+  search?: string;
+}): Promise<Outcome<ClientPage>> => {
+  const limit = Math.min(Math.max(input.limit ?? 25, 1), MAX_CLIENT_PAGE);
+  const offset = Math.max(input.offset ?? 0, 0);
+  const search = input.search?.trim();
+
+  const where = {
+    tenantId: input.tenantId,
+    ...(search && search !== ''
+      ? { legalName: { contains: search, mode: 'insensitive' as const } }
+      : {}),
+  };
+
+  const [rows, total] = await Promise.all([
+    db().client.findMany({ where, orderBy: { createdAt: 'desc' }, take: limit, skip: offset }),
+    db().client.count({ where }),
+  ]);
+
+  const broken = rows.find((row) => !isComplianceState(row.complianceState));
+  if (broken) {
+    return failed(`Client ${broken.id} holds an unrecognised compliance state.`);
+  }
+
+  return ok({
+    clients: rows.map((row) => ({
+      id: row.id,
+      tenantId: row.tenantId,
+      legalName: row.legalName,
+      complianceState: row.complianceState as ComplianceState,
+    })),
+    total,
+  });
+};
+
 export const openFindings = async (clientId: string): Promise<Finding[]> => {
   const rows = await db().complianceFinding.findMany({
     where: { clientId, resolvedAt: null },

@@ -24,7 +24,7 @@ import { clearRateLimits, rateLimitCount, sweepRateLimits } from '@bwc/identity'
 import { EnvKekProvider, LocalEncryptedStore, generateKek, type VaultConfig } from '@bwc/vault';
 import { createPortalApp } from '../../apps/portal-api/src/app.js';
 import { readConfig, type PortalConfig } from '../../apps/portal-api/src/config.js';
-import { createRateLimiter, createSharedRateLimiter } from '../../apps/portal-api/src/limiter.js';
+import { createRateLimiter, createSharedRateLimiter } from '@bwc/http';
 import { cleanupTenant, makeFixture, type Fixture } from '../setup.js';
 
 let fx: Fixture;

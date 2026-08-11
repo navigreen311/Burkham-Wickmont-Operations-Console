@@ -9,8 +9,13 @@ call from a browser.
 
 ## A separate process, because `apps/api` trusts a header
 
-`apps/api` resolves the acting staff member from an `x-actor-id` request header — its own comment
-calls that _"a development seam, not authentication"_.
+`apps/api` resolved the acting staff member from an `x-actor-id` request header — its own comment
+called that _"a development seam, not authentication"_.
+
+> **Since ADR-0032 that header is off unless a deployment sets `CONSOLE_DEV_ACTOR_HEADER`, and the
+> Console has a real staff sign-in.** The separation below is not weakened by that and was never
+> only about the header: two surfaces with different audiences and different reach belong in two
+> processes, and the isolation is structural rather than a rule somebody has to keep.
 
 > **A public surface in that process is a public surface with that header.** A client reaching any
 > internal route would send `x-actor-id: <any Level 3 actor id>` and act as staff: approve their own

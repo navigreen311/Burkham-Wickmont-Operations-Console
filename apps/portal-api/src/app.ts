@@ -61,14 +61,14 @@ import { refused, type Outcome } from '@bwc/core';
 import { byPasskey, byPassword, type Confirmation } from '@bwc/identity';
 import type { ConsentKind } from '@bwc/consent';
 import type { DocumentKind, VaultConfig } from '@bwc/vault';
-import { send } from '@bwc/http';
-import { readConfig, type PortalConfig } from './config.js';
 import {
   createRateLimiter,
   createSharedRateLimiter,
   rateLimitKey,
+  send,
   type RateLimiter,
-} from './limiter.js';
+} from '@bwc/http';
+import { readConfig, type PortalConfig } from './config.js';
 
 export interface PortalAppDeps {
   readonly config?: PortalConfig;

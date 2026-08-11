@@ -270,6 +270,15 @@ export const EVENT_TYPES = [
   'identity.client_user.password_removed',
   'identity.client_user.password_restored',
   'identity.client_session.revoked',
+
+  // Staff credentials for the internal Console. An Actor with no credential row cannot sign in.
+  'identity.staff.enrolment_started',
+  'identity.staff.enrolled',
+  'identity.staff.signed_in',
+  'identity.staff.sign_in_failed',
+  'identity.staff.sign_in_blocked',
+  'identity.staff.disabled',
+  'identity.staff_session.revoked',
 ] as const;
 
 export type EventType = (typeof EVENT_TYPES)[number];

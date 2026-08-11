@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Burkham Wickmont — Operations Console</title>
+    <!--
+      No inline style and no inline script anywhere in this document, for the reason the portal
+      records: the Content-Security-Policy allows 'self' and nothing else, with no 'unsafe-inline'
+      and no nonce. A nonce is a mechanism to keep correct on every response; having nothing inline
+      is a mechanism that cannot be got wrong.
+    -->
+    <link rel="stylesheet" href="/console/console.css" />
+    <script type="module" src="/console/console.js"></script>
+  </head>
+
+  <body>
+    <header>
+      <h1>Burkham Wickmont — Console</h1>
+      <p id="who" hidden></p>
+      <button id="sign-out" type="button" hidden>Sign out</button>
+    </header>
+
+    <p id="notice" role="status" hidden></p>
+
+    <!-- Sign in ------------------------------------------------------------ -->
+    <main id="view-sign-in">
+      <h2>Sign in</h2>
+
+      <form id="form-sign-in">
+        <label for="email">Email</label>
+        <input id="email" name="email" type="email" autocomplete="username" required />
+
+        <label for="password">Password</label>
+        <input
+          id="password"
+          name="password"
+          type="password"
+          autocomplete="current-password"
+          required
+        />
+
+        <label for="code">Authenticator code</label>
+        <!--
+          Not a second step. Staff sign-in takes both factors in one request: there is no state to
+          hold between them, so there is no half-authenticated moment to model.
+        -->
+        <input
+          id="code"
+          name="code"
+          type="text"
+          inputmode="numeric"
+          autocomplete="one-time-code"
+          required
+        />
+
+        <button type="submit">Sign in</button>
+      </form>
+    </main>
+
+    <!-- Overview ----------------------------------------------------------- -->
+    <main id="view-overview" hidden>
+      <nav>
+        <button id="nav-overview" type="button">Overview</button>
+        <button id="nav-clients" type="button">Clients</button>
+      </nav>
+
+      <h2>Today</h2>
+
+      <section>
+        <h3>System health</h3>
+        <p id="health-overall"></p>
+        <!--
+          Components are listed rather than reduced to a colour. `unmonitored` is a state and it is
+          not green (ADR-0019): the default rendering of "no data" is a tick, and the person reading
+          this is deciding whether to go home.
+        -->
+        <ul id="health-components"></ul>
+      </section>
+
+      <section>
+        <h3>Your queue</h3>
+        <p id="queue-summary"></p>
+        <ul id="queue-list"></ul>
+      </section>
+
+      <section>
+        <h3>Correction obligations</h3>
+        <!--
+          4.3. A promise made on a call produces an obligation to correct it, not a verdict - and an
+          overdue one is a client who was told something nobody has put right.
+        -->
+        <p id="obligations-summary"></p>
+        <ul id="obligations-list"></ul>
+      </section>
+    </main>
+
+    <!-- Clients ------------------------------------------------------------ -->
+    <main id="view-clients" hidden>
+      <nav>
+        <button id="nav-overview-2" type="button">Overview</button>
+        <button id="nav-clients-2" type="button">Clients</button>
+      </nav>
+
+      <h2>Clients</h2>
+
+      <form id="form-search">
+        <label for="search">Search by legal name</label>
+        <input id="search" name="search" type="search" />
+        <button type="submit">Search</button>
+      </form>
+
+      <p id="clients-summary"></p>
+      <ul id="clients-list"></ul>
+      <button id="clients-more" type="button" hidden>Show more</button>
+    </main>
+
+    <!-- One client's file --------------------------------------------------- -->
+    <main id="view-client" hidden>
+      <nav>
+        <button id="nav-back" type="button">Back to clients</button>
+      </nav>
+
+      <h2 id="client-name"></h2>
+
+      <!-- A listing is the one fact a person opening this page must not have to scroll to find. -->
+      <p id="client-do-not-fund" class="alarm" hidden></p>
+
+      <section>
+        <h3>Compliance</h3>
+        <p id="client-compliance"></p>
+        <ul id="client-findings"></ul>
+      </section>
+
+      <section>
+        <h3>Firewall</h3>
+        <p id="client-firewall"></p>
+      </section>
+
+      <section>
+        <h3>Risk timeline</h3>
+        <p id="client-risk-summary"></p>
+        <ul id="client-risk"></ul>
+        <!--
+          6.5 carries the sources nothing produces on every timeline, including empty ones: no
+          entries and no caveat reads as a clean client.
+        -->
+        <p id="client-risk-unproduced" class="muted"></p>
+      </section>
+    </main>
+
+    <footer>
+      <p>
+        Internal surface. Every read here is a read of a client's file, and every action is recorded
+        in the Event Ledger against the actor who signed in.
+      </p>
+    </footer>
+  </body>
+</html>

@@ -139,8 +139,10 @@ around from an earlier build.
 
 ## Tested
 
-13 specs. `pnpm test:e2e` runs **13 in Chromium**; `E2E_ALL_ENGINES=1 pnpm test:e2e` runs **21 and
-reports 6 explicit skips** across three engines.
+23 specs across two harnesses - 13 for the portal, 10 for the internal Console, each with its own
+`webServer` on its own port because they are two processes on two trust boundaries (ADR-0022).
+`pnpm test:e2e` runs **23 in Chromium**; `E2E_ALL_ENGINES=1 pnpm test:e2e` adds the cross-engine
+files, which report **6 explicit skips** on the engines that cannot hold a passkey.
 
 The browser job was **4m23s** installing three engines. The measured figure after dropping two is in
 the pull request rather than here, because a number in a document ages badly. The vitest suite is unchanged at **1112** — the two

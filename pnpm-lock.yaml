@@ -57,6 +57,9 @@ importers:
 
   apps/api:
     dependencies:
+      '@bwc/calls':
+        specifier: workspace:*
+        version: link:../../packages/calls
       '@bwc/clients':
         specifier: workspace:*
         version: link:../../packages/clients
@@ -87,9 +90,18 @@ importers:
       '@bwc/middleware':
         specifier: workspace:*
         version: link:../../packages/middleware
+      '@bwc/notifications':
+        specifier: workspace:*
+        version: link:../../packages/notifications
+      '@bwc/observability':
+        specifier: workspace:*
+        version: link:../../packages/observability
       '@bwc/placement':
         specifier: workspace:*
         version: link:../../packages/placement
+      '@bwc/risk':
+        specifier: workspace:*
+        version: link:../../packages/risk
       '@bwc/tenancy':
         specifier: workspace:*
         version: link:../../packages/tenancy
@@ -541,6 +553,9 @@ importers:
       '@bwc/core':
         specifier: workspace:*
         version: link:../core
+      '@bwc/identity':
+        specifier: workspace:*
+        version: link:../identity
       express:
         specifier: ^5.1.0
         version: 5.2.1

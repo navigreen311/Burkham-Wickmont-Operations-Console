@@ -1,5 +1,5 @@
 /**
- * Browser end-to-end tests for the Client Portal.
+ * Browser end-to-end tests for the Client Portal and the internal Console.
  *
  * ADR-0031 named these as the honest gap in the UI slice: the transforms were tested and the DOM
  * layer was read. **The reason to add them is not coverage of the DOM** - it is that a virtual
@@ -11,7 +11,7 @@
  */
 
 import { defineConfig, devices } from '@playwright/test';
-import { E2E_ORIGIN, E2E_PORT } from './tests/e2e/fixture.js';
+import { E2E_CONSOLE_ORIGIN, E2E_CONSOLE_PORT, E2E_ORIGIN, E2E_PORT } from './tests/e2e/fixture.js';
 
 /**
  * What each engine runs, and which of them CI installs.
@@ -99,17 +99,38 @@ export default defineConfig({
       : []),
   ],
 
-  webServer: {
-    command: 'pnpm tsx tests/e2e/server.ts',
-    url: `${E2E_ORIGIN}/portal/health`,
-    // **Never reused, even locally.** A left-running harness holds a Prisma connection pool against
-    // the same development database the vitest suite uses, and a full run immediately after a
-    // browser run failed once in exactly that overlap - not reproduced in three runs afterwards.
-    // The cause is unproved; the fix is free, and the alternative is a flake nobody can chase.
-    reuseExistingServer: false,
-    timeout: 60_000,
-    stdout: 'pipe',
-    stderr: 'pipe',
-    env: { PORT: String(E2E_PORT) },
-  },
+  /**
+   * Two servers, because there are two processes.
+   *
+   * The Console and the Client Portal are separate deployments on separate trust boundaries
+   * (ADR-0022). A harness that served both from one would be testing an architecture this system
+   * does not have - and the property the portal test rests on, that it serves no internal
+   * capability, would stop being true of the thing under test.
+   *
+   * **Never reused, even locally.** A left-running harness holds a Prisma connection pool against
+   * the same development database the vitest suite uses, and a full run immediately after a browser
+   * run failed once in exactly that overlap - not reproduced in three runs afterwards. The cause is
+   * unproved; the fix is free, and the alternative is a flake nobody can chase.
+   */
+  webServer: [
+    {
+      command: 'pnpm tsx tests/e2e/server.ts',
+      url: `${E2E_ORIGIN}/portal/health`,
+      reuseExistingServer: false,
+      timeout: 60_000,
+      stdout: 'pipe',
+      stderr: 'pipe',
+      env: { PORT: String(E2E_PORT) },
+    },
+    {
+      command: 'pnpm tsx tests/e2e/console-server.ts',
+      // The Console's liveness route, which is unauthenticated and says nothing about components.
+      url: `${E2E_CONSOLE_ORIGIN}/api/health`,
+      reuseExistingServer: false,
+      timeout: 60_000,
+      stdout: 'pipe',
+      stderr: 'pipe',
+      env: { PORT: String(E2E_CONSOLE_PORT) },
+    },
+  ],
 });
