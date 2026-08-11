@@ -1493,6 +1493,10 @@ model StateModule {
 
   disclosures StateDisclosure[]
 
+  /// At most one. A state says one thing about referral fees at a time; two rows would be two
+  /// answers to a question that has to have one.
+  referralFeeRule StateReferralFeeRule?
+
   @@unique([tenantId, state, version])
   @@index([tenantId, state, supersededAt])
   @@map("state_modules")
@@ -1524,6 +1528,57 @@ model StateDisclosure {
   @@unique([moduleId, key, productKind])
   @@index([tenantId, productKind])
   @@map("state_disclosures")
+  @@schema("regulatory")
+}
+
+/// What a state permits by way of paying somebody for an introduction.
+///
+/// Categorical. There is no "how restricted" number, because the question a payout asks is
+/// "may we pay this at all", and a scale would invite a threshold.
+enum ReferralFeePosture {
+  /// The state permits a referral fee on these facts with no conditions we must carry.
+  permitted
+  /// Permitted, but only if every condition on the rule holds.
+  permitted_with_conditions
+  /// Not payable in this state, on any terms.
+  prohibited
+
+  @@schema("regulatory")
+}
+
+/// A state's restriction on paying a referral fee - blueprint 8.2's "state restrictions on
+/// referral fees", owned HERE because 7.2 owns state rules.
+///
+/// Hangs off the module VERSION rather than off the state, so it is part of what counsel
+/// reviewed. Republishing a module materially leaves the new version with no rule attached,
+/// and 8.2 refuses rather than carrying the old one forward - see ADR-0053.
+model StateReferralFeeRule {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+
+  moduleId String      @db.Uuid
+  module   StateModule @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+
+  posture ReferralFeePosture
+
+  /// What must hold before a fee may be paid. Carried to the payout line as evidence, so the
+  /// figure travels with the conditions somebody undertook to meet.
+  conditions String[]
+
+  /// Cap on the partner's share, in basis points of the fee WE earned. Null means the state
+  /// states no cap - which is not the same as "no cap applies", because the agreement's own
+  /// share still governs.
+  maxShareBasisPoints Int?
+
+  /// The statute or regime. A restriction with no cited basis cannot be reviewed or defended.
+  citation String
+
+  createdAt DateTime @default(now())
+  createdBy String   @db.Uuid
+
+  @@unique([moduleId])
+  @@index([tenantId])
+  @@map("state_referral_fee_rules")
   @@schema("regulatory")
 }
 
@@ -2611,6 +2666,9 @@ model Partner {
   claimApprovals  PartnerClaimApproval[]
   brandConfigs    PartnerBrandConfig[]
   conductFindings PartnerConductFinding[]
+  agreements      PartnerAgreement[]
+  payouts         PartnerPayout[]
+  clawbacks       PayoutClawback[]
 
   @@index([tenantId, status])
   @@index([tenantId, track])
@@ -2729,6 +2787,191 @@ model PartnerBrandConfig {
 // ---------------------------------------------------------------------------
 // 4.3 Call Recording, Summaries & Promise Tracking
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// 8.2 Partner Agreement & Payout Center
+// ---------------------------------------------------------------------------
+
+enum PartnerAgreementStatus {
+  draft
+  active
+  superseded
+  terminated
+
+  @@schema("partners")
+}
+
+/// The commercial terms with one partner - blueprint 8.2's "referral fee terms".
+///
+/// Versioned and never edited in place. A payout cites the agreement version it was computed
+/// under, so "what were we paying them in March" survives the terms changing in April.
+model PartnerAgreement {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+
+  partnerId String  @db.Uuid
+  partner   Partner @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+
+  version Int
+
+  /// The partner's share of the fee WE earned, in basis points. Basis points and integer cents
+  /// throughout, per ADR-0011 - a percentage as a float is two figures in one table meaning
+  /// different things.
+  shareBasisPoints Int
+
+  /// Free text the parties agreed. Not parsed; carried so a reader sees the terms behind the
+  /// number rather than only the number.
+  termsSummary String
+
+  status PartnerAgreementStatus @default(draft)
+
+  effectiveFrom DateTime
+  supersededAt  DateTime?
+
+  /// Level 3 human who activated it. An agreement that binds us to pay money is not an
+  /// automatic act.
+  activatedBy String?   @db.Uuid
+  activatedAt DateTime?
+
+  createdAt DateTime @default(now())
+  createdBy String   @db.Uuid
+
+  payouts PartnerPayout[]
+
+  @@unique([tenantId, partnerId, version])
+  @@index([tenantId, partnerId, status])
+  @@map("partner_agreements")
+  @@schema("partners")
+}
+
+enum PayoutStatus {
+  /// Computed and awaiting a human. Never pays anything on its own.
+  pending_approval
+  approved
+  /// A human declined it, with a reason.
+  declined
+
+  @@schema("partners")
+}
+
+/// One period's payout for one partner.
+///
+/// `automatic in, human out`: the computation runs unattended, and nothing leaves without a
+/// Level 3 approval. There is no status that means "paid" here - money movement is not this
+/// system's act, and a `paid` we could set without anybody moving money would be a figure two
+/// sets of books disagreed about.
+model PartnerPayout {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+
+  partnerId String  @db.Uuid
+  partner   Partner @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+
+  agreementId String           @db.Uuid
+  agreement   PartnerAgreement @relation(fields: [agreementId], references: [id])
+
+  /// Half-open [periodStart, periodEnd), like every other window in this system.
+  periodStart DateTime
+  periodEnd   DateTime
+
+  status PayoutStatus @default(pending_approval)
+
+  /// The sum of the lines, minus clawbacks, in cents. Never negative: a period whose clawbacks
+  /// exceed its earnings carries the remainder forward on the clawback rows rather than
+  /// producing a payout that owes us money.
+  netCents Int
+
+  grossCents    Int
+  clawbackCents Int
+
+  computedAt DateTime
+
+  decidedBy String?   @db.Uuid
+  decidedAt DateTime?
+  /// Required to decline. Declining a payout the terms say is owed is the decision that needs
+  /// oversight; approving one does not, because the terms already said so.
+  declineReason String?
+
+  createdAt DateTime @default(now())
+
+  lines PayoutLine[]
+
+  @@index([tenantId, partnerId, periodStart])
+  @@map("partner_payouts")
+  @@schema("partners")
+}
+
+/// One referral's contribution to a payout, with the state rule that made it payable.
+///
+/// The citation and module version are copied onto the line rather than joined at read time.
+/// A payout approved in March under version 3 of Nevada's module must still read as it did
+/// after Nevada republishes - the evidence is what was relied on, not what is current.
+model PayoutLine {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+
+  payoutId String        @db.Uuid
+  payout   PartnerPayout @relation(fields: [payoutId], references: [id], onDelete: Cascade)
+
+  leadId   String  @db.Uuid
+  clientId String? @db.Uuid
+
+  /// The jurisdiction whose rule was applied.
+  state String
+
+  /// What we earned on this client in the period.
+  grossFeeCents Int
+  /// The share actually applied, after the state cap. May be below the agreement's share.
+  appliedBasisPoints Int
+  amountCents        Int
+
+  /// Evidence, frozen at computation.
+  rulePosture      ReferralFeePosture
+  ruleCitation     String
+  ruleConditions   String[]
+  moduleVersion    Int
+  cappedByState    Boolean            @default(false)
+
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, payoutId])
+  @@index([tenantId, leadId])
+  @@map("payout_lines")
+  @@schema("partners")
+}
+
+/// Money owed back because the engagement that earned it was refunded or charged back.
+///
+/// Its own row rather than a negative payout line, for ADR-0041's reason: a clawback is a thing
+/// that happened, and netting it into an earlier figure loses that it happened at all.
+model PayoutClawback {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+
+  partnerId String  @db.Uuid
+  partner   Partner @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+
+  /// The refund that triggered it. Null for a chargeback recorded by hand, which is a different
+  /// fact and says so.
+  refundRecordId String? @db.Uuid
+
+  engagementId String @db.Uuid
+
+  amountCents Int
+  reason      String
+
+  /// Set when a payout has absorbed it. Null means still outstanding, and the next computation
+  /// picks it up.
+  settledByPayoutId String?   @db.Uuid
+  settledAt         DateTime?
+
+  createdAt DateTime @default(now())
+  createdBy String   @db.Uuid
+
+  @@index([tenantId, partnerId, settledAt])
+  @@map("payout_clawbacks")
+  @@schema("partners")
+}
 
 enum CallStatus {
   consent_refused

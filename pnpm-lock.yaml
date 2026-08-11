@@ -808,6 +808,9 @@ importers:
 
   packages/partners:
     dependencies:
+      '@bwc/billing':
+        specifier: workspace:*
+        version: link:../billing
       '@bwc/claims':
         specifier: workspace:*
         version: link:../claims
@@ -820,12 +823,18 @@ importers:
       '@bwc/db':
         specifier: workspace:*
         version: link:../db
+      '@bwc/graph':
+        specifier: workspace:*
+        version: link:../graph
       '@bwc/identity':
         specifier: workspace:*
         version: link:../identity
       '@bwc/ledger':
         specifier: workspace:*
         version: link:../ledger
+      '@bwc/regulatory':
+        specifier: workspace:*
+        version: link:../regulatory
       '@bwc/scanner':
         specifier: workspace:*
         version: link:../scanner

@@ -232,6 +232,19 @@ export const EVENT_TYPES = [
   // about one partner is itself a signal.
   'partner.finding.recorded',
   'partner.finding.resolved',
+  // Partner Agreement & Payout Center (8.2). The payout payload carries the STATES a period drew
+  // on and never the clients - a jurisdiction is not PII and a client list is. `computed` and
+  // `approved` are separate because the computation is unattended and the approval is the only
+  // point a person sees the figure; an audit asking "who authorised this money" needs the second
+  // one to be its own row. `declined` exists for ADR-0041's reason: a payout somebody refused to
+  // approve is a thing that happened, and inferring it from the absence of an approval loses who
+  // decided and why.
+  'partner.agreement.drafted',
+  'partner.agreement.activated',
+  'partner.payout.computed',
+  'partner.payout.approved',
+  'partner.payout.declined',
+  'partner.payout.clawback_recorded',
   // Call Recording & Promise Tracking (4.3). `recording.refused` is an event because "we wanted
   // to record this call and the client's state would not let us" is evidence, the same way a
   // blocked send is. No transcript text reaches the Ledger; excerpts stay in the obligation row.

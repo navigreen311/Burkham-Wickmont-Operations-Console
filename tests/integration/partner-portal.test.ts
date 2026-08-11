@@ -660,12 +660,20 @@ describe('8.1 referral tracking and visibility', () => {
     expect(Object.keys(summary.value)).not.toContain('conversionRate');
   });
 
-  it('reports what a partner is owed as not_built, naming 8.2', async () => {
-    const result = await payableToPartner(cpa);
-    expect(result.status).toBe('not_built');
-    if (result.status === 'not_built') {
-      expect(result.module).toMatch(/8\.2/);
-    }
+  it('no longer refuses what a partner is owed, now that 8.2 exists', async () => {
+    // This asserted `not_built` for the whole of V1. 8.2 ships the state check that refusal was
+    // holding out for, so the honest assertion now is that the refusal is GONE - and that what
+    // replaced it still will not compute without an agreement, which nobody has drafted here.
+    const result = await payableToPartner(
+      fx.tenant.id,
+      cpa,
+      { start: new Date('2026-08-01T00:00:00.000Z'), end: new Date('2026-09-01T00:00:00.000Z') },
+      { computedBy: fx.human.id, actor: HUMAN() },
+    );
+    expect(result.status).not.toBe('not_built');
+    expect(result.status).toBe('no_data');
+    if (result.status !== 'no_data') return;
+    expect(result.reason).toMatch(/no agreement in force/);
   });
 });
 
