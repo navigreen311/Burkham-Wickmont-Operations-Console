@@ -46,6 +46,7 @@ import {
 import { CONSENT_KINDS, grant as grantConsent, type ConsentKind } from '@bwc/consent';
 import { status as firewallStatus, trigger as triggerFirewall } from '@bwc/firewall';
 import {
+  assertPasswordSignInPermitted,
   authenticateStaff,
   confirmStaffEnrolment,
   enrolStaffFromInvitation,
@@ -87,6 +88,8 @@ import { registerDeliverableRoutes } from './routes/deliverables.js';
 import { registerIntelligenceRoutes } from './routes/intelligence.js';
 import { registerInterventureRoutes } from './routes/interventure.js';
 import { registerWarehouseRoutes } from './routes/warehouse.js';
+// Staff security keys and the passkey-only switch (ADR-0059).
+import { registerStaffKeyRoutes } from './routes/staffKeys.js';
 
 export interface ConsoleAppDeps {
   readonly config?: ConsoleConfig;
@@ -391,6 +394,23 @@ export const createApp = (deps: ConsoleAppDeps = {}): Express => {
         // The same sentence a wrong password gets. A message naming the missing field would let a
         // caller learn which of the three this account actually needs.
         send(res, refused('Those details are not valid.', 'Blueprint 11.1 - identity and access'));
+        return;
+      }
+
+      /**
+       * **An account that has stopped accepting a password is refused here, before anything is
+       * verified** - and with the same sentence a wrong password gets.
+       *
+       * Without this line the switch would be a column nothing reads, which is the shape of every
+       * security feature that turns out to be a setting. ADR-0059.
+       */
+      const permitted = await assertPasswordSignInPermitted({
+        tenantId: config.tenantId,
+        email: body.email,
+        now: now(),
+      });
+      if (permitted.status !== 'ok') {
+        send(res, permitted);
         return;
       }
 
@@ -1064,6 +1084,23 @@ export const createApp = (deps: ConsoleAppDeps = {}): Express => {
       send(res, ok(await verifyIntegrity(actor.tenantId)));
     }),
   );
+
+  // --- Composed route modules ---------------------------------------------
+
+  registerStaffKeyRoutes({
+    app,
+    tenantId: config.tenantId,
+    rp: { id: config.rpId, name: config.rpName, origin: config.origin },
+    now,
+    requireStaff,
+    asyncRoute,
+    param,
+    jsonBody,
+    rateLimited,
+    setSessionCookie: (res, token, expiresAt) => {
+      setSessionCookie(res, config, token, expiresAt);
+    },
+  });
 
   // --- The page -----------------------------------------------------------
 
