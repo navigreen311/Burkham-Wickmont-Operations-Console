@@ -88,21 +88,29 @@ independently, which is what says the test is real rather than vacuous.
 Playwright's own readiness check - Node's fetch picked IPv4 - and then every Firefox navigation hung
 until the test timed out. It now listens on both stacks.
 
-**Firefox stalls choosing between `::1` and `127.0.0.1`.** About one Firefox navigation in five hung
-in CI until the test timed out, on no particular test, while the ones on either side answered in
-under a second. Two attempts to fix it from above - listening on both stacks, then waiting for
-`domcontentloaded` rather than `load` - **did not help**, which put it below the page. Firefox is the
-only one of the three engines that stalls, and `network.dns.disableIPv6` removes the choice.
+### Firefox hanging on `localhost`, and four attempts at it
+
+About **one Firefox navigation in five** hung in CI until the test timed out - on no particular test,
+while the ones on either side answered in under a second. Chromium and WebKit never did it. It took
+four CI rounds, and the first three guesses were wrong:
+
+| Attempt                                                  | Result                                                                                                                                                                                                     |
+| -------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Listen on **both stacks** rather than `127.0.0.1`        | Did not fix it. Kept anyway - Playwright's readiness check resolved IPv4 while a browser may not, and the harness should answer on whichever `localhost` means                                             |
+| Navigate on **`domcontentloaded`** rather than `load`    | Did not fix it. Kept anyway - `load` waits for every subresource, so it makes a navigation depend on a stylesheet finishing rather than on the page being usable, and every spec waits on its own elements |
+| **`network.dns.disableIPv6`** on Firefox                 | Did not fix it. **Kept only because it is harmless, and it is honestly the weakest of the four**                                                                                                           |
+| **`network.proxy.allow_hijacking_localhost`** on Firefox | Fixed it                                                                                                                                                                                                   |
+
+**Playwright drives Firefox through an internal proxy, and `localhost` bypasses a proxy by default**,
+so a navigation to it took a different path from every other request the harness serves. That is the
+documented knob for exactly this.
 
 The harness cannot simply be addressed by IP instead: **a WebAuthn relying party is a domain, never
 an address**, so the RP ID has to stay `localhost`.
 
-**`load` is the wrong signal to navigate on.** It waits for every subresource, so a navigation
-depends on a stylesheet finishing rather than on the page being usable - and one Firefox navigation
-in CI hung there for the full test timeout while the ones on either side of it did not. Every spec
-asserts against an element and those assertions wait on their own, so `openPortal` waits for
-`domcontentloaded` and nothing more. **The hang itself is not explained**, only removed from the
-path; if it returns, this is the note to start from.
+**Evidence, stated plainly:** two consecutive green CI runs of the browser job after the fix. Against
+a roughly one-in-five per-navigation failure that is meaningful rather than conclusive - if it
+returns, this table is where to start, and the fourth row is the one that mattered.
 
 **A passwordless sign-in with two resident credentials is ambiguous.** One spec registered a second
 key, copied from the test below it that genuinely needs two. A passwordless ceremony sends no
