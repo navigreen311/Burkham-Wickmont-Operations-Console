@@ -260,6 +260,11 @@ export const EVENT_TYPES = [
   'identity.client_user.mfa_removed',
   'identity.client_user.mfa_challenge_failed',
   'identity.client_user.mfa_recovery_code_used',
+  // Switching password sign-in off is the strongest thing a client can do to protect their own
+  // account, and switching it back on is the strongest thing anybody can do to weaken it. Two
+  // types, because reading them as one would hide which happened.
+  'identity.client_user.password_sign_in_disabled',
+  'identity.client_user.password_sign_in_enabled',
   'identity.client_session.revoked',
 ] as const;
 

@@ -3305,6 +3305,18 @@ model ClientUser {
   enrolledAt DateTime?
   lastSignInAt DateTime?
 
+  /// Set when the client has switched password sign-in OFF, having registered two passkeys.
+  ///
+  /// **This is what makes a passkey a security property rather than a convenience.** An account is
+  /// as strong as the weakest method it will accept, so a passkey beside a live password is still
+  /// phished by a proxy that takes the password and a code. With this set, a correct password is
+  /// refused at sign-in - and refused with the SAME sentence every other failure gets, because a
+  /// message saying "this account is passkey-only" tells an attacker which accounts to stop guessing.
+  ///
+  /// A completed password reset does NOT clear it. Otherwise the email channel is a way to re-open
+  /// the phishable path the client deliberately closed.
+  passwordSignInDisabledAt DateTime?
+
   /// Set when access is withdrawn. Sessions are checked against this on every resolve, so
   /// disabling takes effect on the next request rather than when a session happens to expire.
   disabledAt DateTime?
@@ -3447,6 +3459,15 @@ model ClientMfaFactor {
   /// cannot identify is one they will not dare remove.
   label String?
 
+  /// Whether the credential is DISCOVERABLE - a resident key the authenticator can offer without
+  /// being told which account, and the only kind that can sign somebody in without an email typed.
+  ///
+  /// Registered with user verification required, because standing alone a passkey has to carry both
+  /// halves: something the client has plus something they know or are, in one gesture. A
+  /// second-factor credential is not promoted into a first-factor one by accident - the flag is set
+  /// at registration and read at sign-in.
+  discoverable Boolean @default(false)
+
   /// Null until a code from the new authenticator has verified. **A factor nobody has proved they
   /// can use is not a factor; it is a lockout waiting for the next sign-in.**
   confirmedAt DateTime?
@@ -3487,8 +3508,11 @@ model ClientWebauthnChallenge {
   id       String @id @default(uuid()) @db.Uuid
   tenantId String @db.Uuid
 
-  clientUserId String     @db.Uuid
-  clientUser   ClientUser @relation(fields: [clientUserId], references: [id], onDelete: Cascade)
+  /// **Null for a passwordless sign-in**, which belongs to no user yet - that is what discoverable
+  /// means. The column admits it rather than being given a placeholder that would have to be
+  /// remembered as meaningless.
+  clientUserId String?     @db.Uuid
+  clientUser   ClientUser? @relation(fields: [clientUserId], references: [id], onDelete: Cascade)
 
   /// base64url, as the browser will echo it back.
   challenge String @unique

@@ -327,7 +327,15 @@ export const authenticateClientUser = async (input: {
 
   const correct = await verifyPassword(input.password, user.passwordHash);
 
-  if (!correct || user.enrolledAt === null || user.disabledAt !== null) {
+  // A correct password on an account that has switched password sign-in off is still a failure, and
+  // it gets the SAME sentence as every other one. A message saying "this account is passkey-only"
+  // would tell an attacker which addresses to stop guessing at and which to keep phishing.
+  if (
+    !correct ||
+    user.enrolledAt === null ||
+    user.disabledAt !== null ||
+    user.passwordSignInDisabledAt !== null
+  ) {
     const attempts = user.failedAttempts + 1;
     const lock = attempts >= MAX_FAILED_ATTEMPTS;
 

@@ -81,6 +81,14 @@ export const beginWebauthnRegistration = async (input: {
   tenantId: string;
   clientUserId: string;
   rp: RelyingParty;
+  /**
+   * Register a credential that can sign in on its own.
+   *
+   * Resident on the authenticator, so it can be offered without an account being named, and
+   * registered with user verification REQUIRED - standing alone a passkey has to carry both halves
+   * of authentication, and a key with no PIN carries one.
+   */
+  discoverable?: boolean;
   now?: Date;
 }): Promise<Outcome<RegistrationChallenge>> => {
   const now = input.now ?? new Date();
@@ -104,12 +112,16 @@ export const beginWebauthnRegistration = async (input: {
     // mandates particular hardware. This one does not, and asking for attestation it will not check
     // is collecting a certificate to ignore it.
     attestationType: 'none',
+    // The user handle the authenticator stores and returns. The client user id: already an opaque
+    // identifier that appears in the Ledger and in access logs, not guessable, and inventing a
+    // second one would be a second identifier to keep mapped for no gain.
+    userID: new Uint8Array(Buffer.from(user.id, 'utf8')),
     authenticatorSelection: {
-      residentKey: 'discouraged',
-      // Preferred rather than required: this is a SECOND factor, presented after a password, so a
-      // key without a PIN still adds what it is here to add. Required would exclude those keys
-      // entirely for a property the password already supplies.
-      userVerification: 'preferred',
+      residentKey: input.discoverable === true ? 'required' : 'discouraged',
+      // For a SECOND factor, preferred: presented after a password, a key without a PIN still adds
+      // what it is there to add, and requiring it would exclude those keys for a property the
+      // password already supplies. For a FIRST factor, required - there is no password beside it.
+      userVerification: input.discoverable === true ? 'required' : 'preferred',
     },
     excludeCredentials: existing
       .filter((factor) => factor.credentialId !== null)
@@ -140,6 +152,8 @@ export const completeWebauthnRegistration = async (input: {
   label: string;
   response: Record<string, unknown>;
   rp: RelyingParty;
+  /** Must match what `beginWebauthnRegistration` was asked for. */
+  discoverable?: boolean;
   now?: Date;
 }): Promise<Outcome<RegisteredKey>> => {
   const now = input.now ?? new Date();
@@ -188,7 +202,10 @@ export const completeWebauthnRegistration = async (input: {
       // entire reason to prefer this over a shared secret.
       expectedOrigin: input.rp.origin,
       expectedRPID: input.rp.id,
-      requireUserVerification: false,
+      // A credential that will stand alone must have verified the user at registration too: one
+      // registered without it would be a passkey the client could not have proved they were present
+      // for, promoted into a password replacement by a later flag.
+      requireUserVerification: input.discoverable === true,
     });
   } catch {
     // The library throws on a malformed or mismatched response. A refusal rather than a 500: the
@@ -219,6 +236,7 @@ export const completeWebauthnRegistration = async (input: {
       signCount: credential.counter,
       transports: credential.transports?.join(',') ?? null,
       label,
+      discoverable: input.discoverable === true,
       // Registered and confirmed in one step, unlike TOTP: the ceremony IS the proof that the
       // authenticator works, so there is no unproved state to leave the client in.
       confirmedAt: now,
@@ -378,6 +396,158 @@ export const verifyWebauthnAssertion = async (input: {
   });
 };
 
+/**
+ * Options for signing in with a passkey and nothing else.
+ *
+ * **No account is named**, which is the point: a discoverable credential is offered by the
+ * authenticator itself, so nothing has to be typed and nothing is revealed by asking. The challenge
+ * row therefore belongs to no user, and the column admits it.
+ */
+export const beginPasskeySignIn = async (input: {
+  tenantId: string;
+  rp: RelyingParty;
+  now?: Date;
+}): Promise<Outcome<AuthenticationChallenge>> => {
+  const now = input.now ?? new Date();
+
+  const options = await generateAuthenticationOptions({
+    rpID: input.rp.id,
+    // Required, not preferred. Standing alone a passkey has to be possession AND verification in
+    // one act; without user verification it is possession alone, which is not a password
+    // replacement.
+    userVerification: 'required',
+    // Empty: the authenticator decides which of its resident credentials to offer.
+    allowCredentials: [],
+  });
+
+  await storeChallenge({
+    tenantId: input.tenantId,
+    clientUserId: null,
+    challenge: options.challenge,
+    ceremony: 'authentication',
+    now,
+  });
+
+  return ok({ options: options as unknown as Record<string, unknown> });
+};
+
+export interface PasskeySignIn {
+  readonly clientUserId: string;
+  readonly factorId: string;
+}
+
+/**
+ * Verify a passwordless assertion.
+ *
+ * The `userHandle` the authenticator returns is what says whose account this is. Three things then
+ * have to hold beyond the signature: the credential is **discoverable** (a second-factor credential
+ * is not a password replacement, whatever it can sign), the user **verified** themselves, and the
+ * account is in a state that may hold a session.
+ */
+export const completePasskeySignIn = async (input: {
+  tenantId: string;
+  response: Record<string, unknown>;
+  rp: RelyingParty;
+  now?: Date;
+}): Promise<Outcome<PasskeySignIn>> => {
+  const now = input.now ?? new Date();
+
+  const generic = refused(
+    'That passkey could not be used.',
+    'Blueprint 11.1 - identity and access',
+  );
+
+  const assertion = input.response['response'] as { userHandle?: string } | undefined;
+  const handle = assertion?.userHandle;
+  if (typeof handle !== 'string' || handle === '') return generic;
+
+  const clientUserId = Buffer.from(handle, 'base64url').toString('utf8');
+  const credentialId = typeof input.response['id'] === 'string' ? input.response['id'] : '';
+
+  const factor = await db().clientMfaFactor.findFirst({
+    where: {
+      tenantId: input.tenantId,
+      clientUserId,
+      kind: 'webauthn',
+      credentialId,
+      // A credential registered as a second factor cannot sign somebody in on its own. It was
+      // created without user verification being required, so it never proved what a first factor
+      // has to prove.
+      discoverable: true,
+      removedAt: null,
+      confirmedAt: { not: null },
+    },
+    include: { clientUser: true },
+  });
+  if (!factor || factor.publicKey === null || factor.credentialId === null) return generic;
+  if (factor.clientUser.enrolledAt === null || factor.clientUser.disabledAt !== null)
+    return generic;
+
+  const challenge = await spendChallenge({
+    tenantId: input.tenantId,
+    clientUserId: null,
+    ceremony: 'authentication',
+    now,
+  });
+  if (challenge === null) return generic;
+
+  const stored = factor.signCount ?? 0;
+
+  let verification;
+  try {
+    verification = await verifyAuthenticationResponse({
+      response: input.response as never,
+      expectedChallenge: challenge,
+      expectedOrigin: input.rp.origin,
+      expectedRPID: input.rp.id,
+      // The difference that makes this a first factor rather than a second one.
+      requireUserVerification: true,
+      credential: {
+        id: factor.credentialId,
+        publicKey: new Uint8Array(Buffer.from(factor.publicKey, 'base64url')),
+        counter: stored,
+        ...(factor.transports !== null
+          ? { transports: factor.transports.split(',') as never }
+          : {}),
+      },
+    });
+  } catch {
+    return generic;
+  }
+
+  if (!verification.verified) return generic;
+
+  await db().clientMfaFactor.update({
+    where: { id: factor.id },
+    data: { signCount: verification.authenticationInfo.newCounter },
+  });
+
+  await append({
+    tenantId: input.tenantId,
+    type: 'identity.client_user.signed_in',
+    actor: { id: clientUserId, kind: 'client' },
+    clientId: factor.clientUser.clientId,
+    payload: { clientUserId, method: 'passkey', factorId: factor.id },
+  });
+
+  return ok({ clientUserId, factorId: factor.id });
+};
+
+/** Discoverable credentials on an account. What the passkey-only switch counts. */
+export const discoverableKeyCount = async (
+  tenantId: string,
+  clientUserId: string,
+): Promise<number> =>
+  db().clientMfaFactor.count({
+    where: {
+      tenantId,
+      clientUserId,
+      kind: 'webauthn',
+      removedAt: null,
+      confirmedAt: { not: null },
+    },
+  });
+
 /** The keys on an account, for a settings screen. Carries no key material a page should not show. */
 export const registeredKeys = async (
   tenantId: string,
@@ -403,7 +573,7 @@ export const registeredKeys = async (
 
 const storeChallenge = async (input: {
   tenantId: string;
-  clientUserId: string;
+  clientUserId: string | null;
   challenge: string;
   ceremony: 'registration' | 'authentication';
   now: Date;
@@ -441,7 +611,7 @@ const storeChallenge = async (input: {
  */
 const spendChallenge = async (input: {
   tenantId: string;
-  clientUserId: string;
+  clientUserId: string | null;
   ceremony: 'registration' | 'authentication';
   now: Date;
 }): Promise<string | null> => {

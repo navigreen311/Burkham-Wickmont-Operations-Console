@@ -7,6 +7,36 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added - WebAuthn as a first factor (`ai-feature/passkey-first-factor`)
+
+ADR-0028 made one sign-in path phishing-resistant and left the other exactly as it was. See
+[docs/m11-passkey-first-factor.md](docs/m11-passkey-first-factor.md) and ADR-0029.
+
+- **A passkey beside a live password is a convenience, not a security property.** An account is as
+  strong as the weakest method it will accept: a client who registers a key and keeps password
+  sign-in is still taken by a proxy that collects the password and the TOTP code, because the key is
+  never asked for. **The feature is not "sign in with a passkey" - it is "sign in with a passkey and
+  turn the other way off".**
+- **A user-verifying discoverable credential is possession and verification in one act**, which is
+  why it replaces the password AND the challenge that would have followed it. Registered
+  `residentKey: 'required'` and `userVerification: 'required'`; `discoverable` is stored on the
+  factor, so a SECOND-factor credential is not promoted into a password replacement by a later flag.
+  There is now exactly one place where `requireUserVerification` is true.
+- **`passwordSignInDisabledAt` refuses a CORRECT password** - with the same sentence every other
+  sign-in failure gets, because "this account is passkey-only" is an oracle telling an attacker which
+  addresses to stop guessing at and which to keep phishing.
+- Turning it off takes the password, a passkey assertion verified exactly as a real passwordless
+  sign-in is, and **two** discoverable passkeys - one is one lost object away from having no way in
+  at all.
+- **A completed password reset sets a password and does NOT re-enable password sign-in.** Otherwise
+  the email channel is a way to undo the client's decision silently. Re-enabling has two routes and
+  no third: a passkey assertion, or a Level 3 human with a recorded verification basis. **The cost is
+  stated rather than hidden** - a client who loses every passkey has one route back and it is a phone
+  call.
+- The user handle is the client user id; the challenge for a passwordless ceremony belongs to no user
+  and the column is nullable rather than carrying a meaningless placeholder.
+- **Nothing changed for an account that keeps its password**, and a test asserts it.
+
 ### Added - WebAuthn as a second factor (`ai-feature/client-webauthn`)
 
 ADR-0024 named this as the stronger answer and did not build it, because there was no browser UI to

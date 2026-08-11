@@ -116,6 +116,13 @@ export interface SoftwareAuthenticator {
     rpId: string;
     /** Overridden by the clone test. */
     counter?: number;
+    /**
+     * Present for a DISCOVERABLE credential: it is how the assertion says whose account this is
+     * without an email being typed. base64url, as the browser reports it.
+     */
+    userHandle?: string;
+    /** False models a key with no PIN - possession without verification. */
+    userVerified?: boolean;
   }) => Record<string, unknown>;
   /** The counter this authenticator will report next. */
   counter: () => number;
@@ -165,11 +172,15 @@ export const softwareAuthenticator = (counterStep = 1): SoftwareAuthenticator =>
       };
     },
 
-    assert: ({ challenge, origin, rpId, counter: override }) => {
+    assert: ({ challenge, origin, rpId, counter: override, userHandle, userVerified }) => {
       counter += counterStep;
       const reported = override ?? counter;
 
-      const authData = authenticatorData({ rpId, flags: UP | UV, counter: reported });
+      const authData = authenticatorData({
+        rpId,
+        flags: userVerified === false ? UP : UP | UV,
+        counter: reported,
+      });
       const client = clientData('webauthn.get', challenge, origin);
 
       const signature = createSign('sha256')
@@ -185,6 +196,7 @@ export const softwareAuthenticator = (counterStep = 1): SoftwareAuthenticator =>
           clientDataJSON: b64url(client),
           authenticatorData: b64url(authData),
           signature: b64url(signature),
+          ...(userHandle !== undefined ? { userHandle } : {}),
         },
       };
     },

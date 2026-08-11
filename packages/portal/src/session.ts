@@ -18,7 +18,9 @@
 
 import {
   resolveSession,
+  beginPasskeySignIn,
   beginWebauthnAuthentication,
+  completePasskeySignIn,
   clientUserForMfaChallenge,
   hasActiveFactor,
   satisfyMfaChallenge,
@@ -282,6 +284,56 @@ export const completeSignInWithKey = async (input: {
     // A key is not a recovery code and does not consume one.
     usedRecoveryCode: false,
     recoveryCodesRemaining: 0,
+  });
+};
+
+/**
+ * Options for signing in with a passkey and nothing else.
+ *
+ * Unauthenticated and account-less. Nothing is typed and nothing is revealed: the authenticator
+ * offers whichever resident credential it holds for this relying party.
+ */
+export const passkeySignInOptions = async (input: {
+  tenantId: string;
+  rp: RelyingParty;
+  now?: Date;
+}): Promise<Outcome<AuthenticationChallenge>> => beginPasskeySignIn(input);
+
+/**
+ * Sign in with a passkey alone.
+ *
+ * **No second step.** A discoverable credential asserted with user verification is possession plus
+ * verification in one gesture, which is why it stands in for a password AND for the challenge that
+ * would follow one - and why `requireUserVerification` is true only here.
+ */
+export const signInWithPasskey = async (input: {
+  tenantId: string;
+  response: Record<string, unknown>;
+  rp: RelyingParty;
+  now?: Date;
+}): Promise<Outcome<SessionIssued>> => {
+  const asserted = await completePasskeySignIn(input);
+  if (asserted.status !== 'ok') return asserted as Outcome<never>;
+
+  const session = await issueSession({
+    tenantId: input.tenantId,
+    clientUserId: asserted.value.clientUserId,
+    ...(input.now !== undefined ? { now: input.now } : {}),
+  });
+  if (session.status !== 'ok') return session as Outcome<never>;
+
+  const principal = await resolveSession({
+    tenantId: input.tenantId,
+    token: session.value.token,
+    ...(input.now !== undefined ? { now: input.now } : {}),
+  });
+  if (principal.status !== 'ok') return principal as Outcome<never>;
+
+  return ok({
+    kind: 'session',
+    token: session.value.token,
+    expiresAt: session.value.expiresAt,
+    displayName: principal.value.displayName,
   });
 };
 
