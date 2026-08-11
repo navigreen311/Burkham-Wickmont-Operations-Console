@@ -43,7 +43,7 @@ import {
   openFindings,
   transitionComplianceState,
 } from '@bwc/clients';
-import { grant as grantConsent, type ConsentKind } from '@bwc/consent';
+import { CONSENT_KINDS, grant as grantConsent, type ConsentKind } from '@bwc/consent';
 import { status as firewallStatus, trigger as triggerFirewall } from '@bwc/firewall';
 import {
   authenticateStaff,
@@ -56,6 +56,7 @@ import { openFor } from '@bwc/notifications';
 import { systemHealth } from '@bwc/observability';
 import { chain, type StepTrace } from '@bwc/middleware';
 import { requestRecommendation } from '@bwc/placement';
+import { CAPITAL_NEEDS, type CapitalNeed } from '@bwc/lenders';
 import { activeListing, timelineFor } from '@bwc/risk';
 import { openObligations } from '@bwc/calls';
 import { VENDOR_GATES, isActivated, mode, outstandingPreconditions } from '@bwc/integration';
@@ -170,6 +171,10 @@ const CONSOLE_WRITES = [
   'transition_compliance_state',
   'record_client_consent',
   'trigger_firewall',
+  // Placement is `draft_recommendation` - Level 1, because asking for a recommendation is
+  // preparing work rather than submitting it. What stops a recommendation becoming a submission is
+  // `submit_application` at Level 3, which this Console does not offer.
+  'draft_recommendation',
 ] as const satisfies readonly (keyof typeof ACTION_MINIMUM_LEVEL)[];
 
 const positiveInteger = (raw: unknown, fallback: number): number => {
@@ -500,6 +505,25 @@ export const createApp = (deps: ConsoleAppDeps = {}): Express => {
     }),
   );
 
+  /**
+   * The closed vocabularies the page has to offer choices from.
+   *
+   * Served rather than written into the page, because a hard-coded list drifts the moment somebody
+   * adds a value - and the failure is a Console offering a choice the system will refuse, with a
+   * message about an unrecognised value that reads like a bug in the Console.
+   *
+   * Unauthenticated would be harmless (it is a compile-time constant naming no client) and it is
+   * behind the session anyway: everything else on this surface is, and one exception is a thing to
+   * explain rather than a thing to have.
+   */
+  app.get(
+    '/api/console/vocabulary',
+    asyncRoute(async (req, res) => {
+      if (!(await requireStaff(req, res))) return;
+      send(res, ok({ consentKinds: CONSENT_KINDS, capitalNeeds: CAPITAL_NEEDS }));
+    }),
+  );
+
   app.get(
     '/api/console/health',
     asyncRoute(async (req, res) => {
@@ -795,7 +819,12 @@ export const createApp = (deps: ConsoleAppDeps = {}): Express => {
       const actor = await requireStaff(req, res);
       if (!actor) return;
 
-      const body = req.body as { applicationRef?: unknown };
+      const body = req.body as {
+        applicationRef?: unknown;
+        need?: unknown;
+        requestedAmount?: unknown;
+      };
+
       if (typeof body.applicationRef !== 'string' || body.applicationRef.trim() === '') {
         send(
           res,
@@ -807,11 +836,60 @@ export const createApp = (deps: ConsoleAppDeps = {}): Express => {
         return;
       }
 
+      /**
+       * **`need` and `requestedAmount` are required, and that is a fix rather than an addition.**
+       *
+       * `requestRecommendation` defaults them to `working_capital` and **zero**. Eligibility
+       * compares the requested amount against each offering's minimum, so a request carrying the
+       * default rejects every offering that has one - with the reason "Requested $0 is below the
+       * $25,000 minimum", which is true, useless, and produced by nobody having been asked.
+       *
+       * A default `need` is worse than a default amount, because suitability is assessed against
+       * it: a client borrowing to buy equipment, silently assessed as needing working capital, gets
+       * a confident recommendation for the wrong product. **The Console does not guess what a
+       * client is borrowing for.**
+       *
+       * Amounts here are whole dollars, which is what `@bwc/lenders` stores - 5.2 predates
+       * ADR-0011's integer-cents rule and its boxes are round numbers a lender publishes, not sums
+       * anybody adds up.
+       */
+      if (
+        typeof body.need !== 'string' ||
+        !(CAPITAL_NEEDS as readonly string[]).includes(body.need)
+      ) {
+        send(
+          res,
+          refused(
+            `need is required and must be one of: ${CAPITAL_NEEDS.join(', ')}. Suitability is assessed against it, so a default would be a confident recommendation for a purpose nobody stated.`,
+            'Blueprint 5.2 - suitability is separate from eligibility',
+          ),
+        );
+        return;
+      }
+
+      const requestedAmount = body.requestedAmount;
+      if (
+        typeof requestedAmount !== 'number' ||
+        !Number.isInteger(requestedAmount) ||
+        requestedAmount <= 0
+      ) {
+        send(
+          res,
+          refused(
+            "requestedAmount is required and must be a positive whole number of dollars. Eligibility compares it against each offering's minimum, so an absent amount rejects every provider that has one.",
+            'Blueprint 5.2 - eligibility is assessed against the amount actually sought',
+          ),
+        );
+        return;
+      }
+
       const { result, trace } = await requestRecommendation({
         actorId: actor.id,
         tenantId: actor.tenantId,
         clientId: param(req, 'clientId'),
         applicationRef: body.applicationRef,
+        need: body.need as CapitalNeed,
+        requestedAmount,
       });
 
       // The trace accompanies every response, refusal included: "which step blocked this" should

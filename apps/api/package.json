@@ -22,6 +22,7 @@
     "@bwc/identity": "workspace:*",
     "@bwc/integration": "workspace:*",
     "@bwc/ledger": "workspace:*",
+    "@bwc/lenders": "workspace:*",
     "@bwc/middleware": "workspace:*",
     "@bwc/notifications": "workspace:*",
     "@bwc/observability": "workspace:*",

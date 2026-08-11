@@ -139,9 +139,9 @@ around from an earlier build.
 
 ## Tested
 
-27 specs across two harnesses - 13 for the portal, 14 for the internal Console, each with its own
+30 specs across two harnesses - 13 for the portal, 17 for the internal Console, each with its own
 `webServer` on its own port because they are two processes on two trust boundaries (ADR-0022).
-`pnpm test:e2e` runs **27 in Chromium**; `E2E_ALL_ENGINES=1 pnpm test:e2e` adds the cross-engine
+`pnpm test:e2e` runs **30 in Chromium**; `E2E_ALL_ENGINES=1 pnpm test:e2e` adds the cross-engine
 files, which report **6 explicit skips** on the engines that cannot hold a passkey.
 
 The browser job was **4m23s** installing three engines. The measured figure after dropping two is in

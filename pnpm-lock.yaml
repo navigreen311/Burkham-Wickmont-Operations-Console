@@ -87,6 +87,9 @@ importers:
       '@bwc/ledger':
         specifier: workspace:*
         version: link:../../packages/ledger
+      '@bwc/lenders':
+        specifier: workspace:*
+        version: link:../../packages/lenders
       '@bwc/middleware':
         specifier: workspace:*
         version: link:../../packages/middleware

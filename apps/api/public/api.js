@@ -77,3 +77,18 @@ export const triggerFirewall = (clientId, reason) =>
 
 export const recordConsent = (clientId, kind, scope) =>
   call(`/api/clients/${encodeURIComponent(clientId)}/consents`, { kind, scope });
+
+export const vocabulary = () => call('/api/console/vocabulary');
+
+/**
+ * Ask 5.3 for a recommendation.
+ *
+ * `applicationRef` is not optional and is not a convenience: authorisation is scoped to a specific
+ * application, never blanket, and the reference is what ties the consent to the request.
+ */
+export const requestPlacement = (clientId, applicationRef, need, requestedAmount) =>
+  call(`/api/clients/${encodeURIComponent(clientId)}/placements`, {
+    applicationRef,
+    need,
+    requestedAmount,
+  });

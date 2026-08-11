@@ -90,6 +90,48 @@ and operators read this trace on the page.
 
 ---
 
+## Placement, and the two inputs the route never asked for
+
+The placement route has existed since the walking skeleton and already ran the whole chain, so the
+button looked like a form and a renderer. It was not
+([ADR-0035](adr/0035-a-defaulted-input-is-a-confident-answer-to-a-question-nobody-asked.md)).
+
+The route took `applicationRef` **and nothing else**. `requestRecommendation` defaults `need` to
+`working_capital` and `requestedAmount` to **zero**:
+
+| Defaulted input            | What it does                                                                                                                                                                                                                                |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `requestedAmount` = 0      | Eligibility compares it against each offering's minimum, so **every provider with one is rejected** — with the reason "Requested $0 is below the $25,000 minimum". A decorative button, whose rejection list looks like a catalogue problem |
+| `need` = `working_capital` | Suitability is assessed against it. A client borrowing for equipment gets **a confident recommendation for the wrong product**, with a rationale explaining why it suits a purpose they never stated                                        |
+
+Both are now required, and the `need` select **starts on an empty "Choose…"** — a pre-selected first
+option is a default wearing a different hat.
+
+**Amounts here are whole dollars**, which is what `@bwc/lenders` stores; 5.2 predates ADR-0011's
+integer-cents rule. Said in the form label and in the route, because two money conventions in one
+system is the thing that gets got wrong once, silently.
+
+### The refusal is the ordinary outcome, and the page treats it as an answer
+
+A placement runs the gate, then the client's per-application authorisation, then the Entity Graph,
+then the catalogue — stopping with a different reason at each. The order is deliberate: **a frozen
+client is refused for the freeze**, not for a consent nobody should have been collecting.
+
+The page renders the reason and the middleware trace rather than an error, because the operator's
+next move differs in every case. The rejections behind a short list are shown in full and never
+truncated: a compliance officer cannot tell a sound rejection from a bug without them, and neither
+can the client.
+
+### Closed vocabularies are served, not hard-coded
+
+`GET /api/console/vocabulary` serves the consent kinds and the capital needs from the constants the
+server validates against. A list written into the page offers a value the server will refuse the
+moment somebody adds one, and that refusal reads as a bug in the Console. The consent form's `kind`
+got the same treatment on the way past — it was free text, so a typo produced "unrecognised kind" on
+a page that had invited the typo.
+
+---
+
 ## The finding this slice surfaced — since fixed
 
 **`autoListForComplianceFail` had no production caller.** Decision E says a failed compliance state
@@ -106,10 +148,11 @@ under the compliance dropdown says what `fail` does without the caveat it used t
 
 ## Tests
 
-|                                               |                                                                                       |
-| --------------------------------------------- | ------------------------------------------------------------------------------------- |
-| `tests/integration/console-transport.test.ts` | 50 (+9) — every write refused below its level, the one-way-door case, the Ledger pair |
-| `tests/e2e/console.spec.ts`                   | 14 (+4) — a write through the page, and an operator who may not                       |
+|                                               |                                                                                                                                          |
+| --------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `tests/integration/console-transport.test.ts` | 59 — every write refused below its level, the one-way-door case, the Ledger pair, and the placement path end to end                      |
+| `tests/e2e/console.spec.ts`                   | 17 — a write through the page, an operator who may not, a placement refused and one that succeeds                                        |
+| `tests/helpers/placeable.ts`                  | The world a placement can succeed in — five modules agreeing, built from one recipe shared by the transport test and the browser harness |
 
 Three mutations:
 

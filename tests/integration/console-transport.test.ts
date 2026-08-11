@@ -26,7 +26,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createServer, type Server } from 'node:http';
 import { create as createClient } from '@bwc/clients';
 import { read as readLedger } from '@bwc/ledger';
-import { transitionComplianceState } from '@bwc/clients';
+import { create as createClientRecord, transitionComplianceState } from '@bwc/clients';
 import {
   MFA_SECRET_KEY_VARIABLE,
   STAFF_MAX_FAILED_ATTEMPTS,
@@ -42,6 +42,12 @@ import { createRateLimiter } from '@bwc/http';
 import { createApp } from '../../apps/api/src/app.js';
 import { readConsoleConfig, type ConsoleConfig } from '../../apps/api/src/config.js';
 import { cleanupTenant, makeFixture, type Fixture } from '../setup.js';
+import {
+  PLACEABLE_AMOUNT,
+  PLACEABLE_NEED,
+  PLACEABLE_PROVIDER,
+  makePlaceable,
+} from '../helpers/placeable.js';
 
 let fx: Fixture;
 let server: Server;
@@ -590,6 +596,12 @@ const WRITES = [
     path: (id: string) => `/api/clients/${id}/firewall/trigger`,
     body: { reason: 'a reason' },
   },
+  {
+    name: 'request a placement',
+    level: 1,
+    path: (id: string) => `/api/clients/${id}/placements`,
+    body: { applicationRef: 'APP-1', need: 'working_capital', requestedAmount: 100_000 },
+  },
 ] as const;
 
 describe('a write is refused below the level its action declares', () => {
@@ -700,8 +712,10 @@ describe('the gate does not block the act that clears the gate', () => {
 
     // The skip is scoped to governance actions, not a hole in step 4. A placement for the same
     // client is refused AT STEP 4 - the step that let the transition through.
+    // A complete request, so it reaches the chain: the route refuses an absent `need` or amount
+    // before running anything, and this test is about step 4 rather than about validation.
     const placement = await call(`/api/clients/${blocked}/placements`, {
-      body: { applicationRef: 'APP-BLOCKED' },
+      body: { applicationRef: 'APP-BLOCKED', need: 'working_capital', requestedAmount: 100_000 },
       headers: { cookie },
     });
     expect(placement.json['status']).toBe('refused');
@@ -738,5 +752,191 @@ describe('the Ledger records what was permitted, not only what was refused', () 
     // Two facts, not one: the actor was allowed to try, and this is what happened.
     expect(types).toContain('authority.action_authorised');
     expect(types).toContain('firewall.triggered');
+  });
+});
+
+describe('asking for a placement', () => {
+  let cookie: string;
+
+  beforeEach(async () => {
+    cookie = await signIn();
+  });
+
+  it('refuses without an amount, and says why an absent one is not a zero', async () => {
+    const reply = await call(`/api/clients/${clientId}/placements`, {
+      body: { applicationRef: 'APP-NO-AMOUNT', need: 'working_capital' },
+      headers: { cookie },
+    });
+
+    expect(reply.json['status']).toBe('refused');
+    // `requestRecommendation` defaults the amount to ZERO, and eligibility compares it against each
+    // offering's minimum - so the default rejects every provider that has one, with a reason that is
+    // true and useless. The route refuses instead of asking on the client's behalf.
+    expect(String(reply.json['reason'])).toMatch(/rejects every provider/);
+  });
+
+  it('refuses without a stated purpose', async () => {
+    const reply = await call(`/api/clients/${clientId}/placements`, {
+      body: { applicationRef: 'APP-NO-NEED', requestedAmount: 100_000 },
+      headers: { cookie },
+    });
+
+    expect(reply.json['status']).toBe('refused');
+    // Suitability is assessed against the need. A default would be a confident recommendation for
+    // a purpose nobody stated - the easiest failure here to not notice.
+    expect(String(reply.json['reason'])).toMatch(/Suitability is assessed against it/);
+  });
+
+  /**
+   * The order of refusals, which is a decision rather than an accident.
+   *
+   * `requestRecommendation` checks the chain's gate BEFORE the client's authorisation, so a frozen
+   * client is refused for the freeze - the accurate reason - rather than for a missing consent
+   * nobody should have been collecting in the first place.
+   */
+  it('refuses an unassessed client at the gate, not for the missing authorisation', async () => {
+    const fresh = (
+      await createClientRecord(fx.tenant.id, 'Unassessed Co', {
+        id: fx.human.id,
+        kind: 'human',
+      })
+    ).id;
+
+    const reply = await call(`/api/clients/${fresh}/placements`, {
+      body: { applicationRef: 'APP-FRESH', need: 'working_capital', requestedAmount: 100_000 },
+      headers: { cookie },
+    });
+
+    expect(reply.json['status']).toBe('refused');
+    const trace = reply.json['trace'] as { step: string; outcome: string }[];
+    expect(trace.some((step) => step.step === 'firewall' && step.outcome === 'blocked')).toBe(true);
+    // NOT the consent message.
+    expect(String(reply.json['reason'])).not.toMatch(/authorization/i);
+  });
+
+  it('refuses a passing client who has not authorised THIS application', async () => {
+    const passing = (
+      await createClientRecord(fx.tenant.id, 'Passing No Consent Co', {
+        id: fx.human.id,
+        kind: 'human',
+      })
+    ).id;
+    await transitionComplianceState({
+      tenantId: fx.tenant.id,
+      clientId: passing,
+      to: 'pass',
+      reason: 'Assessed and clear.',
+      actor: { id: fx.human.id, kind: 'human' },
+    });
+
+    const reply = await call(`/api/clients/${passing}/placements`, {
+      body: {
+        applicationRef: 'APP-UNAUTHORISED',
+        need: 'working_capital',
+        requestedAmount: 100_000,
+      },
+      headers: { cookie },
+    });
+
+    expect(reply.json['status']).toBe('refused');
+    const trace = reply.json['trace'] as { step: string; outcome: string }[];
+    // The chain passed; 5.3 refused afterwards. Authorisation is per-application, never blanket.
+    expect(trace.every((step) => step.outcome !== 'blocked')).toBe(true);
+  });
+
+  it('recommends, and carries everything the page renders', async () => {
+    const ref = 'APP-PLACEABLE';
+    const ready = (
+      await createClientRecord(fx.tenant.id, 'Placeable Co', {
+        id: fx.human.id,
+        kind: 'human',
+      })
+    ).id;
+    await makePlaceable({
+      tenantId: fx.tenant.id,
+      clientId: ready,
+      actor: { id: fx.human.id, kind: 'human' },
+      applicationRef: ref,
+    });
+
+    const reply = await call(`/api/clients/${ready}/placements`, {
+      body: { applicationRef: ref, need: PLACEABLE_NEED, requestedAmount: PLACEABLE_AMOUNT },
+      headers: { cookie },
+    });
+
+    expect(reply.json['status'], reply.body).toBe('ok');
+    const set = (reply.json['data'] as { recommendations: Record<string, unknown> })
+      .recommendations as {
+      recommendations: {
+        provider: { value: string };
+        product: { value: string };
+        requestedCreditLimit: number;
+        rationale: string;
+        suitability: { caution: boolean; rationale: string };
+        containsUnverifiedInputs: boolean;
+        requiredDisclosures: string[];
+      }[];
+      rejected: { providerName: string; offeringName: string; stage: string; reason: string }[];
+      missingProfileFields: string[];
+    };
+
+    // **Every field the page reads, asserted here.** Twice in this project a page has rendered a
+    // field name that did not exist, and a browser shows that as blank text rather than an error.
+    const top = set.recommendations[0];
+    expect(top?.provider.value).toBe(PLACEABLE_PROVIDER);
+    expect(top?.product.value).toBe('Business Line of Credit');
+    expect(top?.requestedCreditLimit).toBe(PLACEABLE_AMOUNT);
+    expect(typeof top?.rationale).toBe('string');
+    expect(typeof top?.suitability.caution).toBe('boolean');
+    expect(top?.containsUnverifiedInputs).toBe(false);
+    expect(top?.requiredDisclosures.length).toBeGreaterThan(0);
+    expect(Array.isArray(set.rejected)).toBe(true);
+    expect(Array.isArray(set.missingProfileFields)).toBe(true);
+  });
+
+  it('refuses the same client for a reference they did not authorise', async () => {
+    const ref = 'APP-SCOPED';
+    const ready = (
+      await createClientRecord(fx.tenant.id, 'Scoped Consent Co', {
+        id: fx.human.id,
+        kind: 'human',
+      })
+    ).id;
+    await makePlaceable({
+      tenantId: fx.tenant.id,
+      clientId: ready,
+      actor: { id: fx.human.id, kind: 'human' },
+      applicationRef: ref,
+    });
+
+    const reply = await call(`/api/clients/${ready}/placements`, {
+      body: {
+        applicationRef: 'APP-SOMETHING-ELSE',
+        need: PLACEABLE_NEED,
+        requestedAmount: PLACEABLE_AMOUNT,
+      },
+      headers: { cookie },
+    });
+
+    // Per-application, never blanket. A client who authorised one application has not authorised
+    // the next one.
+    expect(reply.json['status']).toBe('refused');
+  });
+});
+
+describe('the closed vocabularies the page offers', () => {
+  it('serves them rather than letting the page hard-code a list that drifts', async () => {
+    const cookie = await signIn();
+    const reply = await call('/api/console/vocabulary', { headers: { cookie } });
+
+    const data = reply.json['data'] as { consentKinds: string[]; capitalNeeds: string[] };
+    expect(data.consentKinds).toContain('application');
+    expect(data.capitalNeeds).toContain('working_capital');
+    expect(data.capitalNeeds).toContain('equipment_purchase');
+  });
+
+  it('is behind a session like everything else', async () => {
+    const reply = await call('/api/console/vocabulary');
+    expect(reply.json['status']).toBe('refused');
   });
 });

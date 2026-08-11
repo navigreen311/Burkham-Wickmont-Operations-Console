@@ -132,6 +132,38 @@ $('form-sign-in').addEventListener('submit', async (event) => {
   await enterOverview();
 });
 
+/**
+ * Fill the two selects from the server's own lists.
+ *
+ * Once per sign-in rather than per client: both are compile-time constants, and refetching them for
+ * every file would be a request that can only ever return the same answer.
+ */
+const loadVocabulary = async () => {
+  const consent = $('consent-kind');
+  const need = $('placement-need');
+  if (consent.options.length > 0) return;
+
+  const vocabulary = await api.vocabulary();
+  if (!vocabulary.ok) return;
+
+  for (const kind of vocabulary.data.consentKinds) {
+    const option = document.createElement('option');
+    option.value = kind;
+    option.textContent = kind;
+    consent.append(option);
+  }
+  // `application` is the one a placement needs, and what an operator is usually here for.
+  consent.value = 'application';
+
+  for (const kind of vocabulary.data.capitalNeeds) {
+    const option = document.createElement('option');
+    option.value = kind;
+    option.textContent = kind;
+    need.append(option);
+  }
+  // Deliberately left on the empty "Choose…" option. See the note on the form.
+};
+
 /** Read who is signed in and what they may write. The one source for both. */
 const identify = async () => {
   const who = await api.me();
@@ -141,6 +173,7 @@ const identify = async () => {
   $('who').textContent = `${who.data.label} — Level ${who.data.authorityLevel}${
     who.data.department ? ` — ${who.data.department}` : ''
   }`;
+  await loadVocabulary();
   return true;
 };
 
@@ -352,6 +385,8 @@ const enterClient = async (clientId) => {
   $('section-compliance').hidden = mayWrite.transition_compliance_state !== true;
   $('section-firewall-trigger').hidden = mayWrite.trigger_firewall !== true;
   $('section-consent').hidden = mayWrite.record_client_consent !== true;
+  $('section-placement').hidden = mayWrite.draft_recommendation !== true;
+  clearPlacement();
   // The trace belongs to one write attempt, not to the file. Opening a file clears it.
   $('section-trace').hidden = true;
 
@@ -425,6 +460,87 @@ $('form-firewall').addEventListener('submit', async (event) => {
   $('firewall-reason').value = '';
   await enterClient(openClientId);
   notice('Firewall triggered. Placement is frozen for this client.');
+});
+
+const clearPlacement = () => {
+  $('placement-summary').textContent = '';
+  $('placement-rejected-summary').textContent = '';
+  $('placement-missing').textContent = '';
+  $('placement-recommendations').replaceChildren();
+  $('placement-rejected').replaceChildren();
+};
+
+$('form-placement').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  notice('');
+  clearPlacement();
+
+  const result = await api.requestPlacement(
+    openClientId,
+    $('placement-ref').value.trim(),
+    $('placement-need').value,
+    Number.parseInt($('placement-amount').value, 10),
+  );
+
+  showTrace(result.trace);
+
+  if (!result.ok) {
+    // **A refusal is the ordinary outcome here and is shown as an answer, not an error.** The chain
+    // refuses a client who is not assessed; 5.3 refuses one who has not authorised this
+    // application; the Entity Graph refuses when nobody has said which company is applying; the
+    // catalogue returns nothing when no approved provider fits. Each says which, and the operator's
+    // next move differs in every case.
+    $('placement-summary').textContent = result.reason;
+    notice(result.reason);
+    return;
+  }
+
+  const set = result.data.recommendations;
+
+  $('placement-summary').textContent =
+    set.recommendations.length === 0
+      ? 'No provider survived governance, eligibility and suitability.'
+      : `${set.recommendations.length} recommendation${set.recommendations.length === 1 ? '' : 's'}.`;
+
+  list(
+    'placement-recommendations',
+    set.recommendations.map((item) => {
+      const parts = [
+        `${item.provider.value} — ${item.product.value}`,
+        `limit ${item.requestedCreditLimit}`,
+        item.rationale,
+      ];
+      // A caution is surfaced, never filtered: the easiest product to qualify for is often the
+      // worst fit, and a list that quietly dropped it would be recommending by omission.
+      if (item.suitability.caution) parts.push(`CAUTION: ${item.suitability.rationale}`);
+      if (item.containsUnverifiedInputs) parts.push('rests on an unresearched default');
+      if (item.requiredDisclosures.length > 0) {
+        parts.push(`disclosures: ${item.requiredDisclosures.join('; ')}`);
+      }
+      return parts.join(' — ');
+    }),
+    'No provider survived.',
+  );
+
+  $('placement-rejected-summary').textContent =
+    set.rejected.length === 0
+      ? ''
+      : `${set.rejected.length} alternative${set.rejected.length === 1 ? '' : 's'} rejected, and why:`;
+  list(
+    'placement-rejected',
+    set.rejected.map(
+      (item) => `${item.providerName} — ${item.offeringName} — ${item.stage} — ${item.reason}`,
+    ),
+    '',
+  );
+  if (set.rejected.length === 0) $('placement-rejected').replaceChildren();
+
+  $('placement-missing').textContent =
+    set.missingProfileFields.length === 0
+      ? ''
+      : `Record these and more providers resolve: ${set.missingProfileFields.join(', ')}.`;
+
+  notice('Recommendation ready.');
 });
 
 $('form-consent').addEventListener('submit', async (event) => {

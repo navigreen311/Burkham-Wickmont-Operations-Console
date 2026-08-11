@@ -196,17 +196,64 @@
         <h3>Record a consent</h3>
         <form id="form-consent">
           <label for="consent-kind">Kind</label>
-          <input id="consent-kind" name="kind" type="text" required />
+          <!--
+            A select filled from the server, not a text field. A typed kind the system does not
+            recognise is refused with a message about an unrecognised kind, which reads like a bug
+            in this page rather than like a mistake anybody can correct.
+          -->
+          <select id="consent-kind" name="kind" required></select>
 
           <label for="consent-scope">Scope</label>
           <input id="consent-scope" name="scope" type="text" required />
 
           <p class="muted">
             Authorisation is scoped to a specific application, never blanket. Record what the client
-            actually agreed to.
+            actually agreed to — for a placement, the kind is <code>application</code> and the scope
+            is the application reference you will use below.
           </p>
           <button type="submit">Record consent</button>
         </form>
+      </section>
+
+      <section id="section-placement" hidden>
+        <h3>Request a placement recommendation</h3>
+        <form id="form-placement">
+          <label for="placement-ref">Application reference</label>
+          <input id="placement-ref" name="applicationRef" type="text" required />
+
+          <label for="placement-need">What the capital is for</label>
+          <!--
+            No default. Suitability is assessed against this, so guessing produces a confident
+            recommendation for a purpose nobody stated.
+          -->
+          <select id="placement-need" name="need" required>
+            <option value="">Choose…</option>
+          </select>
+
+          <label for="placement-amount">Amount sought (whole dollars)</label>
+          <input id="placement-amount" name="requestedAmount" type="number" min="1" step="1" required />
+          <p class="muted">
+            Runs the whole chain and then 5.3: the Firewall and compliance gate, the client's own
+            per-application authorisation, the Entity Graph, and the lender catalogue. A refusal
+            here is the <strong>ordinary outcome</strong> for a client who has not been assessed or
+            has not authorised this application, and it names which of those it was.
+          </p>
+          <button type="submit">Request</button>
+        </form>
+
+        <p id="placement-summary"></p>
+        <ul id="placement-recommendations"></ul>
+
+        <!--
+          Rejections are never truncated (5.3). A short list of recommendations without the
+          rejections behind it is not reviewable: a compliance officer cannot tell a sound
+          rejection from a bug, and neither can the client.
+        -->
+        <p id="placement-rejected-summary" class="muted"></p>
+        <ul id="placement-rejected"></ul>
+
+        <!-- The actionable inverse of a short list: what to record to resolve more providers. -->
+        <p id="placement-missing" class="muted"></p>
       </section>
 
       <!--
