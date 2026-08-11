@@ -192,7 +192,15 @@ $('go-room').addEventListener('click', () => void enterRoom());
 
 // --- security settings -------------------------------------------------------
 
-const enterSettings = async () => {
+/**
+ * Show the settings view.
+ *
+ * `announce` survives the refresh. **A browser test found this**: the handlers set a message and then
+ * refreshed, and the refresh cleared it - so "Key registered." appeared and vanished in the same
+ * frame, and a client had no way to tell a success from nothing happening. Reading the source could
+ * not show that; running it could.
+ */
+const enterSettings = async (announce = '') => {
   const [state, registered] = await Promise.all([api.passwordSignIn(), api.keys()]);
 
   if (!state.ok) {
@@ -213,7 +221,7 @@ const enterSettings = async () => {
     'No security keys registered.',
   );
 
-  notice('');
+  notice(announce);
   show('view-settings');
 };
 
@@ -250,8 +258,8 @@ $('form-register-key').addEventListener('submit', async (event) => {
     discoverable,
   );
 
-  notice(result.ok ? 'Key registered.' : result.reason);
-  if (result.ok) await enterSettings();
+  if (result.ok) await enterSettings('Key registered.');
+  else notice(result.reason);
 });
 
 /** A passkey used to confirm a change rather than to sign in. */
@@ -287,8 +295,8 @@ $('form-disable-password').addEventListener('submit', async (event) => {
     authenticationResponse(credential),
   );
 
-  notice(result.ok ? 'Password sign-in is off.' : result.reason);
-  if (result.ok) await enterSettings();
+  if (result.ok) await enterSettings('Password sign-in is off.');
+  else notice(result.reason);
 });
 
 $('form-remove-password').addEventListener('submit', async (event) => {
@@ -305,8 +313,8 @@ $('form-remove-password').addEventListener('submit', async (event) => {
   });
 
   const result = await api.removePassword(authenticationResponse(credential));
-  notice(result.ok ? 'The password has been removed.' : result.reason);
-  if (result.ok) await enterSettings();
+  if (result.ok) await enterSettings('The password has been removed.');
+  else notice(result.reason);
 });
 
 // --- start -------------------------------------------------------------------

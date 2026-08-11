@@ -7,6 +7,37 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added - browser end-to-end tests (`ai-feature/portal-e2e`)
+
+ADR-0031 named this as the honest gap in the UI slice: "the transforms are tested; the wiring is
+read." See [docs/m11-portal-e2e.md](docs/m11-portal-e2e.md).
+
+- **The reason is not coverage of the DOM.** It is that a virtual authenticator can do what nothing
+  else in this repository can: **register and use a real passkey**, through a real browser, against
+  the real routes. `navigator.credentials` is the only thing that produces a WebAuthn credential, so
+  five slices (#31-#35) had no client that could exercise them end to end.
+- The authenticator is a Chrome DevTools Protocol virtual one - resident credentials, user
+  verification, automatic presence. **Not a stub of the browser's API**: the browser really runs the
+  ceremony and the server really verifies the signature.
+- Two other things only a browser can check: **the CSP actually permits the page to run** (a policy
+  is a header until a browser enforces it), and **a value carrying markup arrives as text**.
+- A **fifth CI job**, because it needs a browser binary and the other three do not. Chromium only -
+  the virtual authenticator is a CDP feature. Traces on failure only, kept seven days: a trace is a
+  copy of the page, and this page shows a client's file.
+- **The browser job is the only one that runs against BUILT packages.** The vitest suites alias
+  `@bwc/*` to `src` deliberately, so nothing else notices a package that compiles in isolation and
+  cannot be imported - which is how this job first failed in CI, on a `dist` every local run had
+  lying around.
+- The harness seeds a **fresh tenant per run** (the Ledger is append-only and hash-chained) and
+  **one account per test that changes an account** - registering a key and turning the password off
+  are permanent, and a shared account leaves the next test in a state it did not ask for. That was
+  not a prediction: the first full run failed exactly that way.
+
+**Fixed - a success message was wiped by the refresh that proved it worked.** `registerKey` set "Key
+registered." and then refreshed the settings view, which cleared the notice; the message appeared and
+vanished in the same frame, so a client had no way to tell a success from nothing happening. Reading
+the source could not show that. The refresh now carries the message through.
+
 ### Added - a browser UI for the Client Portal (`ai-feature/portal-ui`)
 
 **A deliberate departure from a standing decision.** Since PR #1 the note has read "Never built by

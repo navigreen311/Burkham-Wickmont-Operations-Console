@@ -69,6 +69,8 @@ export default [
     files: [
       'apps/api/src/server.ts',
       'apps/portal-api/src/server.ts',
+      // The e2e harness. Its stdout is what a human watching a browser run reads.
+      'tests/e2e/server.ts',
       'apps/worker/src/main.ts',
       'scripts/**/*.mjs',
       'scripts/**/*.js',

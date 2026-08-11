@@ -55,3 +55,8 @@ desktop.ini
 
 # Turborepo local cache
 .turbo/
+
+# Playwright output. Traces are copies of the page, and this page shows a client's file.
+/test-results/
+/playwright-report/
+/blob-report/
