@@ -55,13 +55,49 @@ import {
   revokeStaffSession,
 } from '@bwc/identity';
 import { read as readLedger, verifyIntegrity } from '@bwc/ledger';
-import { openFor } from '@bwc/notifications';
+import { findByWorkflowTask, openFor } from '@bwc/notifications';
 import { systemHealth } from '@bwc/observability';
 import { chain, type StepTrace } from '@bwc/middleware';
 import { requestRecommendation } from '@bwc/placement';
 import { CAPITAL_NEEDS, type CapitalNeed } from '@bwc/lenders';
 import { activeListing, timelineFor } from '@bwc/risk';
 import { openObligations } from '@bwc/calls';
+import {
+  breachedSlas,
+  find as findWorkflowTask,
+  findInstance,
+  forInstance as tasksForInstance,
+} from '@bwc/workflow';
+import {
+  buildFeeExhibit,
+  contractsForClient,
+  contractsOnSupersededTemplates,
+  findContract,
+  hashDocument,
+  staleContracts,
+  unresolvedPlaceholders,
+  verifyStoredHash,
+  type ContractDocument,
+} from '@bwc/contracts';
+import {
+  MINIMUM_LEVEL_TO_READ,
+  accessLog,
+  forClient as documentsForClient,
+  type DocumentKind,
+} from '@bwc/vault';
+import {
+  availableCredit,
+  balanceOf,
+  engagementsForClient,
+  exhibitInputFor,
+  findEngagement,
+  formatMoney,
+  ladder,
+  recordsFor,
+  refundsDue,
+  totalAvailableCredit,
+} from '@bwc/billing';
+import { workbench } from '@bwc/workbench';
 import { VENDOR_GATES, isActivated, mode, outstandingPreconditions } from '@bwc/integration';
 import {
   ACTION_MINIMUM_LEVEL,
@@ -718,6 +754,686 @@ export const createApp = (deps: ConsoleAppDeps = {}): Express => {
     asyncRoute(async (req, res) => {
       if (!(await requireStaff(req, res))) return;
       send(res, ok(await timelineFor(config.tenantId, param(req, 'clientId'), {}, now())));
+    }),
+  );
+
+  // --- 2.4 Human Approval Console -----------------------------------------
+
+  /**
+   * The approval queue, and the checkpoints that have run out of time.
+   *
+   * **This surface has no verb, and that is a finding rather than an omission.** Resolving a
+   * checkpoint means `completeExternalTask`, which is a write - and `decideAuthority` refuses any
+   * action absent from `ACTION_MINIMUM_LEVEL`, where no action for it exists. Adding one is an edit
+   * to `packages/core/src/authority.ts`, which this slice does not own. ADR-0037 lists what is
+   * needed and why the reading half shipped anyway.
+   *
+   * `queue` is an operator input rather than a served vocabulary, and that is the one place this
+   * page departs from ADR-0035's rule. Queue names are authored inside playbooks
+   * (`HumanCheckpointNode.queue`) and nothing enumerates them, so there is no closed set to serve.
+   * A select filled from a list this file invented would be the exact failure ADR-0035 describes,
+   * pointed the other way.
+   */
+  app.get(
+    '/api/console/approvals',
+    asyncRoute(async (req, res) => {
+      if (!(await requireStaff(req, res))) return;
+
+      const query = req.query as Record<string, unknown>;
+      const queue = typeof query['queue'] === 'string' ? query['queue'].trim() : '';
+
+      // `breachedSlas` is the module's own answer to "what has run out of time". The alternative -
+      // comparing `slaDueAt` against the clock here - would be a second implementation of a rule
+      // 2.2 already owns, and the two would disagree the first time either moved.
+      const breached = (await breachedSlas(now(), config.tenantId)).filter(
+        (task) => task.kind === 'human_checkpoint',
+      );
+
+      // Open items need a queue to ask about; the breach list does not. Reported as an empty list
+      // with the reason rather than as a refusal: "nobody named a queue" and "that queue is empty"
+      // are different answers and an operator arriving here has asked neither.
+      const items =
+        queue === ''
+          ? []
+          : (await openFor(config.tenantId, queue)).filter(
+              (item) => item.kind === 'human_checkpoint',
+            );
+
+      send(
+        res,
+        ok({
+          queue,
+          queueAsked: queue !== '',
+          items: items.map((item) => ({
+            id: item.id,
+            workflowTaskId: item.workflowTaskId,
+            clientId: item.clientId,
+            assignedTo: item.assignedTo,
+            kind: item.kind,
+            summary: item.summary,
+            status: item.status,
+            slaDueAt: item.slaDueAt === null ? null : item.slaDueAt.toISOString(),
+          })),
+          total: items.length,
+          breached: breached.map((task) => ({
+            id: task.id,
+            instanceId: task.instanceId,
+            nodeKey: task.nodeKey,
+            kind: task.kind,
+            status: task.status,
+            department: task.department,
+            slaDueAt: task.slaDueAt === null ? null : task.slaDueAt.toISOString(),
+            escalatedAt: task.escalatedAt === null ? null : task.escalatedAt.toISOString(),
+          })),
+          breachedTotal: breached.length,
+        }),
+      );
+    }),
+  );
+
+  /**
+   * One checkpoint, with the workflow it is holding up.
+   *
+   * **The tenant is checked here rather than trusted from the module.** `find`, `findInstance` and
+   * `forInstance` in `@bwc/workflow` are all keyed by id alone with no tenant filter - correct for
+   * an engine that has already resolved its own scope, and not something a route taking an id from
+   * a browser may rely on. A Console operator pasting another tenant's task id would otherwise read
+   * another tenant's workflow. ADR-0039.
+   */
+  app.get(
+    '/api/console/approvals/:taskId',
+    asyncRoute(async (req, res) => {
+      if (!(await requireStaff(req, res))) return;
+      const taskId = param(req, 'taskId');
+
+      const task = await findWorkflowTask(taskId);
+      // One sentence for both causes. "No such task" and "that task is another tenant's" are the
+      // same answer to somebody who is not entitled to know which.
+      if (!task || task.tenantId !== config.tenantId) {
+        send(res, noData('No such workflow task in this tenant.'));
+        return;
+      }
+
+      /**
+       * Checked again on the instance, and the redundancy is deliberate.
+       *
+       * **Mutation testing showed this second check alone passes the cross-tenant test**, because
+       * `start` creates a task and its instance in one tenant, so no reachable state has them
+       * disagreeing. That makes either check sufficient today and neither of them the one the test
+       * proves - removing both is what fails it.
+       *
+       * Both stay because the invariant they lean on is not enforced anywhere: nothing in the
+       * schema or the types says a task and its instance share a tenant. A guard that is correct
+       * only because of an unstated invariant is a guard waiting for the invariant to change.
+       */
+      const instance = await findInstance(task.instanceId);
+      if (!instance || instance.tenantId !== config.tenantId) {
+        send(res, noData('No such workflow task in this tenant.'));
+        return;
+      }
+
+      const [siblings, raised] = await Promise.all([
+        tasksForInstance(task.instanceId),
+        findByWorkflowTask(config.tenantId, task.id),
+      ]);
+
+      send(
+        res,
+        ok({
+          task: {
+            id: task.id,
+            nodeKey: task.nodeKey,
+            kind: task.kind,
+            status: task.status,
+            department: task.department,
+            attempts: task.attempts,
+            maxAttempts: task.maxAttempts,
+            lastError: task.lastError,
+            slaDueAt: task.slaDueAt === null ? null : task.slaDueAt.toISOString(),
+            escalatedAt: task.escalatedAt === null ? null : task.escalatedAt.toISOString(),
+          },
+          instance: {
+            id: instance.id,
+            playbookKey: instance.playbookKey,
+            playbookVersion: instance.playbookVersion,
+            status: instance.status,
+            clientId: instance.clientId,
+            currentNodeKey: instance.currentNodeKey,
+          },
+          siblings: siblings.map((sibling) => ({
+            id: sibling.id,
+            nodeKey: sibling.nodeKey,
+            kind: sibling.kind,
+            status: sibling.status,
+          })),
+          siblingsTotal: siblings.length,
+          notifications: raised.map((item) => ({
+            id: item.id,
+            assignedTo: item.assignedTo,
+            summary: item.summary,
+            status: item.status,
+          })),
+          notificationsTotal: raised.length,
+          /**
+           * Named rather than left to be inferred from the absence of a button.
+           *
+           * A page that simply had no control here would read as a page somebody had not finished.
+           * This says the act exists, names what blocks it, and is asserted by a transport test so
+           * it cannot quietly become false once the action is added.
+           */
+          resolution: {
+            available: false,
+            reason:
+              'Resolving a checkpoint calls completeExternalTask, which needs an action in ACTION_MINIMUM_LEVEL. No action for it exists, and decideAuthority refuses an action absent from the catalogue. See ADR-0037.',
+            requiredAction: 'resolve_human_checkpoint',
+          },
+        }),
+      );
+    }),
+  );
+
+  // --- 7.3 Contract & Disclosure Builder ----------------------------------
+
+  /**
+   * Every document issued to a client, oldest first.
+   *
+   * The full content model is deliberately NOT in the list. A page that rendered every section of
+   * every contract to show a client had four of them would be shipping the whole library to draw a
+   * table of contents - and each of these is a binding document, so the smaller the number of
+   * places its text travels the better.
+   */
+  app.get(
+    '/api/console/clients/:clientId/contracts',
+    asyncRoute(async (req, res) => {
+      if (!(await requireStaff(req, res))) return;
+      const issued = await contractsForClient(config.tenantId, param(req, 'clientId'));
+
+      send(
+        res,
+        ok({
+          contracts: issued.map((record) => ({
+            id: record.id,
+            kind: record.kind,
+            templateKey: record.templateKey,
+            templateVersion: record.templateVersion,
+            state: record.state,
+            stateModuleVersion: record.stateModuleVersion,
+            contentHash: record.contentHash,
+            clauseKeys: record.clauseKeys,
+            disclosureKeys: record.disclosureKeys,
+            issuedAt: record.issuedAt,
+          })),
+          total: issued.length,
+        }),
+      );
+    }),
+  );
+
+  /**
+   * One issued document, with the two questions worth asking about it.
+   *
+   * **Is it still what we sent?** `verifyStoredHash` recomputes the digest over the stored content
+   * model. A mismatch is the most serious integrity failure available here - the document is the
+   * only evidence of what was agreed (ADR-0010) - so it travels as a first-class field rather than
+   * as something a reader has to go and check.
+   *
+   * **Did anything fail to resolve?** `unresolvedPlaceholders` names substitutions the generator
+   * left in place. A contract carrying a literal placeholder went out with a blank in it.
+   */
+  app.get(
+    '/api/console/contracts/:contractId',
+    asyncRoute(async (req, res) => {
+      if (!(await requireStaff(req, res))) return;
+      const contractId = param(req, 'contractId');
+
+      const record = await findContract(config.tenantId, contractId);
+      if (!record) {
+        send(res, noData('No such contract in this tenant.'));
+        return;
+      }
+
+      const integrity = await verifyStoredHash(config.tenantId, contractId, (content) =>
+        hashDocument(content as ContractDocument),
+      );
+      const placeholders = unresolvedPlaceholders(record.content);
+
+      send(
+        res,
+        ok({
+          id: record.id,
+          clientId: record.clientId,
+          kind: record.kind,
+          state: record.state,
+          issuedAt: record.issuedAt,
+          contentHash: record.contentHash,
+          integrity,
+          unresolvedPlaceholders: placeholders,
+          unresolvedPlaceholdersTotal: placeholders.length,
+          document: {
+            title: record.content.title,
+            offerTier: record.content.offerTier,
+            channel: record.content.channel,
+            provenance: record.content.provenance,
+            sections: record.content.sections.map((section) => ({
+              heading: section.heading,
+              body: section.body,
+              clauses: section.clauses,
+              disclosures: section.disclosures,
+            })),
+            sectionsTotal: record.content.sections.length,
+          },
+        }),
+      );
+    }),
+  );
+
+  /**
+   * Documents the world has moved out from under.
+   *
+   * Two lists rather than one total, because the remedy differs: a stale state module means the law
+   * moved, a superseded template means we changed our own words. An operator triaging the two makes
+   * different calls, and a combined count would hide which they were looking at.
+   *
+   * **Nothing here reissues anything.** An issued contract is frozen (ADR-0010); this is a report.
+   */
+  app.get(
+    '/api/console/contract-staleness',
+    asyncRoute(async (req, res) => {
+      if (!(await requireStaff(req, res))) return;
+      const [stale, superseded] = await Promise.all([
+        staleContracts(config.tenantId),
+        contractsOnSupersededTemplates(config.tenantId),
+      ]);
+
+      send(
+        res,
+        ok({
+          stale,
+          staleTotal: stale.length,
+          onSupersededTemplates: superseded,
+          onSupersededTemplatesTotal: superseded.length,
+        }),
+      );
+    }),
+  );
+
+  // --- 3.2 Secure Document Vault (metadata and access log only) -----------
+
+  /**
+   * What documents exist on a client's file, and nothing of what is in them.
+   *
+   * **No route here returns document bytes, and that is the design rather than a stage.** `read`
+   * exists in `@bwc/vault`, it decrypts, and it watermarks an export - and putting it behind a page
+   * would make every staff session a download button for tax returns, government IDs and credit
+   * reports. The Vault's own gates would still run; the objection is not that they would fail, it
+   * is that a console is an invitation (ADR-0032) and this is the data class where an invitation
+   * costs the most.
+   *
+   * `minimumLevelToRead` is the module's own constant, surfaced so the page can say what a document
+   * would need. It is deliberately NOT resolved into a boolean: `read` gates on tenant, level, scan
+   * status and legal hold in a fixed order, and a `readable: true` computed here would be a second
+   * implementation of that gate which could only ever drift from it.
+   */
+  app.get(
+    '/api/console/clients/:clientId/documents',
+    asyncRoute(async (req, res) => {
+      const actor = await requireStaff(req, res);
+      if (!actor) return;
+
+      const documents = await documentsForClient(config.tenantId, param(req, 'clientId'));
+
+      send(
+        res,
+        ok({
+          documents: documents.map((document) => ({
+            id: document.id,
+            kind: document.kind,
+            filename: document.filename,
+            contentType: document.contentType,
+            byteSize: document.byteSize,
+            sha256: document.sha256,
+            // `pending` and `scan_unavailable` are distinct from `clean` and neither means clean.
+            // The page writes the word out; nothing here is rendered as a colour alone.
+            scanStatus: document.scanStatus,
+            legalHold: document.legalHold,
+            retainUntil: document.retainUntil === null ? null : document.retainUntil.toISOString(),
+            minimumLevelToRead: MINIMUM_LEVEL_TO_READ[document.kind as DocumentKind],
+          })),
+          total: documents.length,
+          /** So the page can say "you hold 1" beside "this needs 3" without deciding anything. */
+          actorAuthorityLevel: actor.authorityLevel,
+          bytesAvailableHere: false,
+        }),
+      );
+    }),
+  );
+
+  /**
+   * Who looked, who was turned away, and why.
+   *
+   * **The refusals are the reason this has a page.** `logAccess` records a denied read as carefully
+   * as a granted one, and a pattern of cross-tenant or below-level attempts against one client's
+   * file is exactly the signal an audit wants - it exists only if somebody can see it. A log
+   * showing successes alone would answer the less interesting half.
+   */
+  app.get(
+    '/api/console/documents/:documentId/access-log',
+    asyncRoute(async (req, res) => {
+      if (!(await requireStaff(req, res))) return;
+      const entries = await accessLog(config.tenantId, param(req, 'documentId'));
+      const refused = entries.filter((entry) => !entry.granted);
+
+      send(
+        res,
+        ok({
+          entries: entries.map((entry) => ({
+            actorId: entry.actorId,
+            action: entry.action,
+            granted: entry.granted,
+            reason: entry.reason,
+            watermarked: entry.watermarked,
+            at: entry.at.toISOString(),
+          })),
+          total: entries.length,
+          grantedTotal: entries.length - refused.length,
+          refusedTotal: refused.length,
+        }),
+      );
+    }),
+  );
+
+  // --- 1.4 Pricing, Billing & Offer Management ----------------------------
+
+  /** The offer ladder, entry rung first. Money is integer cents; `display` is 1.4's own renderer. */
+  app.get(
+    '/api/console/offers',
+    asyncRoute(async (req, res) => {
+      if (!(await requireStaff(req, res))) return;
+      const offers = await ladder(config.tenantId);
+
+      send(
+        res,
+        ok({
+          offers: offers.map((offer) => ({
+            key: offer.key,
+            version: offer.version,
+            name: offer.name,
+            rung: offer.rung,
+            retainerCents: offer.retainerCents,
+            retainerDisplay: formatMoney(offer.retainerCents),
+            monthlyCents: offer.monthlyCents,
+            monthlyDisplay: formatMoney(offer.monthlyCents),
+            successFeeBasisPoints: offer.successFeeBasisPoints,
+            minimumCents: offer.minimumCents,
+            minimumDisplay: formatMoney(offer.minimumCents),
+            committedMonths: offer.committedMonths,
+          })),
+          total: offers.length,
+        }),
+      );
+    }),
+  );
+
+  /**
+   * A client's commercial position: every engagement, and what they have paid that is unspent.
+   *
+   * The unresolved-refund count travels per engagement because 1.4 derives entitlement rather than
+   * storing it - there is no column to count, and the default in that module is to PAY. An
+   * entitlement nobody has looked at is money owed that has not moved.
+   */
+  app.get(
+    '/api/console/clients/:clientId/billing',
+    asyncRoute(async (req, res) => {
+      if (!(await requireStaff(req, res))) return;
+      const clientId = param(req, 'clientId');
+      const at = now();
+
+      const engagements = await engagementsForClient(config.tenantId, clientId);
+
+      const rows = await Promise.all(
+        engagements.map(async (engagement) => {
+          const [balance, refunds] = await Promise.all([
+            balanceOf(config.tenantId, engagement.id),
+            refundsDue(config.tenantId, engagement.id, at),
+          ]);
+          return {
+            id: engagement.id,
+            offerId: engagement.offerId,
+            status: engagement.status,
+            startedOn: engagement.startedOn,
+            committedThrough: engagement.committedThrough,
+            annualPrepay: engagement.annualPrepay,
+            cancelledOn: engagement.cancelledOn,
+            outstandingCents: balance.status === 'ok' ? balance.value.outstanding : null,
+            outstandingDisplay:
+              balance.status === 'ok' ? formatMoney(balance.value.outstanding) : null,
+            meetsMinimum: balance.status === 'ok' ? balance.value.meetsMinimum : null,
+            unresolvedRefundTotal: refunds.filter((refund) => refund.resolved === null).length,
+            refundTotal: refunds.length,
+          };
+        }),
+      );
+
+      const [sources, total] = await Promise.all([
+        availableCredit(config.tenantId, clientId),
+        totalAvailableCredit(config.tenantId, clientId),
+      ]);
+
+      send(
+        res,
+        ok({
+          engagements: rows,
+          total: rows.length,
+          credit: {
+            sources: sources.map((source) => ({
+              recordId: source.recordId,
+              engagementId: source.engagementId,
+              paidCents: source.paidCents,
+              paidDisplay: formatMoney(source.paidCents),
+              alreadyDrawnCents: source.alreadyDrawnCents,
+              alreadyDrawnDisplay: formatMoney(source.alreadyDrawnCents),
+              availableCents: source.availableCents,
+              availableDisplay: formatMoney(source.availableCents),
+              occurredOn: source.occurredOn,
+            })),
+            sourcesTotal: sources.length,
+            availableCents: total,
+            availableDisplay: formatMoney(total),
+          },
+        }),
+      );
+    }),
+  );
+
+  /**
+   * One engagement: the four numbers behind a balance, the ledger of what was charged, the refund
+   * entitlements, and the all-in fee exhibit.
+   *
+   * **The balance travels as its components, never as one net figure.** "You owe $4,200" answers
+   * less than the four numbers that produced it, and a client disputing an invoice is asking about
+   * one of the four.
+   *
+   * **The exhibit's amounts are DOLLARS while everything else here is cents.** That is 7.3's
+   * convention and 1.4 converts once at its edge (`exhibitInputFor`); the two are one field apart
+   * on this response, so both are named for what they carry. A contingent line has `amount: null`
+   * and the page writes "contingent" - a null success fee is not a fee of zero.
+   */
+  app.get(
+    '/api/console/engagements/:engagementId',
+    asyncRoute(async (req, res) => {
+      if (!(await requireStaff(req, res))) return;
+      const engagementId = param(req, 'engagementId');
+
+      const engagement = await findEngagement(config.tenantId, engagementId);
+      if (engagement.status !== 'ok') {
+        send(res, engagement);
+        return;
+      }
+
+      const at = now();
+      const [balance, records, refunds, exhibitInput] = await Promise.all([
+        balanceOf(config.tenantId, engagementId),
+        recordsFor(config.tenantId, engagementId),
+        refundsDue(config.tenantId, engagementId, at),
+        exhibitInputFor({ tenantId: config.tenantId, engagementId }),
+      ]);
+
+      // No `approvedCreditLimitCents` is passed, deliberately. 1.4 presents the success fee as
+      // contingent when no approval exists rather than estimating it - and there is nowhere on the
+      // input to put a REQUESTED limit, which is the Seek Capital lesson expressed as a type.
+      const exhibit =
+        exhibitInput.status === 'ok' ? buildFeeExhibit(exhibitInput.value) : exhibitInput;
+
+      send(
+        res,
+        ok({
+          engagement: {
+            id: engagement.value.id,
+            clientId: engagement.value.clientId,
+            offerId: engagement.value.offerId,
+            status: engagement.value.status,
+            startedOn: engagement.value.startedOn,
+            committedThrough: engagement.value.committedThrough,
+            annualPrepay: engagement.value.annualPrepay,
+            cancelledOn: engagement.value.cancelledOn,
+          },
+          balance:
+            balance.status === 'ok'
+              ? {
+                  chargedCents: balance.value.charged,
+                  chargedDisplay: formatMoney(balance.value.charged),
+                  paidCents: balance.value.paid,
+                  paidDisplay: formatMoney(balance.value.paid),
+                  refundedCents: balance.value.refunded,
+                  refundedDisplay: formatMoney(balance.value.refunded),
+                  creditedCents: balance.value.credited,
+                  creditedDisplay: formatMoney(balance.value.credited),
+                  outstandingCents: balance.value.outstanding,
+                  outstandingDisplay: formatMoney(balance.value.outstanding),
+                  meetsMinimum: balance.value.meetsMinimum,
+                  minimumCents: balance.value.minimumCents,
+                  minimumDisplay: formatMoney(balance.value.minimumCents),
+                }
+              : null,
+          // Every non-`ok` variant of `Outcome` carries a `reason`, so the reason is forwarded
+          // unchanged rather than reworded. Translating a refusal is where reasons get lost.
+          balanceUnavailableReason: balance.status === 'ok' ? null : balance.reason,
+          records: records.map((record) => ({
+            id: record.id,
+            kind: record.kind,
+            amountCents: record.amountCents,
+            amountDisplay: formatMoney(record.amountCents),
+            description: record.description,
+            // The APPROVED limit, never the requested one. There is no field for a requested limit
+            // anywhere in 1.4, which is the invariant expressed as an absence.
+            approvedCreditLimitCents: record.approvedCreditLimitCents,
+            approvedCreditLimitDisplay:
+              record.approvedCreditLimitCents === null
+                ? null
+                : formatMoney(record.approvedCreditLimitCents),
+            occurredOn: record.occurredOn,
+          })),
+          recordsTotal: records.length,
+          refunds: refunds.map((refund) => ({
+            trigger: refund.trigger,
+            amountCents: refund.amountCents,
+            amountDisplay: formatMoney(refund.amountCents),
+            basis: refund.basis,
+            resolved: refund.resolved,
+          })),
+          refundsTotal: refunds.length,
+          unresolvedRefundTotal: refunds.filter((refund) => refund.resolved === null).length,
+          exhibit:
+            exhibit.status === 'ok'
+              ? {
+                  lines: exhibit.value.lines,
+                  linesTotal: exhibit.value.lines.length,
+                  knownTotalDollars: exhibit.value.knownTotal,
+                  contingentLines: exhibit.value.contingentLines,
+                  contingentLinesTotal: exhibit.value.contingentLines.length,
+                  summary: exhibit.value.summary,
+                }
+              : null,
+          exhibitUnavailableReason: exhibit.status === 'ok' ? null : exhibit.reason,
+        }),
+      );
+    }),
+  );
+
+  // --- 11.11 Founder / Executive Workbench --------------------------------
+
+  /**
+   * What only a founder can decide, and the portfolio numbers behind it.
+   *
+   * 11.11 stores nothing and this route adds nothing to it. The whole surface is assembly, and the
+   * one thing worth saying about the transport is that it does not reduce anything: the decision
+   * queue's `costOfInaction` travels whole, because it is what makes this a queue rather than a
+   * feed, and the rollup's `withheld` list travels whole, because a portfolio view without its gaps
+   * reads as complete.
+   */
+  app.get(
+    '/api/console/workbench',
+    asyncRoute(async (req, res) => {
+      if (!(await requireStaff(req, res))) return;
+
+      const assembled = await workbench({ tenantId: config.tenantId, now: now() });
+      if (assembled.status !== 'ok') {
+        send(res, assembled);
+        return;
+      }
+
+      const view = assembled.value;
+      send(
+        res,
+        ok({
+          generatedAt: view.generatedAt,
+          decisions: view.decisions.map((decision) => ({
+            key: decision.key,
+            kind: decision.kind,
+            summary: decision.summary,
+            costOfInaction: decision.costOfInaction,
+            urgency: decision.urgency,
+            dueAt: decision.dueAt,
+            resolveIn: decision.resolveIn,
+          })),
+          decisionsTotal: view.decisions.length,
+          overdueTotal: view.decisions.filter((decision) => decision.urgency === 'overdue').length,
+          rollup: {
+            periodFrom: view.rollup.periodFrom,
+            periodTo: view.rollup.periodTo,
+            periodPartial: view.rollup.periodPartial,
+            clients: view.rollup.clients,
+            complianceCounts: view.rollup.complianceCounts,
+            healthyShare: view.rollup.healthyShare,
+            meetsComplianceTarget: view.rollup.meetsComplianceTarget,
+            placementApprovalRate: view.rollup.placementApprovalRate,
+            revenuePerClientCents: view.rollup.revenuePerClientCents,
+            openCorrectionObligations: view.rollup.openCorrectionObligations,
+            // Carried whole. A metric with no value is reported as withheld with its note, never
+            // as zero - 9.1's `null` is not `0`, and this is the surface where that matters most.
+            withheld: view.rollup.withheld,
+            withheldTotal: view.rollup.withheld.length,
+          },
+          health: {
+            overall: view.health.overall,
+            detail: view.health.detail,
+            checkedAt: view.health.checkedAt,
+            counts: view.health.counts,
+            components: view.health.components.map((component) => ({
+              key: component.key,
+              label: component.label,
+              state: component.state,
+              detail: component.detail,
+            })),
+            componentsTotal: view.health.components.length,
+          },
+          crossDepartment: view.crossDepartment.map((entry) => ({
+            department: entry.department,
+            status: entry.status,
+          })),
+          crossDepartmentTotal: view.crossDepartment.length,
+        }),
+      );
     }),
   );
 

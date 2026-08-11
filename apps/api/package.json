@@ -12,9 +12,11 @@
     "start": "node dist/server.js"
   },
   "dependencies": {
+    "@bwc/billing": "workspace:*",
     "@bwc/calls": "workspace:*",
     "@bwc/clients": "workspace:*",
     "@bwc/consent": "workspace:*",
+    "@bwc/contracts": "workspace:*",
     "@bwc/core": "workspace:*",
     "@bwc/db": "workspace:*",
     "@bwc/firewall": "workspace:*",
@@ -29,6 +31,9 @@
     "@bwc/placement": "workspace:*",
     "@bwc/risk": "workspace:*",
     "@bwc/tenancy": "workspace:*",
+    "@bwc/vault": "workspace:*",
+    "@bwc/workbench": "workspace:*",
+    "@bwc/workflow": "workspace:*",
     "dotenv": "^16.4.7",
     "express": "^5.1.0",
     "helmet": "^8.1.0"

@@ -92,6 +92,14 @@ export const E2E_CONSOLE_ACCOUNTS = [
   'e2e-operator-placement-ok@example.com',
   'e2e-operator-placement-vocabulary@example.com',
   'e2e-operator-inviter@example.com',
+  // The five surfaces added with 2.4, 7.3, 3.2, 1.4 and 11.11. One account each, for the reason
+  // above: none of these specs writes anything, but every one of them signs in, and a shared
+  // authenticator cannot produce two accepted codes inside one thirty-second step.
+  'e2e-operator-approvals@example.com',
+  'e2e-operator-contracts@example.com',
+  'e2e-operator-documents@example.com',
+  'e2e-operator-billing@example.com',
+  'e2e-operator-workbench@example.com',
 ] as const;
 
 /**
@@ -145,10 +153,24 @@ export const E2E_CONSOLE_CLIENTS = [
   // Built so a placement can actually succeed: an approved provider whose box it fits, a primary
   // entity with revenue, a passing compliance state, and consent scoped to E2E_PLACEMENT_REF.
   'Console Placement Subject LLC',
+  // The file the five read-only surfaces look at: an issued contract, a vault document with a
+  // refused read in its access log, an engagement carrying an unresolved refund entitlement, and a
+  // workflow parked on a human checkpoint that is past its SLA.
+  //
+  // Its own client rather than the read-only one above, even though nothing here writes. Seeding
+  // four modules' worth of history onto the file the other specs read would make their assertions
+  // depend on this slice's fixtures - and the failure would look like a flake.
+  'Console Surfaces Subject LLC',
 ] as const;
 
 /** The one reference the placeable client has authorised. Any other is refused, by design. */
 export const E2E_PLACEMENT_REF = 'APP-E2E-001';
+
+/** The queue the seeded human checkpoint is routed to, and the name its spec types in. */
+export const E2E_APPROVAL_QUEUE = 'compliance_and_evidence';
+
+/** The state the seeded contract is generated for. Activated by the harness. */
+export const E2E_CONTRACT_STATE = 'TX';
 
 export interface ConsoleHandoff {
   readonly tenantId: string;
@@ -159,6 +181,21 @@ export interface ConsoleHandoff {
   readonly label: string;
   /** An Actor holding no credential, for the enrolment journey. */
   readonly inviteeActorId: string;
+  /**
+   * The filename of the seeded vault document.
+   *
+   * Carried so the documents spec can click the right row by name. The id would do as well; the
+   * filename is what a person sees, so asserting against it checks the thing being rendered.
+   */
+  readonly vaultFilename: string;
+  /**
+   * A string that exists only inside the seeded document's ciphertext.
+   *
+   * The documents spec asserts it never appears on the page. It has to be unique to mean anything:
+   * the first version of that check looked for a word from the payload and matched a health
+   * component explaining that uptime would need "a synthetic check hitting the API from outside".
+   */
+  readonly vaultCanary: string;
 }
 
 /**

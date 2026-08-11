@@ -32,6 +32,7 @@ import { createRateLimiter } from '@bwc/http';
 import { createApp } from '../../apps/api/src/app.js';
 import type { ConsoleConfig } from '../../apps/api/src/config.js';
 import { makePlaceable } from '../helpers/placeable.js';
+import { E2E_VAULT_CANARY, E2E_VAULT_FILENAME, seedSurfaces } from './console-surfaces-seed.js';
 import {
   E2E_CONSOLE_ACCOUNTS,
   E2E_CONSOLE_CLIENTS,
@@ -77,6 +78,16 @@ const main = async (): Promise<void> => {
     clientId: placeable,
     actor: { id: granter.id, kind: 'human' },
     applicationRef: E2E_PLACEMENT_REF,
+  });
+
+  // The fifth gets four modules' worth of history for the five read-only surfaces to look at.
+  const surfaces = clients.get(E2E_CONSOLE_CLIENTS[4]);
+  if (surfaces === undefined) throw new Error('seed: surfaces client');
+  await seedSurfaces({
+    tenantId: tenant.id,
+    tenantSlug: tenant.slug,
+    clientId: surfaces,
+    actorId: granter.id,
   });
 
   process.env['MFA_SECRET_KEY'] ??=
@@ -142,6 +153,8 @@ const main = async (): Promise<void> => {
     clientName: E2E_CONSOLE_CLIENTS[0],
     label: LABEL,
     inviteeActorId: invitee.id,
+    vaultFilename: E2E_VAULT_FILENAME,
+    vaultCanary: E2E_VAULT_CANARY,
   };
   await writeFile(E2E_CONSOLE_HANDOFF, JSON.stringify(handoff), 'utf8');
 

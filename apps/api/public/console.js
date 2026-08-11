@@ -25,13 +25,27 @@ import * as api from './api.js';
 
 const $ = (id) => document.getElementById(id);
 
-const VIEWS = ['view-sign-in', 'view-enrol', 'view-overview', 'view-clients', 'view-client'];
+const VIEWS = [
+  'view-sign-in',
+  'view-enrol',
+  'view-overview',
+  'view-clients',
+  'view-client',
+  // The five surfaces this slice added. Still one document switched by a `hidden` attribute: nine
+  // screens is more than three and it is not a routing library's worth of screens.
+  'view-approvals',
+  'view-contracts',
+  'view-documents',
+  'view-billing',
+  'view-workbench',
+];
 
 const show = (view) => {
   for (const name of VIEWS) $(name).hidden = name !== view;
   const anonymous = view === 'view-sign-in' || view === 'view-enrol';
   $('sign-out').hidden = anonymous;
   $('who').hidden = anonymous;
+  $('nav').hidden = anonymous;
 };
 
 const notice = (text) => {
@@ -59,6 +73,41 @@ const list = (id, items, empty) => {
   }
 };
 
+/**
+ * A list whose rows open something.
+ *
+ * The same shape the client list has always used - the label is a button, the rest is text beside
+ * it - extracted because five more lists now need it. Both halves go on with `textContent`.
+ */
+const openable = (id, items, empty) => {
+  const element = $(id);
+  element.replaceChildren();
+
+  if (items.length === 0) {
+    const li = document.createElement('li');
+    li.textContent = empty;
+    element.append(li);
+    return;
+  }
+
+  for (const item of items) {
+    const li = document.createElement('li');
+    li.className = 'row';
+
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.textContent = item.label;
+    button.addEventListener('click', item.open);
+
+    const detail = document.createElement('span');
+    detail.className = 'state';
+    detail.textContent = ` — ${item.detail}`;
+
+    li.append(button, detail);
+    element.append(li);
+  }
+};
+
 /** How many rows a page of clients holds. The server caps this independently. */
 const PAGE = 25;
 
@@ -70,6 +119,14 @@ let mayWrite = {};
 
 /** The client whose file is open, so a write knows what it is writing to. */
 let openClientId = null;
+
+/**
+ * Its legal name, so the three client-scoped surfaces can say whose file they are showing.
+ *
+ * Carried rather than refetched: a page headed "Documents" with no name on it is a page somebody
+ * reads while thinking of a different client.
+ */
+let openClientName = '';
 
 /**
  * What a compliance state does, in the words of the modules that read it.
@@ -425,6 +482,7 @@ const enterClient = async (clientId) => {
 
   const { client, findings, firewall, doNotFund } = result.data;
   openClientId = client.id;
+  openClientName = client.legalName;
   $('client-name').textContent = client.legalName;
   $('client-compliance').textContent = `Compliance state: ${client.complianceState}`;
 
@@ -654,23 +712,631 @@ $('form-consent').addEventListener('submit', async (event) => {
   notice('Consent recorded.');
 });
 
+// --- 2.4 Human Approval Console ---------------------------------------------
+
+/** The queue last asked about, so returning to this view does not blank the field. */
+let approvalsQueue = '';
+
+const enterApprovals = async () => {
+  const result = await api.approvals(approvalsQueue);
+  if (!result.ok) {
+    notice(result.reason);
+    return;
+  }
+
+  const data = result.data;
+  $('approvals-queue').value = data.queue;
+
+  $('approvals-summary').textContent = data.queueAsked
+    ? `${data.total} open in ${data.queue}.`
+    : 'Name a queue to see what is open in it. The SLA list below needs no queue.';
+
+  openable(
+    'approvals-list',
+    data.items.map((item) => ({
+      label: item.summary,
+      detail:
+        `${item.status} — assigned to ${item.assignedTo}` +
+        `${item.clientId === null ? '' : ` — client ${item.clientId}`}` +
+        ` — SLA ${item.slaDueAt ?? 'none set'}`,
+      open: () => {
+        // An assignment can exist without a workflow task behind it. Saying so beats a button that
+        // opens nothing and looks broken.
+        if (item.workflowTaskId === null) {
+          notice('That assignment is not attached to a workflow task.');
+          return;
+        }
+        void openApproval(item.workflowTaskId);
+      },
+    })),
+    data.queueAsked ? 'Nothing open in that queue.' : 'No queue named yet.',
+  );
+
+  $('approvals-breached-summary').textContent =
+    data.breachedTotal === 0
+      ? 'No human checkpoint is past its SLA.'
+      : `${data.breachedTotal} past their SLA, across every queue.`;
+
+  openable(
+    'approvals-breached',
+    data.breached.map((task) => ({
+      label: task.nodeKey,
+      detail:
+        `${task.status} — ${task.department ?? 'no department'}` +
+        ` — due ${task.slaDueAt ?? 'none set'}` +
+        ` — ${task.escalatedAt === null ? 'not escalated' : `escalated ${task.escalatedAt}`}`,
+      open: () => {
+        void openApproval(task.id);
+      },
+    })),
+    'No human checkpoint is past its SLA.',
+  );
+
+  $('section-approval').hidden = true;
+  notice('');
+  show('view-approvals');
+};
+
+const openApproval = async (taskId) => {
+  const result = await api.approval(taskId);
+  const section = $('section-approval');
+
+  if (!result.ok) {
+    section.hidden = true;
+    notice(result.reason);
+    return;
+  }
+
+  const { task, instance, siblings, notifications, resolution } = result.data;
+
+  $('approval-task').textContent =
+    `${task.nodeKey} — ${task.kind} — ${task.status} — ${task.department ?? 'no department'}` +
+    ` — attempt ${task.attempts} of ${task.maxAttempts}` +
+    ` — SLA ${task.slaDueAt ?? 'none set'}` +
+    ` — ${task.escalatedAt === null ? 'not escalated' : `escalated ${task.escalatedAt}`}` +
+    `${task.lastError === null ? '' : ` — last error: ${task.lastError}`}`;
+
+  $('approval-instance').textContent =
+    `Playbook ${instance.playbookKey} v${instance.playbookVersion} — ${instance.status}` +
+    ` — at node ${instance.currentNodeKey} — client ${instance.clientId ?? 'none'}`;
+
+  $('approval-siblings-summary').textContent = `${result.data.siblingsTotal} task(s) in this workflow.`;
+  list(
+    'approval-siblings',
+    siblings.map((sibling) => `${sibling.nodeKey} — ${sibling.kind} — ${sibling.status}`),
+    'No task recorded.',
+  );
+
+  $('approval-notifications-summary').textContent =
+    `${result.data.notificationsTotal} assignment(s) raised for it.`;
+  list(
+    'approval-notifications',
+    notifications.map((item) => `${item.assignedTo} — ${item.status} — ${item.summary}`),
+    'No assignment raised.',
+  );
+
+  // **Named, not implied by an absent control.** A page that simply had no button here would read
+  // as one somebody had not finished; this says the act exists and what stands in front of it.
+  $('approval-resolution').textContent = resolution.available
+    ? `Resolving is available as ${resolution.requiredAction}.`
+    : `No resolve control on this page. ${resolution.reason}`;
+
+  section.hidden = false;
+  notice('');
+};
+
+$('form-approvals').addEventListener('submit', (event) => {
+  event.preventDefault();
+  approvalsQueue = $('approvals-queue').value.trim();
+  void enterApprovals();
+});
+
+// --- 7.3 Contract & Disclosure Builder --------------------------------------
+
+const enterContracts = async () => {
+  if (openClientId === null) {
+    notice('Open a client file first.');
+    return;
+  }
+
+  const [issued, staleness] = await Promise.all([
+    api.contracts(openClientId),
+    api.contractStaleness(),
+  ]);
+
+  if (!issued.ok) {
+    notice(issued.reason);
+    return;
+  }
+
+  $('contracts-client').textContent = `File: ${openClientName}`;
+  $('contracts-summary').textContent = `${issued.data.total} issued to this client.`;
+
+  openable(
+    'contracts-list',
+    issued.data.contracts.map((record) => ({
+      label: record.kind,
+      detail:
+        `${record.state} — template ${record.templateKey} v${record.templateVersion}` +
+        ` — state module v${record.stateModuleVersion} — issued ${record.issuedAt}` +
+        ` — ${record.clauseKeys.length} clause(s), ${record.disclosureKeys.length} disclosure(s)` +
+        ` — hash ${record.contentHash}`,
+      open: () => {
+        void openContract(record.id);
+      },
+    })),
+    'No contract has been issued to this client.',
+  );
+
+  if (staleness.ok) {
+    const data = staleness.data;
+    // Firm-wide, and said so: this report is not scoped to the open file, and a reader who assumed
+    // it was would draw the wrong conclusion from a count of one.
+    $('contracts-stale-summary').textContent =
+      data.staleTotal === 0
+        ? 'Firm-wide: no issued document is behind its state module.'
+        : `Firm-wide: ${data.staleTotal} issued against a state module that has since moved.`;
+    list(
+      'contracts-stale',
+      data.stale.map(
+        (item) =>
+          `${item.kind} — client ${item.clientId} — ${item.state} — generated against v${item.generatedAgainstVersion}, current is v${item.currentVersion} — issued ${item.issuedAt} — ${item.reason}`,
+      ),
+      'None.',
+    );
+
+    $('contracts-superseded-summary').textContent =
+      data.onSupersededTemplatesTotal === 0
+        ? 'Firm-wide: no issued document is on a superseded template.'
+        : `Firm-wide: ${data.onSupersededTemplatesTotal} on a template we have since replaced.`;
+    list(
+      'contracts-superseded',
+      data.onSupersededTemplates.map(
+        (item) => `${item.templateKey} — v${item.from} superseded by v${item.to} — contract ${item.id}`,
+      ),
+      'None.',
+    );
+  } else {
+    $('contracts-stale-summary').textContent = staleness.reason;
+    list('contracts-stale', [], 'None.');
+    $('contracts-superseded-summary').textContent = '';
+    list('contracts-superseded', [], 'None.');
+  }
+
+  $('section-contract').hidden = true;
+  notice('');
+  show('view-contracts');
+};
+
+const openContract = async (contractId) => {
+  const result = await api.contract(contractId);
+  const section = $('section-contract');
+
+  if (!result.ok) {
+    section.hidden = true;
+    notice(result.reason);
+    return;
+  }
+
+  const data = result.data;
+
+  $('contract-title').textContent = data.document.title;
+  $('contract-meta').textContent =
+    `${data.kind} — ${data.state} — issued ${data.issuedAt}` +
+    ` — tier ${data.document.offerTier ?? 'none'} — channel ${data.document.channel ?? 'none'}`;
+
+  // The class follows the words rather than carrying the meaning on its own: the sentence says
+  // which it is, and would still say so with every stylesheet in the world switched off.
+  $('contract-integrity').className = data.integrity.intact ? 'muted' : 'alarm';
+  $('contract-integrity').textContent = data.integrity.intact
+    ? `Integrity intact. ${data.integrity.detail}`
+    : `INTEGRITY FAILURE. ${data.integrity.detail}`;
+
+  $('contract-placeholders').textContent =
+    data.unresolvedPlaceholdersTotal === 0
+      ? 'No unresolved placeholder: every substitution resolved at generation.'
+      : `${data.unresolvedPlaceholdersTotal} unresolved placeholder(s) — this document went out with a blank in it: ${data.unresolvedPlaceholders.join(', ')}`;
+
+  $('contract-provenance').textContent =
+    `Generated from template ${data.document.provenance.templateKey} v${data.document.provenance.templateVersion}` +
+    ` against state module v${data.document.provenance.stateModuleVersion}` +
+    ` at ${data.document.provenance.generatedAt}.`;
+
+  $('contract-sections-summary').textContent = `${data.document.sectionsTotal} section(s).`;
+  list(
+    'contract-sections',
+    data.document.sections.flatMap((section_) => [
+      `${section_.heading}: ${section_.body}`,
+      // Each insertion carries the citation that put it there. A clause with no provenance is a
+      // clause nobody can defend.
+      ...section_.clauses.map((clause) => `    clause ${clause.key} (${clause.citation}): ${clause.text}`),
+      ...section_.disclosures.map(
+        (disclosure) =>
+          `    disclosure ${disclosure.key} (${disclosure.source}, ${disclosure.citation}): ${disclosure.text}`,
+      ),
+    ]),
+    'No section.',
+  );
+
+  section.hidden = false;
+  notice('');
+};
+
+// --- 3.2 Secure Document Vault ----------------------------------------------
+
+const enterDocuments = async () => {
+  if (openClientId === null) {
+    notice('Open a client file first.');
+    return;
+  }
+
+  const result = await api.documents(openClientId);
+  if (!result.ok) {
+    notice(result.reason);
+    return;
+  }
+
+  const data = result.data;
+
+  $('documents-client').textContent = `File: ${openClientName}`;
+  $('documents-bytes-notice').textContent = data.bytesAvailableHere
+    ? 'This surface can fetch document content.'
+    : 'Metadata and the access log only. No route on this page returns document content — not to view, not to export.';
+
+  $('documents-summary').textContent =
+    `${data.total} document(s). You hold Authority Level ${data.actorAuthorityLevel}.`;
+
+  openable(
+    'documents-list',
+    data.documents.map((document_) => ({
+      label: document_.filename,
+      detail:
+        `${document_.kind} — ${document_.contentType} — ${document_.byteSize} bytes` +
+        // `pending` and `scan_unavailable` are written out. Neither means clean, and a tick beside
+        // either would be the shortest possible lie.
+        ` — scan ${document_.scanStatus}` +
+        ` — ${document_.legalHold ? 'LEGAL HOLD, export locked out' : 'no legal hold'}` +
+        ` — retain until ${document_.retainUntil ?? 'no schedule resolved'}` +
+        ` — reading it needs Authority Level ${document_.minimumLevelToRead}` +
+        ` — sha256 ${document_.sha256}`,
+      open: () => {
+        void openAccessLog(document_.id);
+      },
+    })),
+    'No document on this file.',
+  );
+
+  $('section-access-log').hidden = true;
+  notice('');
+  show('view-documents');
+};
+
+const openAccessLog = async (documentId) => {
+  const result = await api.documentAccessLog(documentId);
+  const section = $('section-access-log');
+
+  if (!result.ok) {
+    section.hidden = true;
+    notice(result.reason);
+    return;
+  }
+
+  const data = result.data;
+
+  $('access-log-summary').textContent =
+    `${data.total} access attempt(s): ${data.grantedTotal} granted, ${data.refusedTotal} refused.`;
+
+  list(
+    'access-log-list',
+    data.entries.map(
+      (entry) =>
+        `${entry.at} — ${entry.actorId} — ${entry.action} — ${entry.granted ? 'granted' : 'REFUSED'}` +
+        `${entry.reason === null ? '' : ` (${entry.reason})`}` +
+        ` — ${entry.watermarked ? 'watermarked' : 'not watermarked'}`,
+    ),
+    'Nobody has attempted to read this document.',
+  );
+
+  section.hidden = false;
+  notice('');
+};
+
+// --- 1.4 Pricing, Billing & Offer Management --------------------------------
+
+const enterBilling = async () => {
+  if (openClientId === null) {
+    notice('Open a client file first.');
+    return;
+  }
+
+  const [bill, ladder] = await Promise.all([api.billing(openClientId), api.offers()]);
+  if (!bill.ok) {
+    notice(bill.reason);
+    return;
+  }
+
+  const data = bill.data;
+
+  $('billing-client').textContent = `File: ${openClientName}`;
+  $('billing-summary').textContent = `${data.total} engagement(s).`;
+
+  openable(
+    'billing-engagements',
+    data.engagements.map((engagement) => ({
+      label: engagement.id,
+      detail:
+        `${engagement.status} — started ${engagement.startedOn}` +
+        ` — committed through ${engagement.committedThrough ?? 'no commitment'}` +
+        ` — ${engagement.annualPrepay ? 'annual prepay' : 'not prepaid'}` +
+        ` — outstanding ${engagement.outstandingDisplay ?? 'unavailable'}` +
+        ` — ${
+          engagement.meetsMinimum === null
+            ? 'minimum not determinable'
+            : engagement.meetsMinimum
+              ? 'meets the minimum'
+              : 'below the minimum'
+        }` +
+        ` — ${engagement.unresolvedRefundTotal} unresolved of ${engagement.refundTotal} refund entitlement(s)` +
+        `${engagement.cancelledOn === null ? '' : ` — cancelled ${engagement.cancelledOn}`}`,
+      open: () => {
+        void openEngagement(engagement.id);
+      },
+    })),
+    'No engagement on this file.',
+  );
+
+  $('billing-credit-summary').textContent =
+    `${data.credit.availableDisplay} unspent across ${data.credit.sourcesTotal} payment(s).`;
+  list(
+    'billing-credit',
+    data.credit.sources.map(
+      (source) =>
+        `${source.occurredOn} — engagement ${source.engagementId} — paid ${source.paidDisplay}, drawn ${source.alreadyDrawnDisplay}, available ${source.availableDisplay}`,
+    ),
+    'No unspent payment.',
+  );
+
+  if (ladder.ok) {
+    $('offers-summary').textContent = `${ladder.data.total} offer(s) on the ladder.`;
+    list(
+      'offers-list',
+      ladder.data.offers.map(
+        (offer) =>
+          `Rung ${offer.rung}: ${offer.name} (${offer.key} v${offer.version}) — retainer ${offer.retainerDisplay}` +
+          `, monthly ${offer.monthlyDisplay} for ${offer.committedMonths} month(s)` +
+          `, minimum ${offer.minimumDisplay}` +
+          // Basis points, not a percentage. The stored figure is what the fee is computed from.
+          `, success fee ${offer.successFeeBasisPoints} basis points`,
+      ),
+      'No offer published.',
+    );
+  } else {
+    $('offers-summary').textContent = ladder.reason;
+    list('offers-list', [], 'No offer published.');
+  }
+
+  $('section-engagement').hidden = true;
+  notice('');
+  show('view-billing');
+};
+
+const openEngagement = async (engagementId) => {
+  const result = await api.engagement(engagementId);
+  const section = $('section-engagement');
+
+  if (!result.ok) {
+    section.hidden = true;
+    notice(result.reason);
+    return;
+  }
+
+  const data = result.data;
+
+  $('engagement-meta').textContent =
+    `${data.engagement.id} — ${data.engagement.status} — started ${data.engagement.startedOn}` +
+    ` — committed through ${data.engagement.committedThrough ?? 'no commitment'}` +
+    ` — ${data.engagement.annualPrepay ? 'annual prepay' : 'not prepaid'}` +
+    `${data.engagement.cancelledOn === null ? '' : ` — cancelled ${data.engagement.cancelledOn}`}`;
+
+  // Four numbers, then the fifth that follows from them. A single net figure would answer less than
+  // the components, and a client disputing an invoice is asking about one of the four.
+  $('engagement-balance').textContent =
+    data.balance === null
+      ? data.balanceUnavailableReason
+      : `Charged ${data.balance.chargedDisplay}, paid ${data.balance.paidDisplay}, refunded ${data.balance.refundedDisplay}, credited ${data.balance.creditedDisplay} — outstanding ${data.balance.outstandingDisplay}.`;
+
+  $('engagement-minimum').textContent =
+    data.balance === null
+      ? ''
+      : `Engagement minimum ${data.balance.minimumDisplay} — ${data.balance.meetsMinimum ? 'met' : 'not met'}.`;
+
+  $('engagement-records-summary').textContent = `${data.recordsTotal} billing record(s).`;
+  list(
+    'engagement-records',
+    data.records.map(
+      (record) =>
+        `${record.occurredOn} — ${record.kind} — ${record.amountDisplay} — ${record.description}` +
+        // The APPROVED limit. There is no field anywhere in 1.4 for a requested one, which is the
+        // Seek Capital lesson expressed as an absence rather than as a warning.
+        `${
+          record.approvedCreditLimitDisplay === null
+            ? ''
+            : ` — against approved credit limit ${record.approvedCreditLimitDisplay}`
+        }`,
+    ),
+    'No billing record.',
+  );
+
+  $('engagement-refunds-summary').textContent =
+    `${data.refundsTotal} entitlement(s), ${data.unresolvedRefundTotal} neither paid nor declined.`;
+  list(
+    'engagement-refunds',
+    data.refunds.map(
+      (refund) =>
+        `${refund.trigger} — ${refund.amountDisplay} — ${refund.resolved ?? 'unresolved'} — ${refund.basis}`,
+    ),
+    'No refund entitlement.',
+  );
+
+  if (data.exhibit === null) {
+    $('engagement-exhibit-summary').textContent = data.exhibitUnavailableReason;
+    list('engagement-exhibit', [], 'No exhibit.');
+    $('engagement-exhibit-contingent').textContent = '';
+  } else {
+    $('engagement-exhibit-summary').textContent =
+      `${data.exhibit.linesTotal} line(s). Known total $${data.exhibit.knownTotalDollars} (dollars, not cents). ${data.exhibit.summary}`;
+    list(
+      'engagement-exhibit',
+      data.exhibit.lines.map(
+        (line) =>
+          `${line.label} — ${
+            // A contingent fee has no amount, and "contingent" is the honest word. Rendering it as
+            // $0 would state that the client owes nothing, which is a different claim.
+            line.amount === null ? 'contingent, not yet determinable' : `$${line.amount}`
+          } — ${line.basis} — ${line.whenCharged}`,
+      ),
+      'No line.',
+    );
+    $('engagement-exhibit-contingent').textContent =
+      data.exhibit.contingentLinesTotal === 0
+        ? 'No contingent line.'
+        : `${data.exhibit.contingentLinesTotal} contingent line(s), excluded from the total: ${data.exhibit.contingentLines.join('; ')}`;
+  }
+
+  section.hidden = false;
+  notice('');
+};
+
+// --- 11.11 Founder / Executive Workbench ------------------------------------
+
+const enterWorkbench = async () => {
+  const result = await api.workbench();
+  if (!result.ok) {
+    notice(result.reason);
+    return;
+  }
+
+  const data = result.data;
+
+  $('workbench-decisions-summary').textContent =
+    `${data.decisionsTotal} decision(s), ${data.overdueTotal} overdue. Assembled ${data.generatedAt}.`;
+  list(
+    'workbench-decisions',
+    data.decisions.map(
+      (decision) =>
+        `${decision.urgency} — ${decision.kind} — ${decision.summary}` +
+        // The field that makes this a queue rather than a feed.
+        ` — if nobody acts: ${decision.costOfInaction}` +
+        ` — resolve in ${decision.resolveIn}` +
+        `${decision.dueAt === null ? '' : ` — due ${decision.dueAt}`}`,
+    ),
+    'Nothing needs a founder decision.',
+  );
+
+  $('workbench-period').textContent =
+    `Period ${data.rollup.periodFrom} to ${data.rollup.periodTo}${
+      data.rollup.periodPartial ? ' (partial — the window is not closed)' : ''
+    }.`;
+
+  $('workbench-clients').textContent =
+    `${data.rollup.clients} client(s).` +
+    // `null` is written as "not measured" everywhere below. A missing measurement is not a
+    // measurement of zero, and zero is the value that would read as a finding.
+    ` Healthy share ${data.rollup.healthyShare ?? 'not measured'}.` +
+    ` Compliance target ${
+      data.rollup.meetsComplianceTarget === null
+        ? 'not measured'
+        : data.rollup.meetsComplianceTarget
+          ? 'met'
+          : 'not met'
+    }.` +
+    ` Placement approval rate ${data.rollup.placementApprovalRate ?? 'not measured'}.` +
+    ` Revenue per client ${
+      data.rollup.revenuePerClientCents === null
+        ? 'not measured'
+        : `${data.rollup.revenuePerClientCents} cents`
+    }.` +
+    ` ${data.rollup.openCorrectionObligations} open correction obligation(s).`;
+
+  list(
+    'workbench-compliance',
+    Object.entries(data.rollup.complianceCounts).map(([state, count]) => `${state}: ${count}`),
+    'No compliance distribution produced.',
+  );
+
+  $('workbench-withheld-summary').textContent =
+    data.rollup.withheldTotal === 0
+      ? 'Every metric in the rollup produced a value.'
+      : `${data.rollup.withheldTotal} metric(s) withheld — a metric with no value is not a value of zero:`;
+  list(
+    'workbench-withheld',
+    data.rollup.withheld.map((metric) => `${metric.key}: ${metric.note}`),
+    'None.',
+  );
+
+  $('workbench-health').textContent =
+    `${data.health.overall} — ${data.health.detail} (checked ${data.health.checkedAt})` +
+    // `unmonitored` is counted out loud. Nobody looking is not evidence of health.
+    ` — ${data.health.counts.unmonitored} of ${data.health.componentsTotal} component(s) unmonitored.`;
+  list(
+    'workbench-health-components',
+    data.health.components.map(
+      (component) => `${component.label}: ${component.state} — ${component.detail}`,
+    ),
+    'No component reported.',
+  );
+
+  $('workbench-departments-summary').textContent = `${data.crossDepartmentTotal} department(s).`;
+  list(
+    'workbench-departments',
+    data.crossDepartment.map((entry) => `${entry.department}: ${entry.status}`),
+    'No department reported.',
+  );
+
+  notice('');
+  show('view-workbench');
+};
+
 // --- navigation -------------------------------------------------------------
 
-for (const id of ['nav-overview', 'nav-overview-2']) {
-  $(id).addEventListener('click', () => {
-    void enterOverview();
-  });
-}
+$('nav-overview').addEventListener('click', () => {
+  void enterOverview();
+});
 
-for (const id of ['nav-clients', 'nav-clients-2']) {
-  $(id).addEventListener('click', () => {
-    void enterClients();
-  });
-}
+$('nav-clients').addEventListener('click', () => {
+  void enterClients();
+});
+
+$('nav-approvals').addEventListener('click', () => {
+  void enterApprovals();
+});
+
+$('nav-workbench').addEventListener('click', () => {
+  void enterWorkbench();
+});
 
 $('nav-back').addEventListener('click', () => {
   void enterClients();
 });
+
+$('nav-contracts').addEventListener('click', () => {
+  void enterContracts();
+});
+
+$('nav-documents').addEventListener('click', () => {
+  void enterDocuments();
+});
+
+$('nav-billing').addEventListener('click', () => {
+  void enterBilling();
+});
+
+// The three client-scoped surfaces return to the file they were opened from, not to the list.
+for (const id of ['contracts-back', 'documents-back', 'billing-back']) {
+  $(id).addEventListener('click', () => {
+    void enterClient(openClientId);
+  });
+}
 
 // --- start ------------------------------------------------------------------
 

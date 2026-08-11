@@ -23,6 +23,20 @@
 
     <p id="notice" role="status" hidden></p>
 
+    <!--
+      One navigation, outside the views.
+
+      It used to be copied into each view with a suffixed id per copy, which worked at three views
+      and stops working at nine: every new surface would need a button added to every existing one,
+      and the failure of forgetting is a surface nobody can reach rather than an error.
+    -->
+    <nav id="nav" hidden>
+      <button id="nav-overview" type="button">Overview</button>
+      <button id="nav-clients" type="button">Clients</button>
+      <button id="nav-approvals" type="button">Approvals</button>
+      <button id="nav-workbench" type="button">Workbench</button>
+    </nav>
+
     <!-- Sign in ------------------------------------------------------------ -->
     <main id="view-sign-in">
       <h2>Sign in</h2>
@@ -127,11 +141,6 @@
 
     <!-- Overview ----------------------------------------------------------- -->
     <main id="view-overview" hidden>
-      <nav>
-        <button id="nav-overview" type="button">Overview</button>
-        <button id="nav-clients" type="button">Clients</button>
-      </nav>
-
       <h2>Today</h2>
 
       <section>
@@ -184,11 +193,6 @@
 
     <!-- Clients ------------------------------------------------------------ -->
     <main id="view-clients" hidden>
-      <nav>
-        <button id="nav-overview-2" type="button">Overview</button>
-        <button id="nav-clients-2" type="button">Clients</button>
-      </nav>
-
       <h2>Clients</h2>
 
       <form id="form-search">
@@ -213,11 +217,21 @@
 
     <!-- One client's file --------------------------------------------------- -->
     <main id="view-client" hidden>
-      <nav>
+      <p>
         <button id="nav-back" type="button">Back to clients</button>
-      </nav>
+      </p>
 
       <h2 id="client-name"></h2>
+
+      <!--
+        The three client-scoped surfaces below. Each opens the same file from a different module's
+        point of view, so they take the open client with them rather than asking for one again.
+      -->
+      <p>
+        <button id="nav-contracts" type="button">Contracts &amp; disclosures</button>
+        <button id="nav-documents" type="button">Documents</button>
+        <button id="nav-billing" type="button">Billing</button>
+      </p>
 
       <!-- A listing is the one fact a person opening this page must not have to scroll to find. -->
       <p id="client-do-not-fund" class="alarm" hidden></p>
@@ -361,6 +375,242 @@
           entries and no caveat reads as a clean client.
         -->
         <p id="client-risk-unproduced" class="muted"></p>
+      </section>
+    </main>
+
+    <!-- 2.4 Human Approval Console ------------------------------------------
+      Reads only. Resolving a checkpoint is a write, and the action it would declare does not exist
+      in the catalogue the middleware chain checks - so there is no button, and the page says so
+      rather than leaving somebody to conclude it was forgotten.
+    -->
+    <main id="view-approvals" hidden>
+      <h2>Human approvals</h2>
+
+      <p class="muted">
+        Blueprint 2.4. A checkpoint reaches this queue when a playbook routes to a human — a Needs
+        Review compliance state, a high-risk recommendation, a Do Not Fund override request.
+      </p>
+
+      <form id="form-approvals">
+        <label for="approvals-queue">Queue name</label>
+        <!--
+          A text field rather than a select, and that is a considered exception. Queue names are
+          authored inside playbooks and nothing enumerates them, so a list here would be a list this
+          page made up — which is the failure the served-vocabulary rule exists to prevent, pointed
+          the other way.
+        -->
+        <input id="approvals-queue" name="queue" type="text" autocomplete="off" />
+        <button type="submit">Show queue</button>
+      </form>
+
+      <section>
+        <h3>Open in this queue</h3>
+        <p id="approvals-summary"></p>
+        <ul id="approvals-list"></ul>
+      </section>
+
+      <section>
+        <h3>Past their SLA</h3>
+        <!--
+          Tenant-wide and needs no queue name. 2.2 owns the question of what has breached; this
+          shows its answer rather than comparing a due date against a clock a second time.
+        -->
+        <p id="approvals-breached-summary"></p>
+        <ul id="approvals-breached"></ul>
+      </section>
+
+      <section id="section-approval" hidden>
+        <h3>Checkpoint</h3>
+        <p id="approval-task"></p>
+        <p id="approval-instance"></p>
+        <p id="approval-siblings-summary"></p>
+        <ul id="approval-siblings"></ul>
+        <p id="approval-notifications-summary"></p>
+        <ul id="approval-notifications"></ul>
+        <!-- Named, not implied by an absent button. -->
+        <p id="approval-resolution" class="alarm"></p>
+      </section>
+    </main>
+
+    <!-- 7.3 Contract & Disclosure Builder ------------------------------------ -->
+    <main id="view-contracts" hidden>
+      <p><button id="contracts-back" type="button">Back to the client file</button></p>
+
+      <h2>Contracts &amp; disclosures</h2>
+      <p id="contracts-client"></p>
+
+      <p class="muted">
+        An issued contract is frozen — it is the only evidence of what was agreed, so nothing here
+        edits one. A rule change produces a staleness report and different content in the next
+        document, never an edit to this one.
+      </p>
+
+      <section>
+        <h3>Issued to this client</h3>
+        <p id="contracts-summary"></p>
+        <ul id="contracts-list"></ul>
+      </section>
+
+      <section id="section-contract" hidden>
+        <h3 id="contract-title"></h3>
+        <p id="contract-meta"></p>
+        <!--
+          "Is this still what we sent?" A mismatch means the content model was altered after issue,
+          which for a binding document is the most serious integrity failure available here.
+        -->
+        <p id="contract-integrity" class="alarm"></p>
+        <p id="contract-placeholders"></p>
+        <p id="contract-provenance"></p>
+        <p id="contract-sections-summary"></p>
+        <ul id="contract-sections"></ul>
+      </section>
+
+      <section>
+        <h3>Documents the world moved out from under</h3>
+        <!--
+          Two lists, not one count. A stale state module means the law moved; a superseded template
+          means we changed our own words. The remedy differs, so the triage does.
+        -->
+        <p id="contracts-stale-summary"></p>
+        <ul id="contracts-stale"></ul>
+        <p id="contracts-superseded-summary"></p>
+        <ul id="contracts-superseded"></ul>
+      </section>
+    </main>
+
+    <!-- 3.2 Secure Document Vault -------------------------------------------- -->
+    <main id="view-documents" hidden>
+      <p><button id="documents-back" type="button">Back to the client file</button></p>
+
+      <h2>Documents</h2>
+      <p id="documents-client"></p>
+
+      <!--
+        The sentence this whole surface rests on. Nothing here fetches a document, and that is the
+        design rather than a stage: a console is an invitation, and this is the data class where an
+        invitation costs the most.
+      -->
+      <p id="documents-bytes-notice" class="alarm"></p>
+
+      <section>
+        <h3>On this file</h3>
+        <p id="documents-summary"></p>
+        <ul id="documents-list"></ul>
+      </section>
+
+      <section id="section-access-log" hidden>
+        <h3>Access log</h3>
+        <!--
+          The refusals are the reason this has a page. A pattern of denied cross-tenant or
+          below-level attempts is exactly the signal an audit wants, and it exists only if somebody
+          can see it.
+        -->
+        <p id="access-log-summary"></p>
+        <ul id="access-log-list"></ul>
+      </section>
+    </main>
+
+    <!-- 1.4 Pricing, Billing & Offer Management ------------------------------ -->
+    <main id="view-billing" hidden>
+      <p><button id="billing-back" type="button">Back to the client file</button></p>
+
+      <h2>Billing</h2>
+      <p id="billing-client"></p>
+
+      <section>
+        <h3>Engagements</h3>
+        <p id="billing-summary"></p>
+        <ul id="billing-engagements"></ul>
+      </section>
+
+      <section>
+        <h3>Unspent credit</h3>
+        <!-- What the client has paid that has not been carried forward, refunds already netted. -->
+        <p id="billing-credit-summary"></p>
+        <ul id="billing-credit"></ul>
+      </section>
+
+      <section id="section-engagement" hidden>
+        <h3>Engagement</h3>
+        <p id="engagement-meta"></p>
+
+        <!--
+          Four numbers, never one. "You owe $4,200" answers less than what produced it, and a client
+          disputing an invoice is asking about one of the four.
+        -->
+        <p id="engagement-balance"></p>
+        <p id="engagement-minimum"></p>
+
+        <h4>Billing records</h4>
+        <p id="engagement-records-summary"></p>
+        <ul id="engagement-records"></ul>
+
+        <h4>Refund entitlements</h4>
+        <!--
+          Derived, not stored. The default in 1.4 is to PAY: an entitlement nobody has looked at is
+          money owed that has not moved. Declined ones stay listed — a decline that only its author
+          can see is not a decision anybody can review.
+        -->
+        <p id="engagement-refunds-summary"></p>
+        <ul id="engagement-refunds"></ul>
+
+        <h4>All-in fee exhibit</h4>
+        <!--
+          Amounts here are DOLLARS; every other figure on this page is integer cents. A contingent
+          line carries no amount and is written as contingent — a success fee nobody has earned is
+          not a fee of zero.
+        -->
+        <p id="engagement-exhibit-summary"></p>
+        <ul id="engagement-exhibit"></ul>
+        <p id="engagement-exhibit-contingent"></p>
+      </section>
+
+      <section>
+        <h3>The offer ladder</h3>
+        <p id="offers-summary"></p>
+        <ul id="offers-list"></ul>
+      </section>
+    </main>
+
+    <!-- 11.11 Founder / Executive Workbench ---------------------------------- -->
+    <main id="view-workbench" hidden>
+      <h2>Founder workbench</h2>
+
+      <p class="muted">
+        Only what a founder must decide. 11.4 already has a task queue, and a second inbox means
+        both get ignored — so an item appears here only if it needs a Level 3 human, is blocking
+        something, and carries what happens if nobody acts.
+      </p>
+
+      <section>
+        <h3>Decisions</h3>
+        <p id="workbench-decisions-summary"></p>
+        <ul id="workbench-decisions"></ul>
+      </section>
+
+      <section>
+        <h3>Portfolio</h3>
+        <p id="workbench-period"></p>
+        <p id="workbench-clients"></p>
+        <ul id="workbench-compliance"></ul>
+        <!--
+          The gaps travel with the numbers. A metric with no value is withheld with its note, never
+          rendered as zero: a missing measurement is not a measurement of zero.
+        -->
+        <p id="workbench-withheld-summary"></p>
+        <ul id="workbench-withheld"></ul>
+      </section>
+
+      <section>
+        <h3>System health</h3>
+        <p id="workbench-health"></p>
+        <ul id="workbench-health-components"></ul>
+      </section>
+
+      <section>
+        <h3>Cross-department</h3>
+        <p id="workbench-departments-summary"></p>
+        <ul id="workbench-departments"></ul>
       </section>
     </main>
 
