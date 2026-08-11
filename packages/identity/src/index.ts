@@ -143,4 +143,5 @@ export * from './passwordReset.js';
 export * from './rateLimit.js';
 export * from './sessions.js';
 export * from './staff.js';
+export * from './staffWebauthn.js';
 export * from './webauthn.js';

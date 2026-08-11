@@ -65,6 +65,9 @@ model Actor {
   sessions    ActorSession[]
   invitations ActorInvitation[]
 
+  webauthnCredentials ActorWebauthnCredential[]
+  webauthnChallenges  ActorWebauthnChallenge[]
+
   @@index([tenantId])
   @@map("actors")
   @@schema("identity")
@@ -3791,6 +3794,19 @@ model ActorCredential {
   disabledAt     DateTime?
   disabledReason String?
 
+  /// Set when this account stopped accepting a password and a code.
+  ///
+  /// **With it set, a CORRECT password and a CORRECT code are refused**, in the same sentence every
+  /// other sign-in failure gets. That is the whole security property: an account is as strong as the
+  /// weakest method it will accept, so a security key beside a live password buys nothing against a
+  /// proxy that collects the password and the six digits together (ADR-0029, ADR-0059).
+  ///
+  /// The password hash and the TOTP secret are deliberately LEFT IN PLACE. Unlike a client
+  /// (ADR-0030) there is no email channel to send a reset token down, so the route back is a Level 3
+  /// colleague clearing this column with a recorded basis - which is one act on one row rather than
+  /// a credential that has to be rebuilt from nothing.
+  passwordSignInDisabledAt DateTime?
+
   createdAt DateTime @default(now())
 
   @@unique([tenantId, email])
@@ -3853,5 +3869,153 @@ model ActorInvitation {
 
   @@index([tenantId, actorId])
   @@map("actor_invitations")
+  @@schema("identity")
+}
+
+// ---------------------------------------------------------------------------
+// 11.5 Vendor Activation Governance - ADR-0065
+//
+// One block, added by the launch-readiness slice. Firm-wide rather than per-tenant:
+// the firm signs one DPA with Plaid, and a SOC 2 report is about the vendor, not
+// about a tenant of ours.
+// ---------------------------------------------------------------------------
+
+/// The evidence a vendor gate requires before client financial data may leave this firm.
+///
+/// Specification v2 section 11.4 names three; vendor selection is the fourth because two
+/// of the four vendors have no chosen counterparty yet, and there is nothing to review
+/// the security of until somebody picks one.
+enum VendorEvidenceKind {
+  vendor_selection
+  argus_security_review
+  data_processing_agreement
+  /// SOC 2 Type II, ISO 27001 or equivalent.
+  security_attestation
+
+  @@schema("admin")
+}
+
+/// One piece of evidence, accepted by a named Level 3 human on a date.
+///
+/// **`documentReference` is required and has no empty representation.** A row here without
+/// one would be a tick-box that looks reviewed, which ADR-0065 argues is worse than the
+/// compile-time constant it replaces - the constant at least left a commit.
+///
+/// Insert-only in practice: nothing supersedes or edits a row, and withdrawal writes
+/// `withdrawnAt` rather than deleting, so "what did we rely on in March" survives.
+model VendorEvidence {
+  id String @id @default(uuid()) @db.Uuid
+
+  /// A `VendorId`. Held as text and validated in code against VENDOR_IDS, so adding a
+  /// vendor is a data change rather than a migration.
+  vendor String
+  kind   VendorEvidenceKind
+
+  /// The document this rests on - a report number, an executed agreement reference, an
+  /// attestation id. Required. There is no code path that writes an empty one.
+  documentReference String
+
+  /// Who issued the document. Not us, for three of the four kinds.
+  issuedBy String
+  issuedOn DateTime
+
+  /// When the document stops being evidence. A SOC 2 Type II covers a stated period and
+  /// does not describe the vendor afterwards. Null means the document does not expire,
+  /// which is true of an executed DPA and false of an attestation.
+  validUntil DateTime?
+
+  /// The Level 3 human who accepted it. The level is read from THIS actor at acceptance,
+  /// never from the caller - ADR-0009's rule.
+  acceptedBy String   @db.Uuid
+  acceptedAt DateTime
+
+  /// The tenant the accepting actor belongs to. Carried so an audit can find the person.
+  acceptedInTenantId String @db.Uuid
+
+  /// Withdrawal is a compensating write, never a delete.
+  withdrawnAt     DateTime?
+  withdrawnBy     String?   @db.Uuid
+  withdrawnReason String?
+
+  createdAt DateTime @default(now())
+
+  @@index([vendor, kind, withdrawnAt])
+  @@map("vendor_evidence")
+  @@schema("admin")
+}
+
+/// A WebAuthn credential held by a staff Actor - ADR-0059.
+///
+/// **There is only one kind.** A client may register a key as a second factor OR as a passkey, and
+/// `ClientMfaFactor.discoverable` keeps them apart so a second-factor credential is never promoted
+/// into a password replacement by a later flag. Staff keys exist to REMOVE the password, so they are
+/// registered discoverable and user-verifying or not at all - and the column that would have needed
+/// keeping honest does not exist, because the state it distinguished cannot occur.
+model ActorWebauthnCredential {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+
+  actorId String @db.Uuid
+  actor   Actor  @relation(fields: [actorId], references: [id], onDelete: Cascade)
+
+  /// base64url, as the browser reports it. Unique across the table: one credential, one account.
+  credentialId String @unique
+
+  /// base64url. A **public** key: a leaked database yields the value that verifies a signature,
+  /// never the one that produces it. There is no secret column here and that is the point.
+  publicKey String
+
+  /// The last counter this credential presented. Handed to the verifier, which is what makes it
+  /// enforce that the value advances. Many authenticators never implement one and always report 0.
+  signCount Int @default(0)
+
+  /// Comma-separated hints from registration, so a browser can prompt for the right thing.
+  transports String?
+
+  /// Named by the person who registered it. Two keys are indistinguishable without one, and a key
+  /// somebody cannot identify is one they will not dare remove.
+  label String
+
+  registeredAt DateTime  @default(now())
+  lastUsedAt   DateTime?
+  removedAt    DateTime?
+
+  /// Set when an assertion was refused AND the counter had not advanced, which means two
+  /// authenticators are answering for one credential. Recorded rather than acted on: it explains a
+  /// refusal that has already happened and never permits anything.
+  clonedAt DateTime?
+
+  @@index([tenantId, actorId])
+  @@map("actor_webauthn_credentials")
+  @@schema("identity")
+}
+
+/// A live ceremony challenge for a staff key.
+model ActorWebauthnChallenge {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @db.Uuid
+
+  /// **Null for a passkey sign-in**, which belongs to no actor yet - that is what discoverable
+  /// means. The column admits it rather than carrying a placeholder somebody would later have to be
+  /// told was meaningless.
+  actorId String? @db.Uuid
+  actor   Actor?  @relation(fields: [actorId], references: [id], onDelete: Cascade)
+
+  challenge String                 @unique
+  ceremony  ActorWebauthnCeremony
+
+  issuedAt   DateTime  @default(now())
+  expiresAt  DateTime
+  consumedAt DateTime?
+
+  @@index([tenantId, actorId])
+  @@map("actor_webauthn_challenges")
+  @@schema("identity")
+}
+
+enum ActorWebauthnCeremony {
+  registration
+  authentication
+
   @@schema("identity")
 }

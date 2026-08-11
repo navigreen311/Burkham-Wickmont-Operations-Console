@@ -73,6 +73,21 @@
     },
     {
       "path": "../../packages/partners"
+    },
+    {
+      "path": "../../packages/admin"
+    },
+    {
+      "path": "../../packages/deliverables"
+    },
+    {
+      "path": "../../packages/intelligence"
+    },
+    {
+      "path": "../../packages/interventure"
+    },
+    {
+      "path": "../../packages/warehouse"
     }
   ]
 }

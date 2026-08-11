@@ -40,6 +40,30 @@ export interface ConsoleConfig {
    * whole slice exists to add.
    */
   readonly devActorHeader: boolean;
+  /**
+   * The WebAuthn relying party.
+   *
+   * The portal's reasoning, and it is not repeated here because it is copied rather than adapted:
+   * `rpId` is the domain a credential is scoped to and `origin` is the exact URL a browser must have
+   * been on. **Neither may come from a request.** An RP ID a caller chooses is a caller choosing the
+   * scope of the credential, and **an origin a caller chooses is the phishing resistance switched
+   * off by the party it exists to stop** - which is the entire reason to prefer a key over six
+   * digits, and a deployment configured that way would pass every test and serve every operator
+   * while doing none of what it was built for.
+   *
+   * Both required, no defaults, exactly as `CONSOLE_TENANT_ID` and `CONSOLE_TRUST_PROXY` are.
+   */
+  readonly rpId: string;
+  /**
+   * What the browser shows in the prompt.
+   *
+   * The one value here that DOES take a default, and the distinction is worth stating rather than
+   * leaving as an inconsistency: this is a display string. Getting it wrong produces a confusing
+   * prompt; getting `rpId` or `origin` wrong produces a working system that is not protecting
+   * anybody. A default is safe exactly where being wrong is visible.
+   */
+  readonly rpName: string;
+  readonly origin: string;
 }
 
 export type ConsoleRateLimitStore = 'memory' | 'shared';
@@ -102,6 +126,30 @@ const parseRateLimitStore = (raw: string): ConsoleRateLimitStore => {
   );
 };
 
+/**
+ * Parse `CONSOLE_ORIGIN`.
+ *
+ * An exact origin - scheme, host and port, no path. A trailing path would never match what a browser
+ * reports, and the mismatch shows up as **every key failing** rather than as a configuration error,
+ * which is a long afternoon.
+ */
+const parseOrigin = (raw: string): string => {
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    throw new Error(
+      `CONSOLE_ORIGIN must be an absolute URL such as https://console.example.com; got '${raw}'.`,
+    );
+  }
+  if (url.pathname !== '/' || url.search !== '' || url.hash !== '') {
+    throw new Error(
+      `CONSOLE_ORIGIN must be an origin with no path, such as https://console.example.com; got '${raw}'.`,
+    );
+  }
+  return url.origin;
+};
+
 const optionalInteger = (name: string, fallback: number): number => {
   const raw = process.env[name];
   if (raw === undefined || raw.trim() === '') return fallback;
@@ -148,5 +196,8 @@ export const readConsoleConfig = (): ConsoleConfig => {
     ),
     rateLimitStore: parseRateLimitStore(required('CONSOLE_RATE_LIMIT_STORE')),
     devActorHeader,
+    rpId: required('CONSOLE_RP_ID'),
+    rpName: process.env['CONSOLE_RP_NAME']?.trim() || 'Burkham Wickmont Console',
+    origin: parseOrigin(required('CONSOLE_ORIGIN')),
   };
 };

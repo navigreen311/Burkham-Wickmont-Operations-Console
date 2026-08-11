@@ -12,6 +12,7 @@
     "start": "node dist/server.js"
   },
   "dependencies": {
+    "@bwc/admin": "workspace:*",
     "@bwc/calls": "workspace:*",
     "@bwc/capital": "workspace:*",
     "@bwc/clients": "workspace:*",
@@ -19,11 +20,14 @@
     "@bwc/core": "workspace:*",
     "@bwc/dashboards": "workspace:*",
     "@bwc/db": "workspace:*",
+    "@bwc/deliverables": "workspace:*",
     "@bwc/firewall": "workspace:*",
     "@bwc/graph": "workspace:*",
     "@bwc/http": "workspace:*",
     "@bwc/identity": "workspace:*",
     "@bwc/integration": "workspace:*",
+    "@bwc/intelligence": "workspace:*",
+    "@bwc/interventure": "workspace:*",
     "@bwc/ledger": "workspace:*",
     "@bwc/lenders": "workspace:*",
     "@bwc/middleware": "workspace:*",
@@ -34,6 +38,7 @@
     "@bwc/risk": "workspace:*",
     "@bwc/sales": "workspace:*",
     "@bwc/tenancy": "workspace:*",
+    "@bwc/warehouse": "workspace:*",
     "dotenv": "^16.4.7",
     "express": "^5.1.0",
     "helmet": "^8.1.0"

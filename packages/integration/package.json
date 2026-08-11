@@ -17,7 +17,9 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@bwc/core": "workspace:*"
+    "@bwc/core": "workspace:*",
+    "@bwc/db": "workspace:*",
+    "@bwc/identity": "workspace:*"
   },
   "devDependencies": {
     "typescript": "^5.8.3"

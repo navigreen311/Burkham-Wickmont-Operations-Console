@@ -57,6 +57,9 @@ importers:
 
   apps/api:
     dependencies:
+      '@bwc/admin':
+        specifier: workspace:*
+        version: link:../../packages/admin
       '@bwc/calls':
         specifier: workspace:*
         version: link:../../packages/calls
@@ -78,6 +81,9 @@ importers:
       '@bwc/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@bwc/deliverables':
+        specifier: workspace:*
+        version: link:../../packages/deliverables
       '@bwc/firewall':
         specifier: workspace:*
         version: link:../../packages/firewall
@@ -93,6 +99,12 @@ importers:
       '@bwc/integration':
         specifier: workspace:*
         version: link:../../packages/integration
+      '@bwc/intelligence':
+        specifier: workspace:*
+        version: link:../../packages/intelligence
+      '@bwc/interventure':
+        specifier: workspace:*
+        version: link:../../packages/interventure
       '@bwc/ledger':
         specifier: workspace:*
         version: link:../../packages/ledger
@@ -123,6 +135,9 @@ importers:
       '@bwc/tenancy':
         specifier: workspace:*
         version: link:../../packages/tenancy
+      '@bwc/warehouse':
+        specifier: workspace:*
+        version: link:../../packages/warehouse
       dotenv:
         specifier: ^16.4.7
         version: 16.6.1
@@ -615,6 +630,12 @@ importers:
       '@bwc/core':
         specifier: workspace:*
         version: link:../core
+      '@bwc/db':
+        specifier: workspace:*
+        version: link:../db
+      '@bwc/identity':
+        specifier: workspace:*
+        version: link:../identity
     devDependencies:
       typescript:
         specifier: ^5.8.3
