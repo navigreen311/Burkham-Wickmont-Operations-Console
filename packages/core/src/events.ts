@@ -265,6 +265,10 @@ export const EVENT_TYPES = [
   // types, because reading them as one would hide which happened.
   'identity.client_user.password_sign_in_disabled',
   'identity.client_user.password_sign_in_enabled',
+  // Removing the password outright is a further step than switching it off, and restoring one is
+  // the only route back. Separate types because the states they describe are different.
+  'identity.client_user.password_removed',
+  'identity.client_user.password_restored',
   'identity.client_session.revoked',
 ] as const;
 

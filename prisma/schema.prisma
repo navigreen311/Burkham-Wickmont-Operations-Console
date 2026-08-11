@@ -3292,7 +3292,17 @@ model ClientUser {
   email String
 
   /// `scrypt$N$r$p$salt$hash`. Never returned, never logged, never in a Ledger payload.
+  ///
+  /// Overwritten with a sentinel that cannot verify once the password is removed - `verifyPassword`
+  /// needs six `$`-separated parts beginning `scrypt`, and the sentinel is not that.
   passwordHash String
+
+  /// Set when the account has no password AT ALL - not merely one that no longer signs anybody in.
+  ///
+  /// **Two independent facts.** This column is what every gate reads; the hash is destroyed at the
+  /// same moment so that a column somebody edits back to null cannot resurrect a credential. The
+  /// weaker fact cannot undo the stronger one.
+  passwordRemovedAt DateTime?
 
   displayName String
 

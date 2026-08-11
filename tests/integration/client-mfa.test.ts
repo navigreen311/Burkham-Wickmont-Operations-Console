@@ -23,6 +23,7 @@ import { create as createClient } from '@bwc/clients';
 import { read } from '@bwc/ledger';
 import {
   MFA_MAX_CHALLENGE_ATTEMPTS,
+  byPassword,
   MFA_SECRET_KEY_VARIABLE,
   RECOVERY_CODE_COUNT,
   TOTP_STEP_SECONDS,
@@ -38,6 +39,7 @@ import {
   regenerateRecoveryCodes,
   removeMfaForClient,
   totp,
+  type RelyingParty,
 } from '@bwc/identity';
 import { completeSignInMfa, principalFromToken, signIn } from '@bwc/portal';
 import { cleanupTenant, makeFixture, type Fixture } from '../setup.js';
@@ -47,6 +49,12 @@ let clientId: string;
 
 const NOW = new Date('2026-08-13T10:00:00.000Z');
 const PASSWORD = 'a-long-enough-portal-password';
+const RP: RelyingParty = {
+  id: 'portal.example.com',
+  name: 'Burkham Wickmont',
+  origin: 'https://portal.example.com',
+};
+
 const HUMAN = () => ({ id: fx.human.id, kind: 'human' as const });
 const VERIFICATION = 'Called back on the number on file and confirmed the EIN last four.';
 
@@ -102,7 +110,8 @@ const withAuthenticator = async (
   const confirmed = await confirmMfaEnrolment({
     tenantId: fx.tenant.id,
     clientUserId: userId,
-    password: PASSWORD,
+    confirmation: byPassword(PASSWORD),
+    rp: RP,
     code: totp(secret, at),
     now: at,
   });
@@ -154,7 +163,8 @@ describe('enrolling an authenticator', () => {
     const wrongCode = await confirmMfaEnrolment({
       tenantId: fx.tenant.id,
       clientUserId: userId,
-      password: PASSWORD,
+      confirmation: byPassword(PASSWORD),
+      rp: RP,
       code: '000000',
       now: NOW,
     });
@@ -165,7 +175,8 @@ describe('enrolling an authenticator', () => {
     const wrongPassword = await confirmMfaEnrolment({
       tenantId: fx.tenant.id,
       clientUserId: userId,
-      password: 'not-the-right-password',
+      confirmation: byPassword('not-the-right-password'),
+      rp: RP,
       code: totp(secret, NOW),
       now: NOW,
     });
@@ -414,7 +425,8 @@ describe('recovery codes', () => {
     const fresh = await regenerateRecoveryCodes({
       tenantId: fx.tenant.id,
       clientUserId: userId,
-      password: PASSWORD,
+      confirmation: byPassword(PASSWORD),
+      rp: RP,
       now: NOW,
     });
     if (fresh.status !== 'ok') throw new Error('regenerate failed');
@@ -500,7 +512,8 @@ describe('removing a factor', () => {
     const withoutPassword = await disableMfa({
       tenantId: fx.tenant.id,
       clientUserId: userId,
-      password: 'not-the-right-password',
+      confirmation: byPassword('not-the-right-password'),
+      rp: RP,
       code: totp(secret, at),
       now: at,
     });
@@ -509,7 +522,8 @@ describe('removing a factor', () => {
     const withoutCode = await disableMfa({
       tenantId: fx.tenant.id,
       clientUserId: userId,
-      password: PASSWORD,
+      confirmation: byPassword(PASSWORD),
+      rp: RP,
       code: '000000',
       now: at,
     });
@@ -519,7 +533,8 @@ describe('removing a factor', () => {
     const removed = await disableMfa({
       tenantId: fx.tenant.id,
       clientUserId: userId,
-      password: PASSWORD,
+      confirmation: byPassword(PASSWORD),
+      rp: RP,
       code: totp(secret, at),
       now: at,
     });
@@ -538,7 +553,8 @@ describe('removing a factor', () => {
     const removed = await disableMfa({
       tenantId: fx.tenant.id,
       clientUserId: userId,
-      password: PASSWORD,
+      confirmation: byPassword(PASSWORD),
+      rp: RP,
       code: recoveryCodes[0] as string,
       now: NOW,
     });

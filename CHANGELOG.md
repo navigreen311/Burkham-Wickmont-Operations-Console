@@ -7,6 +7,42 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added - accounts with no password at all (`ai-feature/passwordless-accounts`)
+
+ADR-0029 stopped the password authenticating anybody and deliberately left the hash, naming the
+reason: seven gates asked for it. This closes that half-step. See
+[docs/m11-passwordless-accounts.md](docs/m11-passwordless-accounts.md) and ADR-0030.
+
+- **One type and one function, not seven answers.** `Confirmation` is a union - a password or a
+  passkey - and `confirmIdentity` is the only thing that checks it. **Seven gates each deciding what
+  a good answer looks like is how one of them ends up accepting less than the others.** A union
+  rather than two optional fields, so a call site cannot supply neither, nor both and leave the
+  module to pick.
+- `changeClientPassword` keeps taking the current password, because it is the one gate where the
+  thing being replaced is the thing being asked for. On a passwordless account it refuses.
+- **A passkey confirmation is verified with user verification required** - a confirmation stands in
+  for the password a gate would otherwise have taken, and a touch without a PIN is less than that
+  password. **Found by a surviving mutation:** dropping `requireUserVerification` from the
+  re-authentication path changed no test.
+- **A passkey confirmation IS the second factor.** Two gates asked for a confirmation AND a code,
+  which for a key-only account is asking for something that does not exist. A user-verifying
+  assertion is possession and verification in one act, so asking for a code on top is asking the same
+  category twice. **Found by a test:** a passwordless client could not change their own address.
+- **`removePassword` destroys the hash as well as recording the state.** Two independent facts:
+  `passwordRemovedAt` is what every gate reads, and the hash is overwritten with a value nothing
+  verifies against - **the weaker fact cannot undo the stronger one.** Only after password sign-in is
+  off, and only with two passkeys and an assertion.
+- **Recovery is one recorded act.** A reset has nothing to reset: self-service refuses WITHOUT saying
+  so (distinguishing a passwordless account from an unknown address hands an attacker a list), the
+  staff path says so plainly and names the fix. `restorePassword` is a Level 3 human with a recorded
+  basis who clears both flags and issues a reset token in one call, so the client chooses the
+  password rather than being told one.
+- **Nothing changed for an account that keeps its password**, and a test says so.
+
+**Changed - every credential gate now takes a `Confirmation`** instead of `password: string`, and the
+transport has one reader (`confirmationFrom`) so a route cannot accidentally accept less than its
+neighbour.
+
 ### Added - WebAuthn as a first factor (`ai-feature/passkey-first-factor`)
 
 ADR-0028 made one sign-in path phishing-resistant and left the other exactly as it was. See

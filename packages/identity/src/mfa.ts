@@ -27,7 +27,9 @@ import { EnvKekProvider, decryptField, encryptField, type KekProvider } from '@b
 import { failed, noData, ok, refused, type EventActor, type Outcome } from '@bwc/core';
 import { randomBytes } from 'node:crypto';
 import { findActor } from './index.js';
-import { hashToken, newToken, verifyPassword } from './credentials.js';
+import { hashToken, newToken } from './credentials.js';
+import { confirmIdentity, type Confirmation } from './confirmation.js';
+import type { RelyingParty } from './webauthn.js';
 import { base32Decode, base32Encode, otpauthUri, verifyTotp } from './totp.js';
 
 /** The key protecting TOTP secrets. Separate from `VAULT_KEK`: one key for both would mean a
@@ -260,7 +262,10 @@ export const beginMfaEnrolment = async (input: {
 export const confirmMfaEnrolment = async (input: {
   tenantId: string;
   clientUserId: string;
-  password: string;
+  /** The password, or a passkey where the account has none. */
+  confirmation: Confirmation;
+  /** Needed to accept a passkey confirmation. */
+  rp?: RelyingParty;
   code: string;
   now?: Date;
 }): Promise<Outcome<ConfirmedEnrolment>> => {
@@ -271,12 +276,14 @@ export const confirmMfaEnrolment = async (input: {
   });
   if (!user) return noData(`No client user ${input.clientUserId} is on record.`);
 
-  if (!(await verifyPassword(input.password, user.passwordHash))) {
-    return refused(
-      'That password is not correct.',
-      'Blueprint 11.1 - a credential change needs a credential',
-    );
-  }
+  const confirmed = await confirmIdentity({
+    tenantId: input.tenantId,
+    clientUserId: user.id,
+    confirmation: input.confirmation,
+    ...(input.rp !== undefined ? { rp: input.rp } : {}),
+    ...(input.now !== undefined ? { now: input.now } : {}),
+  });
+  if (confirmed.status !== 'ok') return confirmed as Outcome<never>;
 
   const pending = await db().clientMfaFactor.findFirst({
     where: {
@@ -624,7 +631,10 @@ export const satisfyMfaChallenge = async (input: {
 export const disableMfa = async (input: {
   tenantId: string;
   clientUserId: string;
-  password: string;
+  /** The password, or a passkey where the account has none. */
+  confirmation: Confirmation;
+  /** Needed to accept a passkey confirmation. */
+  rp?: RelyingParty;
   code: string;
   now?: Date;
 }): Promise<Outcome<{ factorId: string }>> => {
@@ -635,12 +645,14 @@ export const disableMfa = async (input: {
   });
   if (!user) return noData(`No client user ${input.clientUserId} is on record.`);
 
-  if (!(await verifyPassword(input.password, user.passwordHash))) {
-    return refused(
-      'That password is not correct.',
-      'Blueprint 11.1 - a credential change needs a credential',
-    );
-  }
+  const confirmed = await confirmIdentity({
+    tenantId: input.tenantId,
+    clientUserId: user.id,
+    confirmation: input.confirmation,
+    ...(input.rp !== undefined ? { rp: input.rp } : {}),
+    ...(input.now !== undefined ? { now: input.now } : {}),
+  });
+  if (confirmed.status !== 'ok') return confirmed as Outcome<never>;
 
   const factor = await activeTotpFactor(input.tenantId, user.id);
   if (!factor) {
@@ -650,13 +662,19 @@ export const disableMfa = async (input: {
     );
   }
 
-  const presented = await verifySecondFactor({
-    tenantId: input.tenantId,
-    clientUserId: user.id,
-    code: input.code,
-    now,
-  });
-  if (presented.status !== 'ok') return presented as Outcome<never>;
+  // **A passkey confirmation already IS the second factor.** It is possession and user verification
+  // in one act (ADR-0029), so asking for a code on top would be asking the same category twice - and
+  // for a key-only account it would be asking for something that does not exist, which is how a
+  // client ends up unable to change their own address.
+  if (confirmed.value.confirmedWith !== 'passkey') {
+    const presented = await verifySecondFactor({
+      tenantId: input.tenantId,
+      clientUserId: user.id,
+      code: input.code,
+      now,
+    });
+    if (presented.status !== 'ok') return presented as Outcome<never>;
+  }
 
   await db().$transaction(async (tx) => {
     await tx.clientMfaFactor.update({
@@ -775,7 +793,10 @@ export const removeMfaForClient = async (input: {
 export const regenerateRecoveryCodes = async (input: {
   tenantId: string;
   clientUserId: string;
-  password: string;
+  /** The password, or a passkey where the account has none. */
+  confirmation: Confirmation;
+  /** Needed to accept a passkey confirmation. */
+  rp?: RelyingParty;
   now?: Date;
 }): Promise<Outcome<{ recoveryCodes: readonly string[] }>> => {
   const now = input.now ?? new Date();
@@ -785,12 +806,14 @@ export const regenerateRecoveryCodes = async (input: {
   });
   if (!user) return noData(`No client user ${input.clientUserId} is on record.`);
 
-  if (!(await verifyPassword(input.password, user.passwordHash))) {
-    return refused(
-      'That password is not correct.',
-      'Blueprint 11.1 - a credential change needs a credential',
-    );
-  }
+  const confirmed = await confirmIdentity({
+    tenantId: input.tenantId,
+    clientUserId: user.id,
+    confirmation: input.confirmation,
+    ...(input.rp !== undefined ? { rp: input.rp } : {}),
+    ...(input.now !== undefined ? { now: input.now } : {}),
+  });
+  if (confirmed.status !== 'ok') return confirmed as Outcome<never>;
 
   if (!(await hasActiveFactor(input.tenantId, user.id))) {
     return refused(

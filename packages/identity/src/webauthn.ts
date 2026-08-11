@@ -29,7 +29,7 @@ import {
   verifyAuthenticationResponse,
   verifyRegistrationResponse,
 } from '@simplewebauthn/server';
-import { verifyPassword } from './credentials.js';
+import { confirmIdentity, type Confirmation } from './confirmation.js';
 import { activeFactorsFor } from './mfa.js';
 
 /** How long a ceremony challenge lives. Long enough to touch a key, short enough not to sit around. */
@@ -148,7 +148,8 @@ export const beginWebauthnRegistration = async (input: {
 export const completeWebauthnRegistration = async (input: {
   tenantId: string;
   clientUserId: string;
-  password: string;
+  /** The password, or a passkey where the account has none. */
+  confirmation: Confirmation;
   label: string;
   response: Record<string, unknown>;
   rp: RelyingParty;
@@ -163,12 +164,14 @@ export const completeWebauthnRegistration = async (input: {
   });
   if (!user) return noData(`No client user ${input.clientUserId} is on record.`);
 
-  if (!(await verifyPassword(input.password, user.passwordHash))) {
-    return refused(
-      'That password is not correct.',
-      'Blueprint 11.1 - a credential change needs a credential',
-    );
-  }
+  const confirmed = await confirmIdentity({
+    tenantId: input.tenantId,
+    clientUserId: user.id,
+    confirmation: input.confirmation,
+    rp: input.rp,
+    now,
+  });
+  if (confirmed.status !== 'ok') return confirmed as Outcome<never>;
 
   const label = input.label.trim();
   if (label.length < 2) {
@@ -531,6 +534,86 @@ export const completePasskeySignIn = async (input: {
   });
 
   return ok({ clientUserId, factorId: factor.id });
+};
+
+/**
+ * Verify an assertion presented to authorise a change rather than to sign in.
+ *
+ * **User verification required**, as a passwordless sign-in is: this stands in for the password a
+ * gate would otherwise have asked for, and a touch without a PIN is less than that password.
+ *
+ * Unlike `verifyWebauthnAssertion` - which backs the second-factor step after a password has already
+ * been given - and unlike `completePasskeySignIn`, which has no account in hand and reads one from
+ * the user handle. Here the account is known and the credential must belong to it.
+ */
+export const verifyReauthentication = async (input: {
+  tenantId: string;
+  clientUserId: string;
+  response: Record<string, unknown>;
+  rp: RelyingParty;
+  now?: Date;
+}): Promise<Outcome<AssertedKey>> => {
+  const now = input.now ?? new Date();
+
+  const generic = refused(
+    'That passkey could not be used.',
+    'Blueprint 11.1 - identity and access',
+  );
+
+  const credentialId = typeof input.response['id'] === 'string' ? input.response['id'] : '';
+  const factor = await db().clientMfaFactor.findFirst({
+    where: {
+      tenantId: input.tenantId,
+      clientUserId: input.clientUserId,
+      kind: 'webauthn',
+      credentialId,
+      removedAt: null,
+      confirmedAt: { not: null },
+    },
+  });
+  if (!factor || factor.publicKey === null || factor.credentialId === null) return generic;
+
+  const challenge = await spendChallenge({
+    tenantId: input.tenantId,
+    clientUserId: input.clientUserId,
+    ceremony: 'authentication',
+    now,
+  });
+  if (challenge === null) return generic;
+
+  let verification;
+  try {
+    verification = await verifyAuthenticationResponse({
+      response: input.response as never,
+      expectedChallenge: challenge,
+      expectedOrigin: input.rp.origin,
+      expectedRPID: input.rp.id,
+      requireUserVerification: true,
+      credential: {
+        id: factor.credentialId,
+        publicKey: new Uint8Array(Buffer.from(factor.publicKey, 'base64url')),
+        counter: factor.signCount ?? 0,
+        ...(factor.transports !== null
+          ? { transports: factor.transports.split(',') as never }
+          : {}),
+      },
+    });
+  } catch {
+    return generic;
+  }
+
+  if (!verification.verified) return generic;
+
+  await db().clientMfaFactor.update({
+    where: { id: factor.id },
+    data: { signCount: verification.authenticationInfo.newCounter },
+  });
+
+  return ok({
+    factorId: factor.id,
+    credentialId: factor.credentialId,
+    userVerified: verification.authenticationInfo.userVerified,
+  });
 };
 
 /** Discoverable credentials on an account. What the passkey-only switch counts. */

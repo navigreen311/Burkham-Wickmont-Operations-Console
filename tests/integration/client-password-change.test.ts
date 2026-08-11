@@ -22,6 +22,7 @@ import { create as createClient } from '@bwc/clients';
 import { read } from '@bwc/ledger';
 import {
   MFA_SECRET_KEY_VARIABLE,
+  byPassword,
   MINIMUM_PASSWORD_LENGTH,
   TOTP_STEP_SECONDS,
   authenticateClientUser,
@@ -37,6 +38,7 @@ import {
   issueSession,
   resolveSession,
   totp,
+  type RelyingParty,
 } from '@bwc/identity';
 import { changePassword, principalFromToken } from '@bwc/portal';
 import { cleanupTenant, makeFixture, type Fixture } from '../setup.js';
@@ -47,6 +49,12 @@ let clientId: string;
 const NOW = new Date('2026-08-15T09:00:00.000Z');
 const PASSWORD = 'a-long-enough-portal-password';
 const REPLACEMENT = 'an-entirely-different-password';
+const RP: RelyingParty = {
+  id: 'portal.example.com',
+  name: 'Burkham Wickmont',
+  origin: 'https://portal.example.com',
+};
+
 const HUMAN = () => ({ id: fx.human.id, kind: 'human' as const });
 const VERIFICATION = 'Called back on the number on file and confirmed the EIN last four.';
 
@@ -341,7 +349,8 @@ describe('where a second factor is enrolled', () => {
     const confirmed = await confirmMfaEnrolment({
       tenantId: fx.tenant.id,
       clientUserId: userId,
-      password: PASSWORD,
+      confirmation: byPassword(PASSWORD),
+      rp: RP,
       code: totp(secret, NOW),
       now: NOW,
     });

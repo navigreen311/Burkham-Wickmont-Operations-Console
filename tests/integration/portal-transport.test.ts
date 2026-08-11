@@ -24,6 +24,7 @@ import {
   TOTP_STEP_SECONDS,
   base32Decode,
   beginMfaEnrolment,
+  byPassword,
   confirmMfaEnrolment,
   enrolClientUser,
   inviteClientUser,
@@ -528,7 +529,7 @@ describe('the second factor over the wire', () => {
     const confirmed = await confirmMfaEnrolment({
       tenantId: fx.tenant.id,
       clientUserId: enrolled.value.id,
-      password: PASSWORD,
+      confirmation: byPassword(PASSWORD),
       code: totp(secret, ENROLLED_AT),
       now: ENROLLED_AT,
     });
@@ -733,7 +734,7 @@ describe('moving an address over the wire', () => {
     const unauthenticated = await call('/portal/email', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ newEmail: 'somewhere@example.com', currentPassword: PASSWORD }),
+      body: JSON.stringify({ newEmail: 'somewhere@example.com', password: PASSWORD }),
     });
     expect(unauthenticated.status).toBe(409);
     expect(unauthenticated.json<{ reason: string }>().reason).toBe('Sign in to continue.');
@@ -748,7 +749,7 @@ describe('moving an address over the wire', () => {
       method: 'POST',
       cookie: sessionCookie(signedIn),
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ newEmail: 'moved@example.com', currentPassword: PASSWORD }),
+      body: JSON.stringify({ newEmail: 'moved@example.com', password: PASSWORD }),
     });
 
     // 501: the change was recorded as pending and nothing delivered the link.

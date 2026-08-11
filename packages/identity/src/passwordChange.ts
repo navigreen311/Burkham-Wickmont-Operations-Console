@@ -72,6 +72,15 @@ export const changeClientPassword = async (input: {
     );
   }
 
+  // A password change needs the CURRENT password specifically, not any confirmation: it is the one
+  // gate where the thing being replaced is the thing being asked for. An account with no password
+  // has nothing to change, and says so.
+  if (user.passwordRemovedAt !== null) {
+    return refused(
+      'This account has no password to change.',
+      'Blueprint 11.1 - identity and access',
+    );
+  }
   if (!(await verifyPassword(input.currentPassword, user.passwordHash))) {
     return refused(
       'That is not your current password.',

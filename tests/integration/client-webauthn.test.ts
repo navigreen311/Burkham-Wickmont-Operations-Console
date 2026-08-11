@@ -19,6 +19,7 @@ import { create as createClient } from '@bwc/clients';
 import { read } from '@bwc/ledger';
 import {
   MFA_SECRET_KEY_VARIABLE,
+  byPassword,
   TOTP_STEP_SECONDS,
   WEBAUTHN_CHALLENGE_MINUTES,
   activeFactorsFor,
@@ -110,7 +111,7 @@ const registerKey = async (
   const done = await completeWebauthnRegistration({
     tenantId: fx.tenant.id,
     clientUserId: userId,
-    password: PASSWORD,
+    confirmation: byPassword(PASSWORD),
     label,
     response: authenticator.register({
       challenge: challengeFrom(offer.value.options),
@@ -171,7 +172,7 @@ describe('registering a key', () => {
     const attempt = await completeWebauthnRegistration({
       tenantId: fx.tenant.id,
       clientUserId: userId,
-      password: 'not-the-right-password',
+      confirmation: byPassword('not-the-right-password'),
       label: 'A key',
       response: softwareAuthenticator().register({
         challenge: challengeFrom(offer.value.options),
@@ -199,7 +200,7 @@ describe('registering a key', () => {
     const attempt = await completeWebauthnRegistration({
       tenantId: fx.tenant.id,
       clientUserId: userId,
-      password: PASSWORD,
+      confirmation: byPassword(PASSWORD),
       label: ' ',
       response: softwareAuthenticator().register({
         challenge: challengeFrom(offer.value.options),
@@ -226,7 +227,7 @@ describe('registering a key', () => {
     const attempt = await completeWebauthnRegistration({
       tenantId: fx.tenant.id,
       clientUserId: userId,
-      password: PASSWORD,
+      confirmation: byPassword(PASSWORD),
       label: 'A key',
       response: softwareAuthenticator().register({
         challenge: challengeFrom(offer.value.options),
@@ -252,7 +253,8 @@ describe('registering a key', () => {
     const confirmed = await confirmMfaEnrolment({
       tenantId: fx.tenant.id,
       clientUserId: userId,
-      password: PASSWORD,
+      confirmation: byPassword(PASSWORD),
+      rp: RP,
       code: totp(secret, NOW),
       now: NOW,
     });
@@ -282,7 +284,7 @@ describe('registering a key', () => {
     const attempt = await completeWebauthnRegistration({
       tenantId: fx.tenant.id,
       clientUserId: second,
-      password: PASSWORD,
+      confirmation: byPassword(PASSWORD),
       label: 'Same key again',
       response: authenticator.register({
         challenge: challengeFrom(offer.value.options),
@@ -473,7 +475,8 @@ describe('signing in with a key', () => {
     const confirmed = await confirmMfaEnrolment({
       tenantId: fx.tenant.id,
       clientUserId: userId,
-      password: PASSWORD,
+      confirmation: byPassword(PASSWORD),
+      rp: RP,
       code: totp(secret, NOW),
       now: NOW,
     });
