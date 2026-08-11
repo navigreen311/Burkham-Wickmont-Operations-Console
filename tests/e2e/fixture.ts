@@ -36,6 +36,21 @@ export const E2E_PASSWORD = 'a-long-enough-portal-password';
 export const E2E_CLIENT_NAME = 'End To End Holdings LLC';
 
 /**
+ * Open the portal.
+ *
+ * **`domcontentloaded`, not `load`.** `load` waits for every subresource, which makes a navigation
+ * depend on a stylesheet finishing rather than on the page being usable - and one Firefox
+ * navigation in CI hung there for the full test timeout while the ones on either side of it did
+ * not. Every spec asserts against an element, and those assertions wait on their own; waiting for
+ * `load` first adds a way to fail that none of them is about.
+ */
+export const openPortal = async (page: {
+  goto: (url: string, options: { waitUntil: 'domcontentloaded' }) => Promise<unknown>;
+}): Promise<void> => {
+  await page.goto('/', { waitUntil: 'domcontentloaded' });
+};
+
+/**
  * A display name carrying markup.
  *
  * The page puts every value on the screen with `textContent`, and this is the value that proves it:

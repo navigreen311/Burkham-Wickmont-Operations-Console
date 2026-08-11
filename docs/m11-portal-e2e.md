@@ -64,9 +64,58 @@ their runtime where it was and makes a failure here say _the page_ rather than a
 test among a thousand. Traces are uploaded on failure only, and kept seven days — **a trace is a copy
 of the page, and this page shows a client's file.**
 
-Chromium only. The virtual authenticator is a CDP feature; a Firefox or WebKit run would cover the
-DOM layer, which is the layer with the least in it, at the cost of two more browser downloads on
-every run.
+**Three engines, and only one can hold a passkey.** The virtual authenticator is a Chrome DevTools
+Protocol feature, so `passkey.spec.ts` **skips itself** on Firefox and WebKit with a stated reason
+rather than quietly not existing there - a reader counting green ticks would otherwise conclude the
+coverage was three times what it is.
+
+On the first three-engine run, **every existing spec passed everywhere and the two new engines found
+nothing.** That is the honest result, and it is why `cross-browser.spec.ts` exists: it holds the
+checks where an engine's own implementation is the thing under test.
+
+| Check                                          | Why an engine is the subject                                                                                                                         |
+| ---------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **An injected inline script does not run**     | `portal-ui.test.ts` can only assert the header was sent. Chromium, Gecko and WebKit each decide separately whether to enforce it                     |
+| **A script from another origin does not load** | What makes "no CDN" a rule rather than a preference                                                                                                  |
+| **The no-WebAuthn fallback**                   | Every ceremony in `portal.js` sits behind a capability check, and the Chromium specs all attach an authenticator - so the guard had never been false |
+
+Allowing `'unsafe-inline'` on the page policy fails the injection test in **all three** engines
+independently, which is what says the test is real rather than vacuous.
+
+### Two things only CI found
+
+**Firefox resolved `localhost` to `::1`.** The harness bound to `127.0.0.1`, which satisfied
+Playwright's own readiness check - Node's fetch picked IPv4 - and then every Firefox navigation hung
+until the test timed out. It now listens on both stacks.
+
+### Firefox hanging on `localhost`, and four attempts at it
+
+About **one Firefox navigation in five** hung in CI until the test timed out - on no particular test,
+while the ones on either side answered in under a second. Chromium and WebKit never did it. It took
+four CI rounds, and the first three guesses were wrong:
+
+| Attempt                                                  | Result                                                                                                                                                                                                     |
+| -------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Listen on **both stacks** rather than `127.0.0.1`        | Did not fix it. Kept anyway - Playwright's readiness check resolved IPv4 while a browser may not, and the harness should answer on whichever `localhost` means                                             |
+| Navigate on **`domcontentloaded`** rather than `load`    | Did not fix it. Kept anyway - `load` waits for every subresource, so it makes a navigation depend on a stylesheet finishing rather than on the page being usable, and every spec waits on its own elements |
+| **`network.dns.disableIPv6`** on Firefox                 | Did not fix it. **Kept only because it is harmless, and it is honestly the weakest of the four**                                                                                                           |
+| **`network.proxy.allow_hijacking_localhost`** on Firefox | Fixed it                                                                                                                                                                                                   |
+
+**Playwright drives Firefox through an internal proxy, and `localhost` bypasses a proxy by default**,
+so a navigation to it took a different path from every other request the harness serves. That is the
+documented knob for exactly this.
+
+The harness cannot simply be addressed by IP instead: **a WebAuthn relying party is a domain, never
+an address**, so the RP ID has to stay `localhost`.
+
+**Evidence, stated plainly:** two consecutive green CI runs of the browser job after the fix. Against
+a roughly one-in-five per-navigation failure that is meaningful rather than conclusive - if it
+returns, this table is where to start, and the fourth row is the one that mattered.
+
+**A passwordless sign-in with two resident credentials is ambiguous.** One spec registered a second
+key, copied from the test below it that genuinely needs two. A passwordless ceremony sends no
+`allowCredentials` at all, so the authenticator is left to choose between them; that passed locally
+and timed out on a slower runner. The test needs exactly one key, so it has one.
 
 **It is also the only job that runs against BUILT packages.** The vitest suites alias `@bwc/*` to
 `src` deliberately - dist would test stale code - so nothing else notices a package that compiles in
@@ -78,7 +127,7 @@ around from an earlier build.
 
 ## Tested
 
-9 specs: 3 passkey, 6 page. `pnpm test:e2e`. The vitest suite is unchanged at **1112** — the two
+13 specs across three engines - **33 runs and 6 explicit skips**. `pnpm test:e2e`. The vitest suite is unchanged at **1112** — the two
 runners never see each other's files (`*.test.ts` against `*.spec.ts`).
 
 | Spec                                        | Asserts                                                                        |
@@ -94,5 +143,5 @@ runners never see each other's files (`*.test.ts` against `*.spec.ts`).
 
 ## Not built
 
-Firefox and WebKit runs. Visual regression. A test for the document download path, which needs a
+Visual regression. A test for the document download path, which needs a
 scanned document in the Vault and is covered server-side by `client-vault-access.test.ts`.

@@ -7,6 +7,25 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added - Firefox and WebKit runs (`ai-feature/e2e-cross-browser`)
+
+- **Three engines, and only one can hold a passkey.** The virtual authenticator is a Chrome DevTools
+  Protocol feature, so `passkey.spec.ts` **skips itself** on Firefox and WebKit with a stated reason
+  rather than quietly not existing there - a reader counting green ticks would otherwise conclude
+  the coverage was three times what it is.
+- **On the first three-engine run, every existing spec passed everywhere and the two new engines
+  found nothing.** That is the honest result, and it is why a new `cross-browser.spec.ts` exists: to
+  hold the checks where an engine's own implementation is the thing under test rather than the
+  page's.
+- **A Content-Security-Policy is enforced by the browser.** `portal-ui.test.ts` can only assert the
+  header was sent; whether an injected inline script actually fails to run is a question about the
+  engine, and each of the three answers it separately. Allowing `'unsafe-inline'` fails that test in
+  **all three** independently, which is what says it is real rather than vacuous.
+- **The no-WebAuthn fallback is the branch other engines are for.** Every ceremony in `portal.js`
+  sits behind a capability check, and the Chromium specs all attach an authenticator - so the guard
+  had never been false. It now is, and the page says so rather than failing silently, and the
+  password path keeps working.
+
 ### Added - browser end-to-end tests (`ai-feature/portal-e2e`)
 
 ADR-0031 named this as the honest gap in the UI slice: "the transforms are tested; the wiring is

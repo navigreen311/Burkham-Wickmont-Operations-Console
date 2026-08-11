@@ -12,7 +12,7 @@
  */
 
 import { expect, test } from '@playwright/test';
-import { E2E_EMAIL, E2E_MESSAGE_WITH_MARKUP, E2E_PASSWORD } from './fixture.js';
+import { E2E_EMAIL, E2E_MESSAGE_WITH_MARKUP, E2E_PASSWORD, openPortal } from './fixture.js';
 
 test.describe('the page runs', () => {
   test('loads its module under the policy and shows the sign-in view', async ({ page }) => {
@@ -23,7 +23,7 @@ test.describe('the page runs', () => {
       if (message.type() === 'error') violations.push(message.text());
     });
 
-    await page.goto('/');
+    await openPortal(page);
 
     await expect(page.getByRole('heading', { name: 'Sign in' })).toBeVisible();
     // The button only does anything if `portal.js` was fetched, parsed and executed - which is the
@@ -34,7 +34,7 @@ test.describe('the page runs', () => {
   });
 
   test('signs in with a password and shows the room', async ({ page }) => {
-    await page.goto('/');
+    await openPortal(page);
     await page.locator('#form-password').getByLabel('Email').fill(E2E_EMAIL);
     await page.locator('#form-password').getByLabel('Password', { exact: true }).fill(E2E_PASSWORD);
     await page.getByRole('button', { name: 'Sign in', exact: true }).click();
@@ -44,7 +44,7 @@ test.describe('the page runs', () => {
   });
 
   test('says what it is withholding rather than omitting it', async ({ page }) => {
-    await page.goto('/');
+    await openPortal(page);
     await page.locator('#form-password').getByLabel('Email').fill(E2E_EMAIL);
     await page.locator('#form-password').getByLabel('Password', { exact: true }).fill(E2E_PASSWORD);
     await page.getByRole('button', { name: 'Sign in', exact: true }).click();
@@ -57,7 +57,7 @@ test.describe('the page runs', () => {
   });
 
   test('refuses a wrong password with the sentence the server chose', async ({ page }) => {
-    await page.goto('/');
+    await openPortal(page);
     await page.locator('#form-password').getByLabel('Email').fill(E2E_EMAIL);
     await page
       .locator('#form-password')
@@ -74,7 +74,7 @@ test.describe('the page runs', () => {
 
 test.describe('nothing reaches the DOM as markup', () => {
   test('renders a message body carrying a tag as text', async ({ page }) => {
-    await page.goto('/');
+    await openPortal(page);
     await page.locator('#form-password').getByLabel('Email').fill(E2E_EMAIL);
     await page.locator('#form-password').getByLabel('Password', { exact: true }).fill(E2E_PASSWORD);
     await page.getByRole('button', { name: 'Sign in', exact: true }).click();
@@ -96,7 +96,7 @@ test.describe('nothing reaches the DOM as markup', () => {
 
 test.describe('the password reset path', () => {
   test('says the same thing for an address that exists and one that does not', async ({ page }) => {
-    await page.goto('/');
+    await openPortal(page);
     await page.getByText('Forgotten your password?').click();
 
     const answers: string[] = [];

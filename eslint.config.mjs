@@ -101,6 +101,16 @@ export default [
     },
   },
   {
+    /**
+     * Browser end-to-end specs. Their `page.evaluate` and `addInitScript` callbacks run in the
+     * PAGE, so `window` is a global there and nowhere else in `tests/`. Declared for these files
+     * only, for the same reason the portal's own page has its own block: where a global is declared
+     * says where it is allowed to be used.
+     */
+    files: ['tests/e2e/**/*.spec.ts'],
+    languageOptions: { globals: { window: 'readonly', document: 'readonly' } },
+  },
+  {
     files: ['tests/**/*.ts'],
     rules: {
       // Tests deliberately construct values the public types forbid, to check runtime behaviour.
