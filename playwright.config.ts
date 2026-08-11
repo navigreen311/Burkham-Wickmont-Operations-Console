@@ -47,7 +47,27 @@ export default defineConfig({
    */
   projects: [
     { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
-    { name: 'firefox', use: { ...devices['Desktop Firefox'] } },
+    {
+      name: 'firefox',
+      use: {
+        ...devices['Desktop Firefox'],
+        launchOptions: {
+          firefoxUserPrefs: {
+            // **Firefox only, and only because of `localhost`.** On a CI runner about one Firefox
+            // navigation in five hung until the test timed out, on no particular test, while the
+            // ones on either side answered in under a second. Changing what the navigation waited
+            // for did not help, which puts it below the page: `localhost` resolves to both `::1`
+            // and `127.0.0.1`, and Firefox is the only one of the three engines that stalls
+            // choosing.
+            //
+            // The RP ID has to stay `localhost` - a WebAuthn relying party is a domain, never an
+            // address - so the harness cannot simply be addressed by IP. Telling Firefox to use one
+            // stack removes the choice.
+            'network.dns.disableIPv6': true,
+          },
+        },
+      },
+    },
     { name: 'webkit', use: { ...devices['Desktop Safari'] } },
   ],
 

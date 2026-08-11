@@ -88,6 +88,15 @@ independently, which is what says the test is real rather than vacuous.
 Playwright's own readiness check - Node's fetch picked IPv4 - and then every Firefox navigation hung
 until the test timed out. It now listens on both stacks.
 
+**Firefox stalls choosing between `::1` and `127.0.0.1`.** About one Firefox navigation in five hung
+in CI until the test timed out, on no particular test, while the ones on either side answered in
+under a second. Two attempts to fix it from above - listening on both stacks, then waiting for
+`domcontentloaded` rather than `load` - **did not help**, which put it below the page. Firefox is the
+only one of the three engines that stalls, and `network.dns.disableIPv6` removes the choice.
+
+The harness cannot simply be addressed by IP instead: **a WebAuthn relying party is a domain, never
+an address**, so the RP ID has to stay `localhost`.
+
 **`load` is the wrong signal to navigate on.** It waits for every subresource, so a navigation
 depends on a stylesheet finishing rather than on the page being usable - and one Firefox navigation
 in CI hung there for the full test timeout while the ones on either side of it did not. Every spec
