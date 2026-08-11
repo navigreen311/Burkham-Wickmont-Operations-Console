@@ -386,18 +386,28 @@ describe('9.1 and 9.2 - a metric with no value keeps its reason', () => {
     }
   });
 
-  it('withholds the placement approval rate and says what would produce it', async () => {
-    // The metric this dashboard has refused since it was built: only approvals are recorded, so a
-    // rate over them reads 100% forever.
+  it('withholds the placement approval rate, now on sample size rather than a missing denominator', async () => {
+    // **The refusal changed reason, and the transport's job is unchanged.**
+    //
+    // This asserted `/100% forever/` when it was written: only approvals were recorded, so the
+    // denominator could only ever equal the numerator and no honest rate existed at any sample
+    // size. 5.5 Funding Outcome Ledger records the ATTEMPT, so a decline is a row and the
+    // denominator is real - see ADR-0041. The sibling assertion in `kpi-dashboards.test.ts` was
+    // updated in that slice; this one was written on a branch that did not have it yet, and the
+    // two only met on main.
+    //
+    // What this test is actually for is unchanged: the metric is null, it is NOT zero, and it
+    // carries a sentence saying what would make it appear. Only the sentence is different, and it
+    // is better - "10 are needed" tells an operator what to do, where "100% forever" told them to
+    // wait for a module that has now shipped.
     const data = dataOf(await call('/api/console/dashboards/executive'));
     const metric = data['placementApprovalRate'] as Record<string, unknown>;
 
     expect(metric['value']).toBeNull();
     expect(metric['value']).not.toBe(0);
-    expect(String(metric['note'])).toMatch(/100% forever/);
-    expect((metric['basis'] as Record<string, unknown>)['unmeasured']).toEqual(
-      expect.arrayContaining([expect.stringContaining('5.5')]),
-    );
+    expect(String(metric['note'])).toMatch(/10 are needed/);
+    // Nothing is awaited any more: the denominator exists, there is just not enough of it yet.
+    expect((metric['basis'] as Record<string, unknown>)['unmeasured']).toEqual([]);
   });
 
   it('lists every withheld metric with its reason, assembled from the metrics themselves', async () => {

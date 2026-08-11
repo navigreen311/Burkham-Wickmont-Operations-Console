@@ -103,8 +103,10 @@ test.describe('9.1 and 9.2 on the page', () => {
     // words. A `?? 0` upstream would put "0" here and the test would fail on the missing phrase.
     const row = metrics.locator('li', { hasText: 'Placement approval rate' });
     await expect(row).toContainText('not measured');
-    // The module's own sentence, carried intact - it is what tells an operator why.
-    await expect(row).toContainText('100% forever');
+    // The module's own sentence, carried intact - it is what tells an operator why. It said
+    // "100% forever" until 5.5 gave 9.1 a denominator; it now says how many decided attempts would
+    // make the figure appear, which is the same discipline pointing at a reachable answer.
+    await expect(row).toContainText('10 are needed');
 
     // And it appears in the withheld list too, so a reader scanning for gaps finds it.
     await expect(page.locator('#dash-executive-withheld')).toContainText('Placement approval rate');
