@@ -27,10 +27,10 @@ batch ships read-only and is reported.**
 The distinction is not "7.2 is important". It is that **7.2 already has a gate, and it is stricter
 than the one the chain would apply**:
 
-| | what it checks |
-| --- | --- |
-| `chain()` step 3 | `actor.authorityLevel >= ACTION_MINIMUM_LEVEL[action]` — a number |
-| ADR-0009 | re-reads the actor from the database, and requires `kind === 'human'` **and** Level 3 **and** a named reviewing counsel **and** a review date **and** a document reference |
+|                  | what it checks                                                                                                                                                             |
+| ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `chain()` step 3 | `actor.authorityLevel >= ACTION_MINIMUM_LEVEL[action]` — a number                                                                                                          |
+| ADR-0009         | re-reads the actor from the database, and requires `kind === 'human'` **and** Level 3 **and** a named reviewing counsel **and** a review date **and** a document reference |
 
 **A Level 3 village agent passes the first and is refused by the second.** So routing activation
 through the chain would not have added a check. It would have placed a weaker one beside a stronger
@@ -50,7 +50,7 @@ tenants**. The route performs the check explicitly.
 Mutation testing says that check is currently redundant: `requireStaff` resolves the session against
 the configured tenant, so no reachable request carries a foreign actor, and removing the check
 leaves every test passing. It stays for the reason ADR-0039 gives about a different pair of guards —
-the redundancy is a property of *this caller*, not of the module, and the module is what a second
+the redundancy is a property of _this caller_, not of the module, and the module is what a second
 caller would meet.
 
 ### The absence is named, not implied
@@ -65,15 +65,15 @@ the distinction principle 9 draws between `not_built` and `no_data` applied to a
 Levels are proposals with the reasoning written out, per ADR-0033's posture. **A person should
 confirm each.**
 
-| Action | Module | Proposed | Why |
-| --- | --- | --- | --- |
-| `activate_state` | 7.2 | **3** | So this route can stop being an exception. The module gate stays regardless — the catalogue entry would add tenant scope and a ledger event, not replace ADR-0009 |
-| `export_evidence_file` | 7.1 | **2** | An export is a copy of a client's whole compliance history leaving the system. Not 3: assembling evidence for a regulator is ordinary compliance work, and friction here means it happens late |
-| `publish_marketing_claim` | 7.4 | **3** | The library is what the Scanner enforces on every outbound message. Publishing to it changes what the firm may say |
-| `govern_capital_provider` | 5.4 | **3** | Approving, suspending or blacklisting a provider decides who may receive a client's application |
-| `record_provider_complaint` | 5.4 | **1** | Recording that somebody complained is not a determination. The asymmetry `trigger_firewall` uses: an unrecorded complaint is the harm |
-| `approve_marketing_claim` / `reject_marketing_claim` | 4.5 | **3** | The Board's decision. 4.5 already reads Level 3 from the recorded actor, so the catalogue entry would match what the module does |
-| `approve_marketing_asset` | 4.5 | **2** | Client-facing content clearing review, beside `send_client_communication` |
+| Action                                               | Module | Proposed | Why                                                                                                                                                                                            |
+| ---------------------------------------------------- | ------ | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `activate_state`                                     | 7.2    | **3**    | So this route can stop being an exception. The module gate stays regardless — the catalogue entry would add tenant scope and a ledger event, not replace ADR-0009                              |
+| `export_evidence_file`                               | 7.1    | **2**    | An export is a copy of a client's whole compliance history leaving the system. Not 3: assembling evidence for a regulator is ordinary compliance work, and friction here means it happens late |
+| `publish_marketing_claim`                            | 7.4    | **3**    | The library is what the Scanner enforces on every outbound message. Publishing to it changes what the firm may say                                                                             |
+| `govern_capital_provider`                            | 5.4    | **3**    | Approving, suspending or blacklisting a provider decides who may receive a client's application                                                                                                |
+| `record_provider_complaint`                          | 5.4    | **1**    | Recording that somebody complained is not a determination. The asymmetry `trigger_firewall` uses: an unrecorded complaint is the harm                                                          |
+| `approve_marketing_claim` / `reject_marketing_claim` | 4.5    | **3**    | The Board's decision. 4.5 already reads Level 3 from the recorded actor, so the catalogue entry would match what the module does                                                               |
+| `approve_marketing_asset`                            | 4.5    | **2**    | Client-facing content clearing review, beside `send_client_communication`                                                                                                                      |
 
 ## Consequences
 

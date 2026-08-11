@@ -168,7 +168,9 @@ test.describe('7.2 bringing a state online', () => {
     await page.locator('#activate-submit').click();
 
     // **THE ASSERTION THIS SPEC EXISTS FOR.**
-    await expect(page.locator('#regulatory-headline')).toContainText(`${ACTIVATED_STATE} is now active`);
+    await expect(page.locator('#regulatory-headline')).toContainText(
+      `${ACTIVATED_STATE} is now active`,
+    );
     await expect(page.locator('#regulatory-state-standing')).toContainText(
       'permits client-facing action',
     );

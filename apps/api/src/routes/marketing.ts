@@ -81,7 +81,11 @@ export const registerMarketingRoutes = (context: ConsoleRouteContext): void => {
 
       // Every disposition seeded to zero, so a disposition with no entries appears as `0` rather
       // than as an absent key the page would render as nothing at all.
-      const byDisposition: Record<string, number> = { approved: 0, banned: 0, requires_disclaimer: 0 };
+      const byDisposition: Record<string, number> = {
+        approved: 0,
+        banned: 0,
+        requires_disclaimer: 0,
+      };
       for (const claim of claims) {
         byDisposition[claim.disposition] = (byDisposition[claim.disposition] ?? 0) + 1;
       }
@@ -174,7 +178,8 @@ export const registerMarketingRoutes = (context: ConsoleRouteContext): void => {
       if (!(await requireStaff(req, res))) return;
 
       const query = req.query as Record<string, unknown>;
-      const state = typeof query['state'] === 'string' && query['state'] !== '' ? query['state'] : undefined;
+      const state =
+        typeof query['state'] === 'string' && query['state'] !== '' ? query['state'] : undefined;
 
       const assets = await assetsFor(
         tenantId,

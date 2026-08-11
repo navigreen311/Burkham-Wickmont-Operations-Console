@@ -63,7 +63,7 @@ most damage: not in the diff, but in the reviewer's ability to tell which branch
 
 **The four surfaces are always visible on the overview rather than being separate views.** A real
 cost: the overview is longer, and a person looking for "what needs me today" now scrolls past the
-regulatory coverage map. The compensating argument is that the coverage map *is* what needs them
+regulatory coverage map. The compensating argument is that the coverage map _is_ what needs them
 today — no state is active — so for now it belongs there on its merits.
 
 **Nothing in this slice can break the existing page.** No shared JavaScript, no shared ids, no edit

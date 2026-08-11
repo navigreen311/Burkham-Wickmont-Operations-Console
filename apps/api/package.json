@@ -14,25 +14,18 @@
   "dependencies": {
     "@bwc/admin": "workspace:*",
     "@bwc/calls": "workspace:*",
-<<<<<<< HEAD
-    "@bwc/claims": "workspace:*",
-=======
     "@bwc/capital": "workspace:*",
->>>>>>> main
+    "@bwc/claims": "workspace:*",
     "@bwc/clients": "workspace:*",
     "@bwc/consent": "workspace:*",
     "@bwc/core": "workspace:*",
     "@bwc/dashboards": "workspace:*",
     "@bwc/db": "workspace:*",
-<<<<<<< HEAD
+    "@bwc/deliverables": "workspace:*",
     "@bwc/evidence": "workspace:*",
     "@bwc/firewall": "workspace:*",
     "@bwc/governance": "workspace:*",
-=======
-    "@bwc/deliverables": "workspace:*",
-    "@bwc/firewall": "workspace:*",
     "@bwc/graph": "workspace:*",
->>>>>>> main
     "@bwc/http": "workspace:*",
     "@bwc/identity": "workspace:*",
     "@bwc/integration": "workspace:*",

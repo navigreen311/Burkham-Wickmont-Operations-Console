@@ -656,9 +656,9 @@ describe('7.2 THE ACTIVATION GATE', () => {
     });
     expect(withdrawn.json['status'], withdrawn.body).toBe('ok');
     expect((withdrawn.json['data'] as Record<string, unknown>)['status']).toBe('withdrawn');
-    expect(
-      (withdrawn.json['data'] as Record<string, unknown>)['permitsClientFacingAction'],
-    ).toBe(false);
+    expect((withdrawn.json['data'] as Record<string, unknown>)['permitsClientFacingAction']).toBe(
+      false,
+    );
 
     // Withdrawal takes effect on the next action with no propagation step, because standing is
     // derived rather than stored.
@@ -904,10 +904,7 @@ describe('4.5 marketing ops', () => {
     // Three outcomes, not two. A queue offering approve-or-reject loses the useful one.
     expect(String(data['outcomesNote'])).toContain('approved as banned');
     expect(data['decisionAvailableHere']).toBe(false);
-    expect(data['requiredActions']).toEqual([
-      'approve_marketing_claim',
-      'reject_marketing_claim',
-    ]);
+    expect(data['requiredActions']).toEqual(['approve_marketing_claim', 'reject_marketing_claim']);
   });
 
   it('carries assets with every state counted, including the empty ones', async () => {
@@ -955,10 +952,7 @@ describe('the view modules keep the rules the page keeps', () => {
   });
 
   it('are served, and named only from the document', async () => {
-    const html = await readFile(
-      join(process.cwd(), 'apps', 'api', 'public', 'index.html'),
-      'utf8',
-    );
+    const html = await readFile(join(process.cwd(), 'apps', 'api', 'public', 'index.html'), 'utf8');
 
     for (const file of ['regulatory.js', 'compliance.js', 'governance.js', 'marketing.js']) {
       expect(html).toContain(`/console/views/${file}`);

@@ -52,7 +52,7 @@ ADR-0038 applied to the Vault, arriving at a different module.
 
 `byDisposition` seeds all three to zero and counts them the same way. There is no "problems" figure.
 `bannedIsAnOutcome: true` and `bannedNote` travel on the response rather than living in the page's
-styling, and the view prints what the library *does* with each disposition rather than grading it:
+styling, and the view prints what the library _does_ with each disposition rather than grading it:
 _"the Scanner blocks any message containing it"_.
 
 The proposal queue carries `outcomesNote` naming **three** outcomes — approved, approved as banned,
@@ -67,7 +67,7 @@ headed "4 approved, 14 problems" would teach an operator to try to clear the ban
 the exact opposite of what 7.4 is for.
 
 **The e2e spec asserts the absence of words.** `#marketing-claims-summary` must not contain
-"problem" or "error". An assertion about what is *not* on a page is weaker than one about what is,
+"problem" or "error". An assertion about what is _not_ on a page is weaker than one about what is,
 and it is the only kind available for a framing.
 
 **A verdict this system does not recognise renders as `unrecognised verdict` rather than as

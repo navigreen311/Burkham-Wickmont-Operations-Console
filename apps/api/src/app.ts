@@ -83,14 +83,6 @@ import {
 } from '@bwc/http';
 import type { Actor } from '@bwc/identity';
 import { readConsoleConfig, type ConsoleConfig } from './config.js';
-<<<<<<< HEAD
-// Compliance and governance surfaces (7.1, 7.2, 7.4, 5.4, 4.5). Each module registers its own
-// routes against the context built at the bottom of `createApp`.
-import { registerComplianceRoutes } from './routes/compliance.js';
-import { registerRegulatoryRoutes } from './routes/regulatory.js';
-import { registerGovernanceRoutes } from './routes/governance.js';
-import { registerMarketingRoutes } from './routes/marketing.js';
-=======
 import { registerAdminRoutes } from './routes/admin.js';
 import { registerCapitalRoutes } from './routes/capital.js';
 import { registerDashboardRoutes } from './routes/dashboards.js';
@@ -103,7 +95,12 @@ import { registerSalesRoutes } from './routes/sales.js';
 import { registerWarehouseRoutes } from './routes/warehouse.js';
 // Staff security keys and the passkey-only switch (ADR-0059).
 import { registerStaffKeyRoutes } from './routes/staffKeys.js';
->>>>>>> main
+// Compliance and governance surfaces (7.1, 7.2, 7.4, 5.4, 4.5). Each module registers its own
+// routes against the context built at the bottom of `createApp`.
+import { registerComplianceRoutes } from './routes/compliance.js';
+import { registerRegulatoryRoutes } from './routes/regulatory.js';
+import { registerGovernanceRoutes } from './routes/governance.js';
+import { registerMarketingRoutes } from './routes/marketing.js';
 
 export interface ConsoleAppDeps {
   readonly config?: ConsoleConfig;
@@ -1091,6 +1088,13 @@ export const createApp = (deps: ConsoleAppDeps = {}): Express => {
   registerInterventureRoutes(routeContext);
   registerWarehouseRoutes(routeContext);
 
+  // Compliance and governance (7.1, 7.2, 7.4, 5.4, 4.5). These carry write forms - activating a
+  // state is a write - so they take `jsonBody`, the way capital does.
+  registerComplianceRoutes({ ...routeContext, jsonBody });
+  registerRegulatoryRoutes({ ...routeContext, jsonBody });
+  registerGovernanceRoutes({ ...routeContext, jsonBody });
+  registerMarketingRoutes({ ...routeContext, jsonBody });
+
   // --- Event Ledger (11.3) ------------------------------------------------
 
   app.get(
@@ -1117,22 +1121,6 @@ export const createApp = (deps: ConsoleAppDeps = {}): Express => {
 
   // --- Composed route modules ---------------------------------------------
 
-<<<<<<< HEAD
-  /**
-   * Surfaces that live in their own files, registered against one context.
-   *
-   * The context carries the four things a route needs and nothing else: who the tenant is, the
-   * clock, the session guard, and the three helpers above. Deliberately not the whole `createApp`
-   * scope — a route module that could reach the limiter or the cookie helpers would be a route
-   * module able to change how authentication works.
-   */
-  const routeContext = { app, tenantId: config.tenantId, now, requireStaff, asyncRoute, param, jsonBody };
-
-  registerComplianceRoutes(routeContext);
-  registerRegulatoryRoutes(routeContext);
-  registerGovernanceRoutes(routeContext);
-  registerMarketingRoutes(routeContext);
-=======
   registerStaffKeyRoutes({
     app,
     tenantId: config.tenantId,
@@ -1147,7 +1135,6 @@ export const createApp = (deps: ConsoleAppDeps = {}): Express => {
       setSessionCookie(res, config, token, expiresAt);
     },
   });
->>>>>>> main
 
   // --- The page -----------------------------------------------------------
 
