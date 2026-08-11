@@ -12,6 +12,18 @@
     -->
     <link rel="stylesheet" href="/console/console.css" />
     <script type="module" src="/console/console.js"></script>
+    <!--
+      One module per panel, each wiring only its own elements. Five scripts rather than one for the
+      reason the panels are five `details` rather than one view: they are independent surfaces, and
+      a parse error in any one of them must not take the other four - or the Console itself - down
+      with it. `type="module"` is deferred by definition, so each runs after the document is parsed
+      and can find the elements it owns.
+    -->
+    <script type="module" src="/console/views/dashboards.js"></script>
+    <script type="module" src="/console/views/capital.js"></script>
+    <script type="module" src="/console/views/graph.js"></script>
+    <script type="module" src="/console/views/sales.js"></script>
+    <script type="module" src="/console/views/partners.js"></script>
   </head>
 
   <body>
@@ -180,6 +192,192 @@
         <p id="obligations-summary"></p>
         <ul id="obligations-list"></ul>
       </section>
+
+      <!--
+        Module surfaces: 5.1/5.6, 9.1/9.2, 1.2, 1.3, 8.1/8.3.
+
+        Five `details` elements rather than five nav destinations. Native disclosure needs no
+        script to open and, more to the point, it cannot fight the view switching in console.js -
+        a sixth top-level view would stay on screen when that file showed a different one, because
+        it knows nothing about these.
+
+        Each panel is loaded by its own module on first open. A panel that failed cannot blank the
+        others: they share no state and no fetch wrapper.
+      -->
+
+      <details id="panel-dashboards">
+        <summary>9.1 Executive KPI and 9.2 Unit Economics</summary>
+        <p id="dash-status"></p>
+        <button id="dash-refresh" type="button">Refresh</button>
+
+        <h4>Compliance distribution — counted per state, never averaged</h4>
+        <ul id="dash-compliance-counts"></ul>
+
+        <h4>Executive metrics</h4>
+        <ul id="dash-executive-list"></ul>
+
+        <h4>Withheld on this dashboard, and why</h4>
+        <ul id="dash-executive-withheld"></ul>
+
+        <h4>Domains 9.1 names that nothing produces yet</h4>
+        <ul id="dash-executive-unproduced"></ul>
+
+        <h4>Unit economics</h4>
+        <ul id="dash-economics-list"></ul>
+
+        <h4>Refused outright — not zero, not hidden</h4>
+        <ul id="dash-economics-refused"></ul>
+
+        <h4>Withheld on this dashboard, and why</h4>
+        <ul id="dash-economics-withheld"></ul>
+
+        <h4>COGS lines 9.2 requires that nothing can measure</h4>
+        <ul id="dash-economics-costs"></ul>
+      </details>
+
+      <details id="panel-capital">
+        <summary>5.1 Capital Stack and 5.6 Cost of Capital</summary>
+
+        <p>
+          There is no capital position store. Ask the stack route for a client and it will say so
+          in its own words:
+        </p>
+        <label for="capital-client-id">Client id</label>
+        <input id="capital-client-id" type="text" autocomplete="off" />
+        <button id="capital-check-stack" type="button">Ask for the stack</button>
+        <p id="capital-stack-refusal"></p>
+
+        <p>
+          What works is the model. Paste a stack as a JSON array of positions — provider, label,
+          kind, creditLimit, outstandingBalance, annualRate, factorRate, cadence, paymentPerPeriod,
+          asOf, and optionally promo and personalGuarantee.
+        </p>
+        <label for="capital-stack-json">Stated stack</label>
+        <textarea id="capital-stack-json" rows="6"></textarea>
+        <button id="capital-model" type="button">Model this stack</button>
+        <p id="capital-status"></p>
+
+        <section id="capital-result" hidden>
+          <p id="capital-basis"></p>
+          <p id="capital-asof"></p>
+          <p id="capital-health-score"></p>
+          <ul id="capital-health-components"></ul>
+          <p id="capital-blended"></p>
+          <p id="capital-obligation"></p>
+
+          <h4>Per position</h4>
+          <ul id="capital-positions"></ul>
+
+          <h4>Promotional windows closing</h4>
+          <ul id="capital-alerts"></ul>
+
+          <h4>Re-stack windows</h4>
+          <ul id="capital-restack"></ul>
+
+          <h4>Personal guarantee exposure</h4>
+          <ul id="capital-pg"></ul>
+
+          <h4>Refinance</h4>
+          <ul id="capital-refinance"></ul>
+        </section>
+      </details>
+
+      <details id="panel-graph">
+        <summary>1.2 Client Household / Entity Graph</summary>
+        <label for="graph-client-id">Client id</label>
+        <input id="graph-client-id" type="text" autocomplete="off" />
+        <button id="graph-load" type="button">Load graph</button>
+        <p id="graph-status"></p>
+
+        <section id="graph-detail" hidden>
+          <p id="graph-summary"></p>
+
+          <h4>Entities</h4>
+          <ul id="graph-entities"></ul>
+
+          <!-- Last four digits only. The plaintext is envelope-encrypted and never sent here. -->
+          <h4>Owners</h4>
+          <ul id="graph-owners"></ul>
+
+          <h4>Guaranteed exposure</h4>
+          <ul id="graph-exposures"></ul>
+          <p id="graph-concentration"></p>
+
+          <h4>Hidden-relationship questions</h4>
+          <ul id="graph-findings"></ul>
+
+          <h4>Graph risk</h4>
+          <p id="graph-risk-band"></p>
+          <ul id="graph-risk-components"></ul>
+
+          <h4>Writes this Console cannot offer</h4>
+          <ul id="graph-blocked"></ul>
+        </section>
+      </details>
+
+      <details id="panel-sales">
+        <summary>1.3 Sales Motion &amp; Engagement Tracking</summary>
+        <p id="sales-status"></p>
+        <button id="sales-refresh" type="button">Refresh</button>
+
+        <h4>Pipeline</h4>
+        <ul id="sales-pipeline"></ul>
+
+        <h4>Idle beyond the inactivity window</h4>
+        <ul id="sales-stale"></ul>
+
+        <h4>Conversion by channel</h4>
+        <ul id="sales-channels"></ul>
+
+        <h4>Why leads were lost</h4>
+        <ul id="sales-losses"></ul>
+
+        <h4>Expansion signals</h4>
+        <ul id="sales-expansion"></ul>
+
+        <h4>Renewal windows</h4>
+        <ul id="sales-renewals"></ul>
+
+        <h4>Writes this Console cannot offer</h4>
+        <ul id="sales-blocked"></ul>
+      </details>
+
+      <details id="panel-partners">
+        <summary>8.1 Partner Portal and 8.3 Certification</summary>
+        <p id="partners-status"></p>
+        <button id="partners-refresh" type="button">Refresh</button>
+
+        <h4>Partners</h4>
+        <ul id="partners-list"></ul>
+
+        <h4>Curriculum</h4>
+        <ul id="partners-curriculum"></ul>
+
+        <h4>Writes this Console cannot offer</h4>
+        <ul id="partners-blocked"></ul>
+
+        <section id="partner-detail" hidden>
+          <h4 id="partner-detail-name"></h4>
+          <p id="partner-detail-status"></p>
+          <p id="partner-detail-standing"></p>
+          <p id="partner-detail-refer"></p>
+
+          <!--
+            8.1's anonymity rule. Below five referrals the stage breakdown is withheld entirely -
+            not zeroed, not banded - and the reason is stated where the counts would be.
+          -->
+          <h5>Referred-client status</h5>
+          <ul id="partner-detail-aggregate"></ul>
+
+          <h5>Outstanding qualifications</h5>
+          <ul id="partner-detail-outstanding"></ul>
+
+          <h5>Curriculum completed</h5>
+          <ul id="partner-detail-completions"></ul>
+
+          <p id="partner-detail-payable"></p>
+        </section>
+      </details>
     </main>
 
     <!-- Clients ------------------------------------------------------------ -->

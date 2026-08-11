@@ -81,6 +81,11 @@ import {
 } from '@bwc/http';
 import type { Actor } from '@bwc/identity';
 import { readConsoleConfig, type ConsoleConfig } from './config.js';
+import { registerCapitalRoutes } from './routes/capital.js';
+import { registerDashboardRoutes } from './routes/dashboards.js';
+import { registerGraphRoutes } from './routes/graph.js';
+import { registerPartnerRoutes } from './routes/partners.js';
+import { registerSalesRoutes } from './routes/sales.js';
 
 export interface ConsoleAppDeps {
   readonly config?: ConsoleConfig;
@@ -1009,6 +1014,28 @@ export const createApp = (deps: ConsoleAppDeps = {}): Express => {
       send(res, result, { trace });
     }),
   );
+
+  // --- Module surfaces (5.1/5.6, 9.1/9.2, 1.2, 1.3, 8.1/8.3) ---------------
+
+  /**
+   * Five read surfaces, each in its own file.
+   *
+   * Registered rather than written inline because this file is already a thousand lines and the
+   * five have nothing to say to each other - they share the session, the clock and the tenant, and
+   * that is the whole of the contract each one declares for itself.
+   *
+   * **Every one of them is reads only**, and not because reads were the easy half. Each of 1.2, 1.3
+   * and 8.1 has working write functions that emit Ledger events, and every one of those must pass
+   * `chain()` with a declared action - which `ACTION_MINIMUM_LEVEL` does not have for any of them.
+   * Each surface reports its own blocked writes in `writes.blocked` rather than showing a button
+   * that cannot work or an absence that reads as "not built". See ADR-0051.
+   */
+  const routeContext = { app, requireStaff, asyncRoute, param, tenantId: config.tenantId, now };
+  registerCapitalRoutes({ ...routeContext, jsonBody });
+  registerDashboardRoutes(routeContext);
+  registerGraphRoutes(routeContext);
+  registerSalesRoutes(routeContext);
+  registerPartnerRoutes(routeContext);
 
   // --- Event Ledger (11.3) ------------------------------------------------
 

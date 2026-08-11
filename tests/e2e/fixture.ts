@@ -92,6 +92,8 @@ export const E2E_CONSOLE_ACCOUNTS = [
   'e2e-operator-placement-ok@example.com',
   'e2e-operator-placement-vocabulary@example.com',
   'e2e-operator-inviter@example.com',
+  /** The five module panels: 5.1/5.6, 9.1/9.2, 1.2, 1.3, 8.1/8.3. Reads only, so one account does. */
+  'e2e-operator-modules@example.com',
 ] as const;
 
 /**
