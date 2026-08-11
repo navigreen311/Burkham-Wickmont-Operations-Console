@@ -27,6 +27,12 @@ env:
   PORTAL_RATE_LIMIT_STORE: memory
   PORTAL_RP_ID: localhost
   PORTAL_ORIGIN: http://localhost
+  # The Console's relying party (ADR-0060). Required with no default, exactly as the portal's
+  # are: an origin a caller could choose is the phishing resistance switched off by the party
+  # it exists to stop. `readConsoleConfig` throws without them, so any test that reads the real
+  # environment needs them here.
+  CONSOLE_RP_ID: localhost
+  CONSOLE_ORIGIN: http://localhost
   INTEGRATION_MODE: stub
 
 jobs:

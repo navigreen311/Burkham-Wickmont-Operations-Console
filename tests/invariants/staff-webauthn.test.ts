@@ -54,7 +54,11 @@ import { cleanupTenant, makeFixture, type Fixture } from '../setup.js';
 let fx: Fixture;
 
 /** The configured relying party. Never a request value - that is the whole point. */
-const RP: RelyingParty = { id: 'localhost', name: 'Burkham Wickmont Console', origin: 'http://localhost' };
+const RP: RelyingParty = {
+  id: 'localhost',
+  name: 'Burkham Wickmont Console',
+  origin: 'http://localhost',
+};
 const PASSWORD = 'a-long-enough-console-password';
 
 /**
@@ -77,7 +81,10 @@ interface StaffAccount {
 }
 
 /** Invite, enrol and confirm - the whole of what ADR-0032 requires before an account exists. */
-const makeStaff = async (label: string, authorityLevel: 0 | 1 | 2 | 3 = 3): Promise<StaffAccount> => {
+const makeStaff = async (
+  label: string,
+  authorityLevel: 0 | 1 | 2 | 3 = 3,
+): Promise<StaffAccount> => {
   const actor = await createActor({
     tenantId: fx.tenant.id,
     kind: 'human',
@@ -154,7 +161,9 @@ const registerKey = async (
     now,
   });
   if (completed.status !== 'ok') {
-    throw new Error(`register: ${completed.status} ${'reason' in completed ? completed.reason : ''}`);
+    throw new Error(
+      `register: ${completed.status} ${'reason' in completed ? completed.reason : ''}`,
+    );
   }
   return authenticator;
 };

@@ -99,7 +99,9 @@ test.describe('a staff security key through a real browser', () => {
     'the virtual authenticator is a Chrome DevTools Protocol feature; Firefox and WebKit have no equivalent',
   );
 
-  test('registers a key, and says the account is still not phishing resistant', async ({ page }) => {
+  test('registers a key, and says the account is still not phishing resistant', async ({
+    page,
+  }) => {
     await attachAuthenticator(page);
     await signInWithPassword(page, 'e2e-operator-key-registers@example.com');
 
@@ -120,7 +122,9 @@ test.describe('a staff security key through a real browser', () => {
     // password still signs it in and a proxy never asks for the key. A page that showed a key count
     // as a finished state would be telling this operator they hold a property they do not.
     await expect(page.locator('#security-posture')).toContainText('Not phishing resistant yet');
-    await expect(page.locator('#security-posture')).toContainText('never the thing a proxy asks for');
+    await expect(page.locator('#security-posture')).toContainText(
+      'never the thing a proxy asks for',
+    );
 
     // And the switch is not offered yet: one key is one lost object away from no way in at all.
     await expect(page.locator('#section-disable-password')).toBeHidden();
