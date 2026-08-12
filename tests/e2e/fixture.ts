@@ -123,6 +123,12 @@ export const E2E_CONSOLE_ACCOUNTS = [
   'e2e-operator-view-workbench@example.com',
   'e2e-operator-view-workflow@example.com',
   'e2e-operator-view-integrations@example.com',
+  // 5.5 and 7.5, the last two panels. ONE PER SPEC - not one per describe, which is the mistake
+  // that keeps getting made: two specs in one block still present two codes in one step.
+  'e2e-operator-view-outcomes-rate@example.com',
+  'e2e-operator-view-outcomes-period@example.com',
+  'e2e-operator-view-retention-holds@example.com',
+  'e2e-operator-view-retention-blocked@example.com',
 ] as const;
 
 /**

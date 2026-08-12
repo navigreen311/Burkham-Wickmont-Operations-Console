@@ -105,6 +105,12 @@
       "path": "../../packages/regulatory"
     },
     {
+      "path": "../../packages/outcomes"
+    },
+    {
+      "path": "../../packages/retention"
+    },
+    {
       "path": "../../packages/billing"
     },
     {

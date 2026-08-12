@@ -34,6 +34,8 @@
     <script type="module" src="/console/views/vault.js"></script>
     <script type="module" src="/console/views/workbench.js"></script>
     <script type="module" src="/console/views/workflow.js"></script>
+    <script type="module" src="/console/views/outcomes.js"></script>
+    <script type="module" src="/console/views/retention.js"></script>
     <script type="module" src="/console/views/integrations.js"></script>
   </head>
 
@@ -763,6 +765,65 @@
 
         <p class="muted">Writes this surface cannot offer:</p>
         <ul id="workflow-blocked"></ul>
+      </section>
+
+
+      <!-- The last two modules with no panel: 5.5 and 7.5. -->
+
+      <section id="section-outcomes">
+        <h3>Funding outcomes — 5.5</h3>
+        <p class="muted">
+          The denominator 9.1 refused to fake. A decline is a row here, so an approval rate has two
+          halves — and below the minimum sample the rate is <strong>withheld</strong>, never shown
+          as zero.
+        </p>
+
+        <label for="outcomes-from">From</label>
+        <input id="outcomes-from" name="from" type="date" />
+        <label for="outcomes-to">To (exclusive)</label>
+        <input id="outcomes-to" name="to" type="date" />
+        <p><button id="outcomes-rate-load" type="button">Load the approval rate</button></p>
+        <p id="outcomes-rate-status"></p>
+        <ul id="outcomes-counts"></ul>
+
+        <p><button id="outcomes-unfunded-load" type="button">Approved and still unfunded</button></p>
+        <p id="outcomes-unfunded-status"></p>
+        <ul id="outcomes-unfunded"></ul>
+
+        <label for="outcomes-client-id">Client id</label>
+        <input id="outcomes-client-id" name="clientId" type="text" />
+        <p><button id="outcomes-client-load" type="button">Load attempts</button></p>
+        <p id="outcomes-client-status"></p>
+        <ul id="outcomes-attempts"></ul>
+
+        <p class="muted">Writes this surface cannot offer:</p>
+        <ul id="outcomes-blocked"></ul>
+      </section>
+
+      <section id="section-retention">
+        <h3>Legal hold and retention — 7.5</h3>
+        <p class="muted">
+          A hold is a matter, not a flag on a document. <strong>An overdue review does not release a
+          hold</strong> — records being destroyed because a date passed is the failure this points
+          away from.
+        </p>
+
+        <p><button id="retention-holds-load" type="button">Load holds in force</button></p>
+        <p id="retention-holds-status"></p>
+        <ul id="retention-holds"></ul>
+
+        <p><button id="retention-requests-load" type="button">Load undecided deletion requests</button></p>
+        <p id="retention-requests-status"></p>
+        <ul id="retention-requests"></ul>
+
+        <label for="retention-client-id">Client id</label>
+        <input id="retention-client-id" name="clientId" type="text" />
+        <p><button id="retention-client-load" type="button">Can this client be deleted?</button></p>
+        <p id="retention-client-status"></p>
+        <ul id="retention-client-requests"></ul>
+
+        <p class="muted">Writes this surface cannot offer:</p>
+        <ul id="retention-blocked"></ul>
       </section>
 
       <section id="section-regulatory">
