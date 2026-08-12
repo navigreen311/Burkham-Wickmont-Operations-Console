@@ -17,3 +17,4 @@ export * from './engine.js';
 export * from './scheduler.js';
 export * from './listener.js';
 export * from './worker.js';
+export * from './seed.js';
