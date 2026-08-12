@@ -14,13 +14,13 @@ Message templates (4.1) were empty too, so there was nothing to send even if sen
 
 ## What is here
 
-| | |
-| --- | --- |
-| `packages/claims/src/seed.ts` | 108 banned and requires-disclaimer entries, each with its rationale, plus the ten named disclosure constants |
-| `packages/claims/src/proposed.ts` | 10 claims worth approving, submitted to 4.5's queue. **None is published.** |
-| `packages/comms/src/seed.ts` | 9 message templates for the ordinary sends, scanned before they are stored |
-| `tests/integration/claim-library-seed.test.ts` | 33 tests |
-| `tests/integration/message-template-seed.test.ts` | 18 tests |
+|                                                   |                                                                                                              |
+| ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| `packages/claims/src/seed.ts`                     | 108 banned and requires-disclaimer entries, each with its rationale, plus the ten named disclosure constants |
+| `packages/claims/src/proposed.ts`                 | 10 claims worth approving, submitted to 4.5's queue. **None is published.**                                  |
+| `packages/comms/src/seed.ts`                      | 9 message templates for the ordinary sends, scanned before they are stored                                   |
+| `tests/integration/claim-library-seed.test.ts`    | 33 tests                                                                                                     |
+| `tests/integration/message-template-seed.test.ts` | 18 tests                                                                                                     |
 
 ## Three rules that govern the whole slice
 

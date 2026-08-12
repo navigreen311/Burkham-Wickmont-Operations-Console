@@ -242,8 +242,14 @@ describe('the library does not block the firm own compliance prose', () => {
       'the authorization disclosure',
       'No application is submitted to any provider without the client written authorization for that specific application.',
     ],
-    ['a true statement about what cannot be removed', 'Negative items cannot be removed by anyone, including us.'],
-    ['a true statement about approval', 'There is no assurance that any application will be approved.'],
+    [
+      'a true statement about what cannot be removed',
+      'Negative items cannot be removed by anyone, including us.',
+    ],
+    [
+      'a true statement about approval',
+      'There is no assurance that any application will be approved.',
+    ],
   ])('leaves %s clean', (_name, text) => {
     expect(scanText(text, library).verdict).toBe('clean');
   });

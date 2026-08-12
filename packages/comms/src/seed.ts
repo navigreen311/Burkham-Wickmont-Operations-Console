@@ -330,7 +330,9 @@ export const seedMessageTemplates = async (
     return refused(
       `${findings.length} seeded message template problem(s), so none was published: ${findings
         .map((finding) => `'${finding.key}' (${finding.disposition}: '${finding.phrase}')`)
-        .join(', ')}. A template is sent many times, so a claim-library problem in one is a problem in every send it produces.`,
+        .join(
+          ', ',
+        )}. A template is sent many times, so a claim-library problem in one is a problem in every send it produces.`,
       'Blueprint 4.1 with 4.2 and 7.4 - a template that cannot pass the scanner is not a template',
     );
   }

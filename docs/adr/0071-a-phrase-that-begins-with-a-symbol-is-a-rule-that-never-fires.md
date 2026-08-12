@@ -17,8 +17,8 @@ return new RegExp(`\\b${escaped}\\b`, 'gi');
 
 `\b` is a transition between a word character and a non-word character. A phrase beginning with `$`
 therefore requires a **word character immediately before the `$`** for the boundary to exist. In
-"you qualify for $100K" the character before `$` is a space, so there is no transition, and the
-pattern does not match. The same is true at the other end for a phrase ending in `%` or `+`.
+"you qualify for $100K" the character before `$`is a space, so there is no transition, and the
+pattern does not match. The same is true at the other end for a phrase ending in`%`or`+`.
 
 This was established by running the scanner, not by reading it:
 
@@ -59,7 +59,7 @@ asserted rather than reviewed.**
 
 `inertPhrases()` in `packages/claims/src/seed.ts` returns every entry failing the rule.
 `tests/integration/claim-library-seed.test.ts` asserts it is empty for the founding library, and a
-second test *demonstrates* the failure - constructing a `$100K` entry, scanning text containing
+second test _demonstrates_ the failure - constructing a `$100K` entry, scanning text containing
 `$100K`, and asserting the result is `clean` with `libraryEntriesChecked: 1`.
 
 The demonstration matters more than the assertion. A test that says "no phrase starts with a symbol"

@@ -14,8 +14,9 @@ a banned phrase in a template would be caught.
 
 Caught **every time**, which is the problem. A template is not a message. It is a message that will
 be sent many times, so a banned phrase in one template is a banned phrase in every send it produces
+
 - a defect that reproduces at the rate the business communicates, discovered by an operator who
-cannot fix it because the template is stored and the send is blocked.
+  cannot fix it because the template is stored and the send is blocked.
 
 There is a second-order failure too. Step 7 blocking a send is indistinguishable from a
 misconfiguration at the moment it happens, and the pressure at that moment is to get the message
@@ -57,7 +58,7 @@ template and phrase, so the report is actionable in one pass.
 > we do not control what the partner adds after we approve it, so "they will attach it" is a hope
 > rather than a control.
 
-For a template the argument is stronger, because there is no later step that *could* add one. The
+For a template the argument is stronger, because there is no later step that _could_ add one. The
 seed applies the same `text.includes(disclosure)` check 8.1 and 4.5 apply, and treats a missing
 disclosure as a finding that blocks the batch.
 

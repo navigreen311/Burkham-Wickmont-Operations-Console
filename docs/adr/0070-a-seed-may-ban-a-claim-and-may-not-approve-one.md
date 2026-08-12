@@ -34,7 +34,7 @@ The asymmetry is about **who finds out when the entry is wrong.**
 
 A wrong ban surfaces immediately and cheaply. Somebody tries to write the phrase, the scanner blocks
 it, and they arrive at the Compliance Review Board holding the exact sentence they wanted and a
-reason they want it. The complaint *is* the correction path, and it arrives with better information
+reason they want it. The complaint _is_ the correction path, and it arrives with better information
 than the original decision had. Over-banning costs a conversation.
 
 A wrong approval surfaces never. The phrase is permitted, so nothing blocks it, so nobody queries
