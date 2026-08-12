@@ -14,6 +14,7 @@
  * Every value reaches the DOM through `textContent`.
  */
 
+import { renderAvailable, renderWrites } from './writes.js';
 const call = async (path) => {
   const response = await fetch(path, { credentials: 'same-origin' });
   const payload = await response.json().catch(() => ({ status: 'failed', reason: 'No response.' }));
@@ -69,6 +70,7 @@ const loadLadder = async () => {
   }
   status.textContent = `${result.data.rungs.length} published rung(s).`;
   blocked($('billing-blocked'), result.data.writes);
+  renderAvailable('billing-available', result.data.writes?.available);
 };
 
 const loadClient = async () => {
@@ -111,7 +113,65 @@ const loadClient = async () => {
   ].join(' ');
 
   blocked($('billing-blocked'), result.data.writes);
+  renderAvailable('billing-available', result.data.writes?.available);
 };
 
 $('billing-ladder-load').addEventListener('click', () => void loadLadder());
 $('billing-client-load').addEventListener('click', () => void loadClient());
+
+/**
+ * The money controls.
+ *
+ * Amounts are integer cents everywhere in this system, and the field asks for cents rather than
+ * accepting a decimal and rounding it. A page that quietly turned 1234.56 into cents would be the
+ * one place a rounding rule lived outside the module that owns money.
+ */
+renderWrites('billing-writes', [
+  {
+    id: 'billing-engage',
+    capability: 'Start an engagement',
+    action: 'manage_engagement',
+    note: 'Commits this client to a fee on the rung named.',
+    buttonLabel: 'Start the engagement',
+    done: 'Engagement started.',
+    fields: [
+      { name: 'clientId', label: 'Client id' },
+      { name: 'offerKey', label: 'Offer key', placeholder: 'foundation' },
+      { name: 'startedOn', label: 'Started on', type: 'date' },
+    ],
+    path: () => '/api/console/billing/engagements',
+    body: (v) => v,
+  },
+  {
+    id: 'billing-cancel',
+    capability: 'Cancel an engagement',
+    action: 'manage_engagement',
+    note: 'Ends the commercial relationship, so it carries a reason.',
+    danger: true,
+    buttonLabel: 'Cancel the engagement',
+    done: 'Engagement cancelled.',
+    fields: [
+      { name: 'engagementId', label: 'Engagement id' },
+      { name: 'reason', label: 'Reason' },
+      { name: 'cancelledOn', label: 'Cancelled on', type: 'date' },
+    ],
+    path: (v) =>
+      `/api/console/billing/engagements/${encodeURIComponent(v.engagementId)}/cancellation`,
+    body: (v) => ({ reason: v.reason, cancelledOn: v.cancelledOn }),
+  },
+  {
+    id: 'billing-credit',
+    capability: 'Apply a credit',
+    action: 'manage_engagement',
+    note: 'Money. Integer CENTS, and the module refuses anything that is not a positive whole number of them.',
+    buttonLabel: 'Apply the credit',
+    done: 'Credit applied.',
+    fields: [
+      { name: 'engagementId', label: 'Engagement id' },
+      { name: 'amountCents', label: 'Amount in CENTS' },
+      { name: 'reason', label: 'Reason' },
+    ],
+    path: (v) => `/api/console/billing/engagements/${encodeURIComponent(v.engagementId)}/credit`,
+    body: (v) => ({ amountCents: Number(v.amountCents), reason: v.reason }),
+  },
+]);

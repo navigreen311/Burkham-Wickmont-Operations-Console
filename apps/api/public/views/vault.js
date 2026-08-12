@@ -13,6 +13,7 @@
  * Every value reaches the DOM through `textContent`.
  */
 
+import { renderAvailable, renderWrites } from './writes.js';
 const call = async (path) => {
   const response = await fetch(path, { credentials: 'same-origin' });
   const payload = await response.json().catch(() => ({ status: 'failed', reason: 'No response.' }));
@@ -82,6 +83,7 @@ const loadDocuments = async () => {
 
   status.textContent = `${summary.total} document(s), ${summary.onLegalHold} on legal hold.`;
   blocked($('vault-blocked'), result.data.writes);
+  renderAvailable('vault-available', result.data.writes?.available);
 };
 
 const loadAccessLog = async () => {
@@ -122,3 +124,66 @@ const loadAccessLog = async () => {
 
 $('vault-load').addEventListener('click', () => void loadDocuments());
 $('vault-log-load').addEventListener('click', () => void loadAccessLog());
+
+/**
+ * The document-level controls.
+ *
+ * `remove` is the one that destroys evidence, and the module refuses it while a legal hold is in
+ * force - which is the check that matters, because the reason to destroy a document and the reason
+ * somebody held it are usually the same reason.
+ */
+renderWrites('vault-writes', [
+  {
+    id: 'vault-hold',
+    capability: 'Place a legal hold on a document',
+    action: 'place_legal_hold',
+    note: 'The same action 7.5 uses for a matter-wide hold, applied at file grain.',
+    buttonLabel: 'Place the hold',
+    done: 'Hold placed on the document.',
+    fields: [
+      { name: 'documentId', label: 'Document id' },
+      { name: 'reason', label: 'Reason' },
+    ],
+    path: (v) => `/api/console/vault/documents/${encodeURIComponent(v.documentId)}/legal-hold`,
+    body: (v) => ({ reason: v.reason }),
+  },
+  {
+    id: 'vault-release',
+    capability: 'Release a document hold',
+    action: 'release_legal_hold',
+    note: 'Puts the document back on a schedule that destroys it.',
+    danger: true,
+    buttonLabel: 'Release the hold',
+    done: 'Hold released.',
+    fields: [{ name: 'documentId', label: 'Document id' }],
+    path: (v) =>
+      `/api/console/vault/documents/${encodeURIComponent(v.documentId)}/legal-hold/release`,
+    body: () => ({}),
+  },
+  {
+    id: 'vault-retention',
+    capability: 'Set a retention schedule',
+    action: 'set_document_retention',
+    note: 'One decision executed for years: after this date the document may be destroyed without anybody deciding again.',
+    buttonLabel: 'Set the schedule',
+    done: 'Retention schedule set.',
+    fields: [
+      { name: 'documentId', label: 'Document id' },
+      { name: 'retainUntil', label: 'Retain until', type: 'date' },
+    ],
+    path: (v) => `/api/console/vault/documents/${encodeURIComponent(v.documentId)}/retention`,
+    body: (v) => ({ retainUntil: v.retainUntil }),
+  },
+  {
+    id: 'vault-remove',
+    capability: 'Remove a document',
+    action: 'remove_vault_document',
+    note: 'IRREVERSIBLE, and it removes evidence. The artifact set here is what the firm would produce if asked to show its work. Refused while a legal hold is in force.',
+    danger: true,
+    buttonLabel: 'Remove the document',
+    done: 'Document removed.',
+    fields: [{ name: 'documentId', label: 'Document id' }],
+    path: (v) => `/api/console/vault/documents/${encodeURIComponent(v.documentId)}/removal`,
+    body: () => ({}),
+  },
+]);

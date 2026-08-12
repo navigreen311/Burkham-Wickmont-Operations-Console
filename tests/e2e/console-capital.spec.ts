@@ -244,10 +244,13 @@ test.describe('1.2 on the page', () => {
     const blocked = page.locator('#graph-blocked');
     await expect(blocked).not.toContainText('Reveal an SSN or EIN');
 
-    // **The property that has not changed.** The API can now authorise a reveal; this PAGE still
-    // has no control for one, and no identifier reaches it. The page rendering an SSN is a
-    // separate decision from the API being able to return one, and it has not been taken.
-    await expect(page.getByRole('button', { name: /reveal/i })).toHaveCount(0);
+    // The control exists now, and it states what it costs before it is pressed: a purpose is
+    // required, and it is recorded against the reveal.
+    await expect(page.locator('#write-graph-ssn-submit')).toBeVisible();
+    await expect(page.locator('#graph-writes')).toContainText('purpose is required');
+
+    // **The property that has not changed.** Nothing has been revealed, so no identifier is on the
+    // page. The control being present is not the same as it having been used.
     await expect(page.locator('#panel-graph')).not.toContainText('123456789');
   });
 });

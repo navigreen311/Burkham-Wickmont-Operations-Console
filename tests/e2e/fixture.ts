@@ -129,6 +129,8 @@ export const E2E_CONSOLE_ACCOUNTS = [
   'e2e-operator-view-outcomes-period@example.com',
   'e2e-operator-view-retention-holds@example.com',
   'e2e-operator-view-retention-blocked@example.com',
+  // Batch A: presses a write control and reads the refusal the module produced.
+  'e2e-operator-write-control@example.com',
 ] as const;
 
 /**

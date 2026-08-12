@@ -12,6 +12,7 @@
  * Every value reaches the DOM through `textContent`.
  */
 
+import { renderAvailable, renderWrites } from './writes.js';
 const call = async (path) => {
   const response = await fetch(path, { credentials: 'same-origin' });
   const payload = await response.json().catch(() => ({ status: 'failed', reason: 'No response.' }));
@@ -68,6 +69,7 @@ const loadClauses = async () => {
       : `${result.data.clauses.length} clause(s) in force in ${result.data.jurisdiction}.`;
 
   blocked($('contracts-blocked'), result.data.writes);
+  renderAvailable('contracts-available', result.data.writes?.available);
 };
 
 const loadHistory = async () => {
@@ -128,3 +130,49 @@ const loadExhibit = async () => {
 $('contracts-clause-load').addEventListener('click', () => void loadClauses());
 $('contracts-history-load').addEventListener('click', () => void loadHistory());
 $('contracts-exhibit-load').addEventListener('click', () => void loadExhibit());
+
+/**
+ * The contract controls.
+ *
+ * Generating runs the jurisdiction gate first, so a state the firm may not act in never has a
+ * document computed for it - the refusal names the state rather than producing a contract nobody
+ * may send.
+ */
+renderWrites('contracts-writes', [
+  {
+    id: 'contracts-clause',
+    capability: 'Publish a clause',
+    action: 'publish_contract_clause',
+    note: 'Wording that lands in every contract generated after it, including ones nobody re-reads. A citation is required.',
+    buttonLabel: 'Publish the clause',
+    done: 'Clause published.',
+    fields: [
+      { name: 'key', label: 'Clause key' },
+      { name: 'text', label: 'Text' },
+      { name: 'citation', label: 'Citation' },
+      { name: 'jurisdiction', label: 'Jurisdiction (blank for all)' },
+    ],
+    path: () => '/api/console/contracts/clauses',
+    body: (v) => ({
+      key: v.key,
+      text: v.text,
+      citation: v.citation,
+      ...(v.jurisdiction ? { jurisdiction: v.jurisdiction } : {}),
+    }),
+  },
+  {
+    id: 'contracts-generate',
+    capability: 'Generate a contract',
+    action: 'generate_client_contract',
+    note: 'A document a client signs.',
+    buttonLabel: 'Generate',
+    done: 'Contract generated.',
+    fields: [
+      { name: 'engagementId', label: 'Engagement id' },
+      { name: 'clientId', label: 'Client id' },
+      { name: 'state', label: 'State', placeholder: 'NY' },
+    ],
+    path: (v) => `/api/console/contracts/engagements/${encodeURIComponent(v.engagementId)}/contract`,
+    body: (v) => ({ clientId: v.clientId, state: v.state }),
+  },
+]);
