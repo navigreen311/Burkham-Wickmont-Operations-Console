@@ -79,3 +79,12 @@ missing** — these numbers were never used.
 | 0064 | [A surface over a historical store has no "today"](0064-a-surface-over-a-historical-store-has-no-today.md)                                                      |
 | 0065 | [Vendor activation is a recorded governance act, not a constant](0065-vendor-activation-is-a-recorded-governance-act.md)                                        |
 | 0066 | [The first credential comes from outside, and the evidence form does not exist yet](0066-the-first-credential-and-the-form-that-is-not-there.md)                |
+| 0067 | [A playbook is a proposal about how a firm works, so it says which parts nobody proposed](0067-a-playbook-is-a-proposal-about-how-a-firm-works.md)              |
+| 0068 | [One new template, because the playbooks produce one](0068-one-template-because-the-playbook-produces-one.md)                                                   |
+| 0069 | [Nothing here happens by itself, including being recorded](0069-nothing-here-happens-by-itself-including-being-recorded.md)                                     |
+| 0070 | [A seed may ban a claim and may not approve one](0070-a-seed-may-ban-a-claim-and-may-not-approve-one.md)                                                        |
+| 0071 | [A phrase that begins with a symbol is a rule that never fires](0071-a-phrase-that-begins-with-a-symbol-is-a-rule-that-never-fires.md)                          |
+| 0072 | [A template is scanned before it is stored, and carries its own disclosure](0072-a-template-is-scanned-before-it-is-stored.md)                                  |
+| 0073 | [A published draft ladder beats an empty one, and round numbers beat researched-looking ones](0073-a-published-draft-ladder-beats-an-empty-one.md)              |
+| 0074 | [A curriculum seed must not decertify the network, and it does not assert a sensitivity](0074-a-curriculum-seed-must-not-decertify-the-network.md)              |
+| 0075 | [A seed runs twice, because that is what people do](0075-a-seed-runs-twice-because-that-is-what-people-do.md)                                                   |

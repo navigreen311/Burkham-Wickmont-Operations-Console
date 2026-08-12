@@ -7,6 +7,55 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added - the modules were built, and now they hold something (`ai-feature/seed-*`, PRs #63 #64 #65)
+
+Six packages had a shape and no content. The scanner refused on an empty claim library, partner
+certification returned `no_curriculum`, and the playbooks that drive Phases 0-2 did not exist. Three
+parallel branches authored the content, partitioned by file ownership rather than by topic.
+
+- **Phase 0-2 playbooks** (`@bwc/workflow`) and **the three deliverable templates they produce**
+  (`@bwc/deliverables`): Readiness Blueprint, Funding Suitability Memo, Capital Command Brief. A
+  client-facing send inside a playbook is an `agent_task` naming 4.1, **never a node that sends** —
+  a playbook describes what the firm does, and a node that sent would make the playbook do it
+  (ADR-0067, ADR-0068).
+- **The claim library** (`@bwc/claims`): 108 entries. **A seed may ban a claim and may not approve
+  one** (ADR-0070) — the bans and the settled phrases are published, and the rest are submitted as
+  proposals for the Board. A seed that approved marketing language would be a script granting itself
+  the authority to speak for the firm.
+- **Nine message templates** (`@bwc/comms`), each scanned against the claim library **before it is
+  stored** rather than at send time (ADR-0072): a template is sent many times, so a claim problem in
+  one is a problem in every send it produces.
+- **The five-rung offer ladder** (`@bwc/billing`) and **the six-module partner curriculum**
+  (`@bwc/partners`), both as drafts, both returning the list of figures and requirements they
+  invented so a guess is not mistaken for a decision the firm made (ADR-0073, ADR-0074).
+- **Found while authoring: a phrase beginning with a symbol was a rule that never fired** (ADR-0071).
+  The scanner's word-boundary match silently skipped any banned phrase starting with `$` or `%` — so
+  a library entry could sit there looking enforced and match nothing.
+
+### Fixed - a seed runs twice, because that is what people do (`ai-feature/wire-the-seeds`)
+
+- **`scripts/seed-tenant.mjs` wires all seven seeds in one place**, which is also where the ordering
+  lives: **the claim library must exist before a message template can be stored** (an empty library
+  refuses every scan, so comms-before-claims refuses wholesale with a reason that reads like a bug),
+  and **deliverable templates must exist before the playbooks whose steps name them**. Neither
+  constraint is visible from inside either package, because each agent owned one side.
+- **THE FINDING, from running it a second time: two of the eight steps were not idempotent.**
+  `seedMessageTemplates` walked all nine templates to version 2 with identical bodies. Worse,
+  `seedV1PriorityStates` republished all seven states as `changeKind: 'material'` — **and a material
+  change since the reviewed version is exactly what returns an ACTIVATED state to
+  `needs_counsel_review` with `permitsClientFacingAction: false`.** Re-running the seed script would
+  have taken the firm dark in seven states and put New York back in front of a lawyer.
+- **Both now default to leaving an existing row alone** (`republishExisting`, off), matching the
+  offer ladder and the curriculum — which reached this rule independently, and first. Both report
+  what they skipped: a count cannot distinguish "seeded seven" from "found seven already there".
+  Superseding rather than overwriting is still right when a republish is what you meant, so it is a
+  flag and not a deletion (ADR-0075).
+- **The regression test is the harm, not the mechanism:** New York is seeded, reviewed, activated,
+  the seed re-runs, and the state is asserted still live. Verified on a fresh tenant — nine
+  templates and seven state modules after two runs, not eighteen and fourteen.
+- **The defect belonged to no package.** It existed only in the sentence "and then you run them",
+  which the three-way split by file ownership left nobody owning.
+
 ### Changed - staff enrolment is an invitation, and the granter no longer holds the credential (`ai-feature/staff-enrolment`)
 
 - **THE FINDING: `beginStaffEnrolment` took the subject's password from the GRANTER and handed the

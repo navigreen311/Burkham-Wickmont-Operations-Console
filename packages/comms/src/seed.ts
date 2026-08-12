@@ -45,7 +45,7 @@ import { DISCLOSURE_MAXIMUM } from '@bwc/claims';
 import { scanForTenant } from '@bwc/scanner';
 import { ok, refused, type EventActor, type Outcome } from '@bwc/core';
 import type { Channel } from './windows.js';
-import { publishTemplate, type TemplateRecord } from './templates.js';
+import { currentTemplate, publishTemplate, type TemplateRecord } from './templates.js';
 
 export interface SeedTemplate {
   readonly key: string;
@@ -261,6 +261,8 @@ export interface TemplateSeedFinding {
 
 export interface TemplateSeedReport {
   readonly published: readonly TemplateRecord[];
+  /** Keys that already had a template, left as they were. */
+  readonly skipped: readonly string[];
   /** Library entries each body was checked against, so a pass says how much it checked. */
   readonly libraryEntriesChecked: number;
 }
@@ -278,6 +280,18 @@ export const seedMessageTemplates = async (
   publishedBy: string,
   actor: EventActor,
   now?: Date,
+  /**
+   * Republish templates that already exist, as new versions.
+   *
+   * **Off by default.** Publishing unconditionally was the original behaviour and it was wrong for
+   * a reason that only shows up on the second run: every key walks to version 2, then 3, with
+   * identical bodies, and if somebody edited a template between runs the seeded draft supersedes
+   * their edit. The offer ladder reached the same conclusion first and for the same reason.
+   *
+   * Superseding rather than overwriting is still right when a republish is what you meant - a
+   * message sent in March has to stay explicable - which is why this is a flag and not a deletion.
+   */
+  republishExisting = false,
 ): Promise<Outcome<TemplateSeedReport>> => {
   const findings: TemplateSeedFinding[] = [];
   let libraryEntriesChecked = 0;
@@ -338,7 +352,17 @@ export const seedMessageTemplates = async (
   }
 
   const published: TemplateRecord[] = [];
+  const skipped: string[] = [];
   for (const template of SEED_TEMPLATES) {
+    // Scanned above whether or not it is published here: an existing template is still checked
+    // against the current library, so a re-run reports a claim problem in a template somebody
+    // edited rather than skipping quietly past it.
+    const existing = await currentTemplate(tenantId, template.key);
+    if (existing.status === 'ok' && !republishExisting) {
+      skipped.push(template.key);
+      continue;
+    }
+
     const result = await publishTemplate({
       tenantId,
       key: template.key,
@@ -352,5 +376,5 @@ export const seedMessageTemplates = async (
     if (result.status === 'ok') published.push(result.value);
   }
 
-  return ok({ published, libraryEntriesChecked });
+  return ok({ published, skipped, libraryEntriesChecked });
 };
