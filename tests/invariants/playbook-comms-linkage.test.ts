@@ -124,26 +124,50 @@ describe('every mapping names something real', () => {
   });
 });
 
-describe('what the gap currently is', () => {
-  it('leaves the client uncontacted from authorisation to outcome', () => {
-    // Named as a test so it is read rather than filed. After a client authorises an application,
-    // Phase 1 submits it, waits for a decision and records the outcome - and sends nothing. The
-    // three templates for those moments exist and no step reaches them.
+describe('the client hears about the things that happen to their application', () => {
+  it('tells them it was submitted, and tells them the answer either way', () => {
+    // This assertion replaces the one that recorded the silence. Phase 1 used to run
+    // `submit_application`, `await_provider_decision` and `record_outcome` with exactly one
+    // client-facing step in the whole phase - and it fired before the application was even sent.
     for (const key of ['application-submitted', 'offer-received', 'provider-declined']) {
-      expect(TEMPLATES_WITHOUT_A_STEP, key).toContain(key);
+      expect(TEMPLATES_WITHOUT_A_STEP, key).not.toContain(key);
     }
 
     const phase1 = V1_PLAYBOOK_SEEDS.find((seed) => seed.key === 'phase-1-placement');
     expect(phase1, 'phase-1-placement is not seeded').toBeDefined();
 
-    const sends = Object.entries(phase1?.definition.nodes ?? {}).filter(
-      ([, node]) =>
-        node.kind === 'agent_task' &&
-        (node as { readonly department: string }).department === CONCIERGE_DESK,
-    );
+    const sends = Object.entries(phase1?.definition.nodes ?? {})
+      .filter(
+        ([, node]) =>
+          node.kind === 'agent_task' &&
+          (node as { readonly department: string }).department === CONCIERGE_DESK,
+      )
+      .map(([key]) => key);
 
-    // Exactly one client-facing step in the whole of Phase 1, and it comes before the application
-    // is submitted. When that changes, this assertion is the one that says so.
-    expect(sends.map(([key]) => key)).toEqual(['request_client_authorization']);
+    expect(sends).toEqual([
+      'request_client_authorization',
+      'notify_submission',
+      'notify_offer',
+      'notify_decline',
+    ]);
+  });
+
+  it('reaches the decline through a branch rather than hoping somebody remembers', () => {
+    const phase1 = V1_PLAYBOOK_SEEDS.find((seed) => seed.key === 'phase-1-placement');
+    const gate = phase1?.definition.nodes['outcome_gate'];
+
+    expect(gate?.kind).toBe('decision');
+    if (gate?.kind !== 'decision') return;
+
+    // The decline is the one likelier to be skipped in practice, which is why it is reached by an
+    // explicit branch. Both branches read `context.fundingOutcome`, written by `record_outcome`,
+    // because resolving an event wait does not carry the event's payload into context.
+    const targets = gate.branches.map((branch) => branch.next);
+    expect(targets).toEqual(['notify_offer', 'notify_decline']);
+
+    // And an outcome that is neither - a withdrawal, or a `record_outcome` that wrote nothing -
+    // completes silently. Guessing which of two messages to send would be worse than sending none:
+    // a client told an offer arrived when it did not is a mistake no later correction undoes.
+    expect(gate.otherwise).toBe('phase_1_complete');
   });
 });

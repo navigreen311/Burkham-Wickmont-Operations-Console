@@ -9,10 +9,14 @@
  *
  * Three properties.
  *
- * **The seed is idempotent.** Run twice, and there is one row per playbook at one version. A seed
- * that republished at v2 would move every future instance onto a definition nobody reviewed, and a
- * seed that failed the second time would be one nobody dared run in an environment that might
- * already have it.
+ * **The seed is idempotent.** Run twice, and each playbook has exactly one row at the version it
+ * declares. A seed that republished on every run would move every future instance onto a definition
+ * nobody reviewed, and a seed that failed the second time would be one nobody dared run in an
+ * environment that might already have it.
+ *
+ * Declaring a NEW version is a different act and a deliberate one: Phase 0 and Phase 1 are at v2
+ * since the client-facing sends were added, and their v1 rows are still on the table because that
+ * is what an instance started before the change is pinned to.
  *
  * **A human checkpoint raises an 11.4 task and nothing else.** Asserted by reading the notification
  * queue 2.4's console reads. There is no second approval store and this is what says so.
@@ -90,8 +94,18 @@ describe('seeding', () => {
     // Same ids: an upsert, not an insert. Same versions: re-seeding does not move a definition
     // that running instances are pinned to.
     expect(after).toEqual(before);
-    expect(after).toHaveLength(V1_PLAYBOOK_SEEDS.length);
-    expect(after.every((row) => row.version === 1)).toBe(true);
+
+    // Each seed is present at exactly the version it declares, once. Phase 0 and Phase 1 are at
+    // v2 since the client-facing sends were added; Phase 2 is untouched at v1.
+    //
+    // Asserted per seed rather than as a row count, because a playbook is firm-wide and its rows
+    // outlive a tenant fixture: an earlier version stays on the table deliberately - it is what a
+    // pinned instance is still running - so counting rows measures how many times this suite has
+    // ever run, which differs between a fresh CI database and a local one.
+    for (const seed of V1_PLAYBOOK_SEEDS) {
+      const rows = after.filter((row) => row.key === seed.key && row.version === seed.version);
+      expect(rows, `${seed.key} v${seed.version}`).toHaveLength(1);
+    }
   });
 
   it('registers the deliverable templates, twice, with the same result', async () => {
@@ -170,45 +184,49 @@ describe('a Phase 0 client, walked', () => {
   });
 
   it('walks intake, resolves both waits, and stops at the compliance checkpoint', async () => {
-    // open_file -> record_initial_consents -> invite_bank_connection
+    // open_file -> send_welcome -> record_initial_consents -> invite_bank_connection
     await run(at(1));
     await completeParked('open_file', at(2));
     await run(at(3));
-    await completeParked('record_initial_consents', at(4));
+    // The welcome goes out as soon as the file is open and an advisor is on it. Before this node
+    // existed the template was published and nothing sent it.
+    await completeParked('send_welcome', at(4));
     await run(at(5));
-    await completeParked('invite_bank_connection', at(6));
+    await completeParked('record_initial_consents', at(6));
+    await run(at(7));
+    await completeParked('invite_bank_connection', at(8));
 
     // The Plaid connection authorization arrives as a consent for THIS client (Decision A).
-    await run(at(7));
+    await run(at(9));
     const bankWait = (await forInstance(instanceId)).find(
       (task) => task.nodeKey === 'await_bank_authorization',
     );
     expect(bankWait?.status, 'the bank wait should be parked').toBe('waiting');
 
-    const resolved = await resolveWaitWith('consent.granted', at(8));
+    const resolved = await resolveWaitWith('consent.granted', at(10));
     expect(resolved.waitsResolved).toBe(1);
 
     // request_documents -> await_documents
-    await run(at(9));
-    await completeParked('request_documents', at(10));
     await run(at(11));
+    await completeParked('request_documents', at(12));
+    await run(at(13));
     const docWait = (await forInstance(instanceId)).find(
       (task) => task.nodeKey === 'await_documents',
     );
     expect(docWait?.status).toBe('waiting');
-    expect((await resolveWaitWith('vault.document_stored', at(12))).waitsResolved).toBe(1);
+    expect((await resolveWaitWith('vault.document_stored', at(14))).waitsResolved).toBe(1);
 
     // enrich -> graph -> score
     for (const [node, minute] of [
-      ['enrich_intake', 14],
-      ['build_entity_graph', 16],
-      ['score_readiness', 18],
+      ['enrich_intake', 16],
+      ['build_entity_graph', 18],
+      ['score_readiness', 20],
     ] as const) {
       await run(at(minute - 1));
       await completeParked(node, at(minute));
     }
 
-    await run(at(19));
+    await run(at(21));
 
     // **The graph reached a human.** Nothing in Phase 0 could be walked before this slice.
     const checkpoint = (await forInstance(instanceId)).find(
