@@ -40,10 +40,16 @@ import {
   guarantorConcentration,
   isolatedEntities,
   loadGraph,
+  addEdge,
+  endEdge,
   primaryEntity,
+  recordStatedRevenue,
   revealEin,
   revealSsn,
+  setPrimaryEntity,
   unavailableFields,
+  upsertEntity,
+  upsertOwner,
 } from '@bwc/graph';
 import { ok, refused, toIso, type Provenance } from '@bwc/core';
 import { send } from '@bwc/http';
@@ -88,21 +94,18 @@ const recordedByStaff = (at: Date): Provenance => ({
  */
 const AVAILABLE_WRITES = [
   {
+    capability: 'Record an entity, owner, relationship or stated revenue',
+    action: 'record_entity_graph',
+    note: 'Level 2, and a GOVERNANCE action - without that, a client in pending_assessment could never have a graph recorded, and the graph is an input to the assessment that would move them out of it. Recording what a client STATED is permitted; altering it is fabricate_revenue, which is Level 4 and never permitted by any approval.',
+  },
+  {
     capability: 'Reveal an SSN or EIN',
     action: 'reveal_protected_identifier',
     note: 'Level 3. A purpose is required and recorded with the reveal. The value is returned once and never logged, echoed in an error, or written to an event.',
   },
 ] as const;
 
-const BLOCKED_WRITES = [
-  {
-    capability: 'Record an entity, owner or relationship',
-    module:
-      '@bwc/graph upsertEntity, upsertOwner, addEdge, endEdge, recordStatedRevenue, setPrimaryEntity',
-    missingAction: 'none declared',
-    why: "Each writes a Ledger event and so must pass the middleware chain with a declared action. ACTION_MINIMUM_LEVEL has no action for recording a structural fact about a client's household. Choosing one is a judgement about Authority Levels and belongs in packages/core, which this branch does not own.",
-  },
-] as const;
+const BLOCKED_WRITES = [] as const;
 
 const isCapitalNeed = (value: unknown): value is CapitalNeed =>
   typeof value === 'string' && (CAPITAL_NEEDS as readonly string[]).includes(value);
@@ -299,6 +302,148 @@ export const registerGraphRoutes = (context: GraphRouteContext): void => {
           actor: { id: permitted.actor.id, kind: permitted.actor.kind },
           purpose,
         }),
+        { trace: permitted.trace },
+      );
+    }),
+  );
+
+  // --- Structural writes --------------------------------------------------
+
+  /** Record an entity on a client's file. */
+  app.post(
+    '/api/console/clients/:clientId/graph/entities',
+    jsonBody,
+    asyncRoute(async (req, res) => {
+      const clientId = param(req, 'clientId');
+      const permitted = await authorised(req, res, { action: 'record_entity_graph', clientId });
+      if (!permitted) return;
+
+      send(
+        res,
+        await upsertEntity({
+          ...(req.body as Record<string, unknown>),
+          tenantId,
+          clientId,
+          actor: { id: permitted.actor.id, kind: permitted.actor.kind },
+        } as never),
+        { trace: permitted.trace },
+      );
+    }),
+  );
+
+  /** Record an owner. The SSN, if given, is encrypted by the module and never echoed. */
+  app.post(
+    '/api/console/clients/:clientId/graph/owners',
+    jsonBody,
+    asyncRoute(async (req, res) => {
+      const clientId = param(req, 'clientId');
+      const permitted = await authorised(req, res, { action: 'record_entity_graph', clientId });
+      if (!permitted) return;
+
+      send(
+        res,
+        await upsertOwner({
+          ...(req.body as Record<string, unknown>),
+          tenantId,
+          clientId,
+          actor: { id: permitted.actor.id, kind: permitted.actor.kind },
+        } as never),
+        { trace: permitted.trace },
+      );
+    }),
+  );
+
+  /** Record a relationship between two nodes. */
+  app.post(
+    '/api/console/clients/:clientId/graph/edges',
+    jsonBody,
+    asyncRoute(async (req, res) => {
+      const clientId = param(req, 'clientId');
+      const permitted = await authorised(req, res, { action: 'record_entity_graph', clientId });
+      if (!permitted) return;
+
+      send(
+        res,
+        await addEdge({
+          ...(req.body as Record<string, unknown>),
+          tenantId,
+          clientId,
+          actor: { id: permitted.actor.id, kind: permitted.actor.kind },
+        } as never),
+        { trace: permitted.trace },
+      );
+    }),
+  );
+
+  /** End one. Relationships stop rather than disappear, so the history stays readable. */
+  app.post(
+    '/api/console/clients/:clientId/graph/edges/:edgeId/end',
+    jsonBody,
+    asyncRoute(async (req, res) => {
+      const clientId = param(req, 'clientId');
+      const permitted = await authorised(req, res, { action: 'record_entity_graph', clientId });
+      if (!permitted) return;
+
+      const body = req.body as Record<string, unknown>;
+      send(
+        res,
+        await endEdge({
+          tenantId,
+          edgeId: param(req, 'edgeId'),
+          endedOn: new Date(String(body['endedOn'])),
+          actor: { id: permitted.actor.id, kind: permitted.actor.kind },
+        } as never),
+        { trace: permitted.trace },
+      );
+    }),
+  );
+
+  /**
+   * Record what the client stated their revenue to be.
+   *
+   * **Stated, and the word is load-bearing.** This writes down a claim somebody made. Changing it
+   * to something more useful is `fabricate_revenue`, which is Level 4 - blocked for every actor at
+   * every level, with no approval that unlocks it.
+   */
+  app.post(
+    '/api/console/clients/:clientId/graph/stated-revenue',
+    jsonBody,
+    asyncRoute(async (req, res) => {
+      const clientId = param(req, 'clientId');
+      const permitted = await authorised(req, res, { action: 'record_entity_graph', clientId });
+      if (!permitted) return;
+
+      send(
+        res,
+        await recordStatedRevenue({
+          ...(req.body as Record<string, unknown>),
+          tenantId,
+          clientId,
+          actor: { id: permitted.actor.id, kind: permitted.actor.kind },
+        } as never),
+        { trace: permitted.trace },
+      );
+    }),
+  );
+
+  /** Name the primary entity, which is the one every downstream read resolves against. */
+  app.post(
+    '/api/console/clients/:clientId/graph/primary-entity',
+    jsonBody,
+    asyncRoute(async (req, res) => {
+      const clientId = param(req, 'clientId');
+      const permitted = await authorised(req, res, { action: 'record_entity_graph', clientId });
+      if (!permitted) return;
+
+      const body = req.body as Record<string, unknown>;
+      send(
+        res,
+        await setPrimaryEntity({
+          tenantId,
+          clientId,
+          entityId: String(body['entityId'] ?? ''),
+          actor: { id: permitted.actor.id, kind: permitted.actor.kind },
+        } as never),
         { trace: permitted.trace },
       );
     }),

@@ -7,6 +7,34 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added - Batch B: the determinations, and the trap that came with them (`ai-feature/batch-b-writes`)
+
+- **Scoped as "the three Level 2 writes". Two of the three were not.** Six actions came out of three
+  capability lines, at three levels - the same finding as Batch A, that a line is a surface and the
+  acts behind it differ.
+- **`mark_attempt_funded` is Level 3, apart from every other outcome, because of what it stops.**
+  Blueprint 1.4 refunds on a sixty-day approved-but-unfunded trigger, so an attempt wrongly marked
+  funded silently takes a client out of the window that would have refunded them. Recording a
+  decline is bookkeeping; recording funding ends an entitlement.
+- **`generate_conflict_disclosure` is Level 1** because it is deliberately mechanical - a
+  hand-written disclosure varies with how the writer feels about the conflict. **Generating is not
+  disclosing**, and acknowledgement is offered at no level, because a control for it would
+  manufacture the evidence the disclosure exists to require.
+- **THE FINDING: `record_entity_graph` had to be a governance action, or it would have rebuilt the
+  original trap.** Step 4 refuses any state that is not Pass or Pass with Findings, so a client in
+  `pending_assessment` - **every client on the day their file opens** - could not have an entity
+  recorded. And the entity graph is an INPUT to the assessment that would move them out of it. A new
+  client could never be assessed, which is word for word what `GOVERNANCE_ACTIONS` exists to
+  prevent, one layer out. **Verified by mutation**: removing it produces exactly
+  `refused: Compliance state is pending_assessment` (ADR-0080).
+- Recording a client's STATED revenue is Level 2; altering it is `fabricate_revenue`, Level 4, never
+  permitted by any approval. The panel says so beside the control.
+- **ADR-0063 is now demonstrated rather than argued.** Both interventure entries were blocked when
+  it was written; the one whose `unblockedBy` said "a declared action" got one, and the one that
+  said "nothing on this surface, ever" did not move. The test now asserts the distinction across the
+  two lists - proved by time rather than by a field.
+- Blocked writes **10 → 7**. `pnpm verify` 1780 tests / 96 files; `pnpm test:e2e` 70 passing.
+
 ### Added - Batch A, second half: the page controls (`ai-feature/batch-a-controls`)
 
 - **Twelve controls across seven panels, built from a declaration rather than written out twelve

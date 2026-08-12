@@ -92,3 +92,4 @@ missing** — these numbers were never used.
 | 0077 | [The client hears the answer, and a new version is how](0077-the-client-hears-the-answer-and-a-new-version-is-how.md)                                           |
 | 0078 | [A chase does not move the instance](0078-a-chase-does-not-move-the-instance.md)                                                                                |
 | 0079 | [Nineteen modules had already chosen three](0079-nineteen-modules-had-already-chosen-three.md)                                                                  |
+| 0080 | [The graph is an input to the assessment that gates it](0080-the-graph-is-an-input-to-the-assessment-that-gates-it.md)                                          |
