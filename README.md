@@ -179,7 +179,7 @@ packages/comms      4.1  Communications Hub + 4.4 Preference Center - the send g
 packages/lenders    5.2  Lender Intelligence Database - catalogue, rules, eligibility, suitability
 packages/governance 5.4  Capital Product Governance Board - approval, cadence, complaints, blacklist
 tests/invariants    one test per hard invariant
-docs/decisions      ADRs
+docs/adr            ADRs, numbered 0001 upward
 docs/plans          feature plans, editable before implementation
 ```
 

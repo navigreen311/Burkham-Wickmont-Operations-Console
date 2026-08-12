@@ -1,7 +1,7 @@
 # 1.4 Pricing, Billing & Offer Management
 
 **Package:** `@bwc/billing` · **Schema:** `billing`
-**ADR:** [ADR-0011](decisions/ADR-0011-money-is-cents-and-refunds-are-derived.md)
+**ADR:** [ADR-0011](adr/0011-money-is-cents-and-refunds-are-derived.md)
 
 ---
 
@@ -19,7 +19,7 @@ _state_ a success fee on a requested limit, and 1.4 makes it impossible to _char
 
 ## Money is integer cents
 
-Full reasoning in [ADR-0011](decisions/ADR-0011-money-is-cents-and-refunds-are-derived.md). The
+Full reasoning in [ADR-0011](adr/0011-money-is-cents-and-refunds-are-derived.md). The
 short version is four failures that integer cents makes unreachable:
 
 |                                        | Floating point             | Cents                                        |

@@ -39,7 +39,7 @@
  * a defaulted review date is a claim about when counsel looked at something (ADR-0035).
  *
  * @see docs/adr/0047-the-gate-that-was-already-stronger-than-the-chain.md
- * @see docs/decisions/ADR-0009-state-activation-requires-a-human-and-a-document.md
+ * @see docs/adr/0009-state-activation-requires-a-human-and-a-document.md
  */
 
 import type { Express, Request, RequestHandler, Response } from 'express';

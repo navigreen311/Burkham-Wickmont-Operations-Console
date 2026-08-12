@@ -1213,7 +1213,7 @@ mutation-verified - disabling either produces 2 failures.
 
 **1.4 Pricing, Billing & Offer Management** — the offer ladder, engagements, the credit chain and
 objective refund triggers. See [docs/m1-4-pricing-billing-offers.md](docs/m1-4-pricing-billing-offers.md)
-and [ADR-0011](docs/decisions/ADR-0011-money-is-cents-and-refunds-are-derived.md).
+and [ADR-0011](docs/adr/0011-money-is-cents-and-refunds-are-derived.md).
 
 - **Closes 7.3's last Fact Check row.** The fee exhibit is now built from the engagement record
   rather than from figures a caller asserts, so the tier and the retainer are the ones actually
@@ -1258,7 +1258,7 @@ disabling either produces 3 failures.
 
 **7.3 Contract & Disclosure Builder** — the documents a client signs. See
 [docs/m7-3-contract-disclosure-builder.md](docs/m7-3-contract-disclosure-builder.md) and
-[ADR-0010](docs/decisions/ADR-0010-an-issued-contract-is-frozen.md).
+[ADR-0010](docs/adr/0010-an-issued-contract-is-frozen.md).
 
 - **An issued contract is frozen.** Blueprint 7.3 lists "auto-updates when Regulatory Engine flags
   rule changes"; read literally that reaches into signed agreements and changes their terms. A
@@ -1303,7 +1303,7 @@ disabling either produces 3 failures.
 
 **7.2 State-by-State Regulatory Engine**, which makes step 5 of the middleware chain a real check.
 See [docs/m7-2-regulatory-engine.md](docs/m7-2-regulatory-engine.md) and
-[ADR-0009](docs/decisions/ADR-0009-state-activation-requires-a-human-and-a-document.md).
+[ADR-0009](docs/adr/0009-state-activation-requires-a-human-and-a-document.md).
 
 - **There is now no `not_built` in the fixed seven-step chain.** Step 5 was the last, and
   `notBuilt` is no longer imported by `@bwc/middleware` at all. Ungated vendors still report it
@@ -1386,7 +1386,7 @@ the workflow listener** — it was silent data loss in the Event Ledger.
 
 **1.2 Client Household / Entity Graph**, which closes the last `not_built` in the funding path. See
 [docs/m1-2-entity-graph.md](docs/m1-2-entity-graph.md) and
-[ADR-0008](docs/decisions/ADR-0008-relationship-detection-produces-questions.md).
+[ADR-0008](docs/adr/0008-relationship-detection-produces-questions.md).
 
 - **The question it answers**: a client guarantees a facility for their operating company, another
   for the real-estate entity that leases them premises, another for a partner's DBA. Each was
@@ -1442,7 +1442,7 @@ Ledger's own redactor.
 **5.2 Lender Intelligence Database**, **5.4 Capital Product Governance Board**, and the
 **completion of 5.3 Funding Recommendation Engine**. See
 [docs/m5-lender-intelligence-and-governance.md](docs/m5-lender-intelligence-and-governance.md) and
-[ADR-0007](docs/decisions/ADR-0007-governance-status-lives-outside-the-provider-record.md).
+[ADR-0007](docs/adr/0007-governance-status-lives-outside-the-provider-record.md).
 
 - **5.2 pulled forward from V1.5.** The blueprint defers 5.2 while putting 5.3 and 5.4 in V1 — two
   V1 modules whose stated function is reading from and writing to it. What Decision D actually

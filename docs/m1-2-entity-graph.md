@@ -1,7 +1,7 @@
 # 1.2 Client Household / Entity Graph
 
 **Package:** `@bwc/graph` · **Schema:** `graph`
-**ADR:** [ADR-0008](decisions/ADR-0008-relationship-detection-produces-questions.md)
+**ADR:** [ADR-0008](adr/0008-relationship-detection-produces-questions.md)
 
 ---
 
@@ -64,7 +64,7 @@ over a graph with unpriced facilities is a floor, and the caller has to be able 
 
 ## Detection produces questions
 
-Full reasoning in [ADR-0008](decisions/ADR-0008-relationship-detection-produces-questions.md).
+Full reasoning in [ADR-0008](adr/0008-relationship-detection-produces-questions.md).
 
 Six checks, each carrying the question to ask rather than a conclusion:
 
