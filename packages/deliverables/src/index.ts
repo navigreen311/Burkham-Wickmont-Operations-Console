@@ -10,3 +10,4 @@ export * from './content.js';
 export * from './render.js';
 export * from './approval.js';
 export * from './templates.js';
+export * from './seed.js';
