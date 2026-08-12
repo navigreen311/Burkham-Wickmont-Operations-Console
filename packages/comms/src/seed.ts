@@ -355,12 +355,17 @@ export const TEMPLATES_BY_PLAYBOOK_NODE: Readonly<Record<string, readonly string
   'phase-0-capital-readiness/send_welcome': ['client-onboarding-welcome'],
   'phase-0-capital-readiness/invite_bank_connection': ['bank-connection-request'],
   'phase-0-capital-readiness/request_documents': ['document-request'],
+  // Not a step. The wait on the documents chases from where it is parked, so the nudge cannot be
+  // sent to a client who has already answered (ADR-0078).
+  'phase-0-capital-readiness/await_documents': ['document-request-reminder-sms'],
   'phase-0-capital-readiness/deliver_blueprint': ['readiness-blueprint-ready'],
+  'phase-0-capital-readiness/remind_review_call': ['appointment-reminder-sms'],
   'phase-1-placement/request_client_authorization': ['application-authorization-request'],
   'phase-1-placement/notify_submission': ['application-submitted'],
   'phase-1-placement/notify_offer': ['offer-received'],
   'phase-1-placement/notify_decline': ['provider-declined'],
   'phase-2-stack-management/deliver_brief': ['capital-command-brief-ready'],
+  'post-funding-follow-up/check_in': ['post-funding-checkin'],
 };
 
 /**
@@ -399,20 +404,14 @@ export const NOT_A_SEND: readonly string[] = ['phase-0-capital-readiness/book_re
  * templates are unreachable rather than merely unused.
  */
 export const TEMPLATES_WITHOUT_A_STEP: readonly string[] = [
-  // Both reminders want the same thing and the graph language cannot say it: a timer running
-  // ALONGSIDE a wait, firing if the wait has not resolved yet. `WaitNode.until` is a duration or an
-  // event and never both, an event wait carries no timeout, and `slaMinutes` records `slaDueAt`
-  // without anything acting on a breach. Expressing a nudge as a duration wait in the main path
-  // would stall the client who answered promptly - which is the one this would punish.
-  'document-request-reminder-sms',
-  // The same, and worse: the reminder is due relative to an appointment time that lives in Sales
-  // Motion (1.3) rather than in the workflow context, so even a timer would be counting from the
-  // wrong moment.
-  'appointment-reminder-sms',
-  // Not a step in any of these graphs. It fires some months after a facility funds, which is a
-  // schedule rather than a position in the Phase 2 monthly cycle - it wants a trigger of its own,
-  // or a small playbook, and putting it after `deliver_brief` would send it every month.
-  'post-funding-checkin',
+  // **Empty, and kept.** It held three entries, each blocked on a named capability rather than on
+  // nobody having got round to it - which is what made them closable: two needed a wait that could
+  // chase and a wait that could resolve to a recorded date (ADR-0078), and the third turned out to
+  // need nothing at all, only somebody noticing that an event trigger plus a duration wait already
+  // said "three months after funding".
+  //
+  // Kept for the same reason `SENDS_WITHOUT_A_TEMPLATE` is: the invariant these feed is
+  // exhaustiveness, and the next template written before its step exists needs somewhere to say so.
 ];
 
 export interface TemplateSeedFinding {

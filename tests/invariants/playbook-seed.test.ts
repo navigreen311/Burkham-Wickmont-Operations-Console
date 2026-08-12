@@ -57,7 +57,15 @@ describe('the seeded playbooks are publishable', () => {
   });
 
   it('covers phases 0, 1 and 2, once each', () => {
-    expect(seeds.map((seed) => seed.phase).sort()).toEqual([0, 1, 2]);
+    // The three PHASE playbooks, which is what this asserts. `post-funding-follow-up` also carries
+    // phase 2 - a funded client lives there and it is how the console groups them - but it is not
+    // a phase of the service model. It is started by the funding event rather than run in sequence,
+    // which is exactly why it is a playbook of its own.
+    const phases = seeds.filter((seed) => seed.key.startsWith('phase-'));
+    expect(phases.map((seed) => seed.phase).sort()).toEqual([0, 1, 2]);
+
+    // Every key distinct, across all of them. Two seeds sharing a key would have one silently
+    // overwrite the other at publish, since the upsert is on (key, version).
     expect(new Set(seeds.map((seed) => seed.key)).size).toBe(seeds.length);
   });
 

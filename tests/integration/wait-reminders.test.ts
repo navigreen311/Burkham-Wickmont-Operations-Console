@@ -19,6 +19,7 @@
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { append } from '@bwc/ledger';
+import { db } from '@bwc/db';
 import { create as createClient } from '@bwc/clients';
 import { openFor } from '@bwc/notifications';
 import {
@@ -26,10 +27,13 @@ import {
   findInstance,
   forInstance,
   listenerPass,
+  POST_FUNDING_PLAYBOOK,
+  POST_FUNDING_TRIGGER,
   publishPlaybook,
   seekToLatest,
   start,
   tick,
+  upsertTrigger,
   type PlaybookDefinition,
 } from '@bwc/workflow';
 import { cleanupTenant, makeFixture, type Fixture } from '../setup.js';
@@ -271,5 +275,53 @@ describe('a wait until a moment in the context', () => {
     await tick({ workerId: 'ctx', now: at(5 * DAY + 1), actor: actor(), tenantId: fx.tenant.id });
 
     expect((await forInstance(id)).some((task) => task.nodeKey === 'remind')).toBe(true);
+  });
+});
+
+describe('the post-funding follow-up, which needed no engine change at all', () => {
+  it('starts on the funding event, sleeps three months, and asks for the check-in', async () => {
+    // The third blocked template. It was not blocked on a missing capability - `upsertTrigger`
+    // starts a playbook from an event and a duration wait can be a start node, so "three months
+    // after funding" was already expressible. It was blocked on nobody looking.
+    const published = await publishPlaybook({
+      key: POST_FUNDING_PLAYBOOK.key,
+      version: POST_FUNDING_PLAYBOOK.version,
+      phase: POST_FUNDING_PLAYBOOK.phase,
+      definition: POST_FUNDING_PLAYBOOK.definition,
+    });
+    expect(published.status, JSON.stringify(published)).toBe('ok');
+
+    await upsertTrigger({
+      tenantId: fx.tenant.id,
+      eventType: POST_FUNDING_TRIGGER.eventType,
+      playbookKey: POST_FUNDING_TRIGGER.playbookKey,
+    });
+    await seekToLatest(fx.tenant.id);
+
+    await append({
+      tenantId: fx.tenant.id,
+      type: 'billing.funding_outcome.funded',
+      actor: actor(),
+      clientId,
+      payload: { note: 'the money arrived' },
+    });
+    const pass = await listenerPass({ actor: actor(), now: at(500), tenantId: fx.tenant.id });
+    expect(pass.triggersFired).toBeGreaterThan(0);
+
+    const instances = await db().workflowInstance.findMany({
+      where: { tenantId: fx.tenant.id, playbookKey: POST_FUNDING_PLAYBOOK.key },
+    });
+    expect(instances).toHaveLength(1);
+    const id = instances[0]?.id ?? '';
+
+    // A month in: still asleep. The client is living with the facility and has nothing to say yet.
+    await run(at(500 + 30 * DAY));
+    expect((await forInstance(id)).some((task) => task.nodeKey === 'check_in')).toBe(false);
+
+    // Ninety days: the check-in is raised to the Concierge Desk.
+    await run(at(500 + 91 * DAY));
+    const tasks = await forInstance(id);
+    const checkIn = tasks.find((task) => task.nodeKey === 'check_in');
+    expect(checkIn?.department).toBe('concierge_desk');
   });
 });

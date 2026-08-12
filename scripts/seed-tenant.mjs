@@ -60,7 +60,11 @@ import 'dotenv/config';
 import { seedFoundingClaims, seedProposedClaims } from '../packages/claims/dist/index.js';
 import { proposeClaim } from '../packages/marketing/dist/index.js';
 import { seedV1DeliverableTemplates } from '../packages/deliverables/dist/index.js';
-import { seedV1Playbooks } from '../packages/workflow/dist/index.js';
+import {
+  POST_FUNDING_TRIGGER,
+  seedV1Playbooks,
+  upsertTrigger,
+} from '../packages/workflow/dist/index.js';
 import { seedMessageTemplates } from '../packages/comms/dist/index.js';
 import { seedOfferLadder } from '../packages/billing/dist/index.js';
 import { seedCurriculum } from '../packages/partners/dist/index.js';
@@ -112,13 +116,13 @@ console.log(`Seeding tenant ${tenantId}\n`);
 
 // 1. The claim library, FIRST - the message templates below are scanned against it, and an empty
 //    library refuses every one of them.
-await step('1/8 claim library (bans and settled phrases)', async () => {
+await step('1/9 claim library (bans and settled phrases)', async () => {
   const published = await seedFoundingClaims(tenantId, actorId, actor);
   return `${published} entr(ies) published`;
 });
 
 // 2. The rest of the library as proposals. A seed may ban a claim and may not approve one.
-await step('2/8 claims proposed for the Board', async () => {
+await step('2/9 claims proposed for the Board', async () => {
   const result = await seedProposedClaims(tenantId, actorId, actor, proposeClaim);
   if (result.refused.length > 0) {
     refusals.push(`proposed claims: ${result.refused.length} refused`);
@@ -128,13 +132,13 @@ await step('2/8 claims proposed for the Board', async () => {
 
 // 3. Deliverable templates BEFORE the playbooks whose steps name them. Firm-wide, not per-tenant:
 //    the wording of a Burkham Wickmont deliverable belongs to the firm.
-await step('3/8 deliverable templates (firm-wide)', async () => {
+await step('3/9 deliverable templates (firm-wide)', async () => {
   const keys = await seedV1DeliverableTemplates();
   return `${keys.length} registered: ${keys.join(', ')}`;
 });
 
 // 4. The Phase 0-2 playbooks, which name the templates registered above.
-await step('4/8 phase 0-2 playbooks (firm-wide)', async () => {
+await step('4/9 phase 0-2 playbooks (firm-wide)', async () => {
   const result = await seedV1Playbooks();
   if (result.refused.length > 0) {
     refusals.push(
@@ -145,7 +149,7 @@ await step('4/8 phase 0-2 playbooks (firm-wide)', async () => {
 });
 
 // 5. Message templates - scanned against the library seeded in step 1 before any is stored.
-await step('5/8 message templates (scanned before stored)', async () => {
+await step('5/9 message templates (scanned before stored)', async () => {
   const result = await seedMessageTemplates(tenantId, actorId, actor);
   if (result.status !== 'ok') {
     refusals.push(`message templates: ${result.reason}`);
@@ -156,7 +160,7 @@ await step('5/8 message templates (scanned before stored)', async () => {
 
 // 6. The offer ladder, as drafts. Existing rungs are left alone: republishing would supersede the
 //    owner's corrections with these.
-await step('6/8 offer ladder (drafts)', async () => {
+await step('6/9 offer ladder (drafts)', async () => {
   const result = await seedOfferLadder({ tenantId, publishedBy: actorId, actor });
   if (result.status !== 'ok') {
     refusals.push(`offer ladder: ${result.reason}`);
@@ -171,7 +175,7 @@ await step('6/8 offer ladder (drafts)', async () => {
 
 // 7. The partner curriculum. Existing modules are left alone: a material republish would decertify
 //    every partner who completed the previous version.
-await step('7/8 partner curriculum', async () => {
+await step('7/9 partner curriculum', async () => {
   const result = await seedCurriculum({ tenantId, publishedBy: actorId, actor });
   if (result.status !== 'ok') {
     refusals.push(`curriculum: ${result.reason}`);
@@ -183,9 +187,24 @@ await step('7/8 partner curriculum', async () => {
 
 // 8. The regulatory register. These are drafts pending documented counsel review, and nothing here
 //    activates a state.
-await step('8/8 regulatory states (pending counsel review)', async () => {
+await step('8/9 regulatory states (pending counsel review)', async () => {
   const result = await seedV1PriorityStates(tenantId, actorId, actor);
   return `${result.published.length} state(s) recorded, ${result.skipped.length} already present, none activated`;
+});
+
+// 9. The trigger that starts the post-funding follow-up.
+//
+//    Per tenant, because a trigger row is, while a playbook is firm-wide. Registered here rather
+//    than by the workflow seed for the same reason nothing else in this run happens by itself: a
+//    playbook that began running because a package was imported is a workflow nobody chose.
+await step('9/9 post-funding follow-up trigger', async () => {
+  const trigger = await upsertTrigger({
+    tenantId,
+    eventType: POST_FUNDING_TRIGGER.eventType,
+    playbookKey: POST_FUNDING_TRIGGER.playbookKey,
+  });
+  const state = trigger.enabled ? 'enabled' : 'disabled';
+  return `${POST_FUNDING_TRIGGER.eventType} starts ${POST_FUNDING_TRIGGER.playbookKey} (${state})`;
 });
 
 console.log('');
