@@ -130,6 +130,14 @@ const PHASE_0_DEFINITION: PlaybookDefinition = {
       action:
         'Open the client file and set the compliance state to pending_assessment (1.1). Record the offer tier the engagement was sold on.',
       slaMinutes: 60 * 8,
+      next: 'send_welcome',
+    },
+    send_welcome: {
+      kind: 'agent_task',
+      department: CONCIERGE_DESK,
+      action:
+        'Send the welcome (4.1, client-onboarding-welcome) now that the file is open and an advisor is on it. It sets out the three things that happen next and the one that does not: nothing goes to any provider until the client authorizes that specific application.',
+      slaMinutes: 60 * 8,
       next: 'record_initial_consents',
     },
     record_initial_consents: {
@@ -279,6 +287,11 @@ const PHASE_0_PROVENANCE: Readonly<Record<string, NodeBasis>> = {
     basis: 'blueprint',
     source:
       'Flow 5.1: "Client Lifecycle & CRM (client record created, compliance state = Pending Assessment)"',
+  },
+  send_welcome: {
+    basis: 'inferred',
+    reasoning:
+      'The blueprint names no welcome step. 4.1 holds a `client-onboarding-welcome` template whose stated purpose is "sent once, when a client record is created and an advisor is assigned", which describes this point in 5.1 exactly - and until this node existed, nothing in any playbook sent it. Placed after open_file rather than before, because the template names the advisor and the advisor is assigned there. Whether a firm greets a client it has just signed is not really a question, but the blueprint not asking it is why this is an inference.',
   },
   record_initial_consents: {
     basis: 'blueprint',
@@ -449,6 +462,14 @@ const PHASE_1_DEFINITION: PlaybookDefinition = {
       action:
         'Submit the application through the Integration Layer to CapitalForge. No module calls a provider directly (11.5).',
       slaMinutes: 60 * 24,
+      next: 'notify_submission',
+    },
+    notify_submission: {
+      kind: 'agent_task',
+      department: CONCIERGE_DESK,
+      action:
+        'Tell the client the application has gone in (4.1, application-submitted). The wait below is measured in days and the client authorized this send themselves; silence after an authorization reads as nothing having happened.',
+      slaMinutes: 60 * 8,
       next: 'await_provider_decision',
     },
     await_provider_decision: {
@@ -462,8 +483,41 @@ const PHASE_1_DEFINITION: PlaybookDefinition = {
       kind: 'agent_task',
       department: CAPITAL_OPERATIONS,
       action:
-        'Record the outcome and file the artifact set in the Compliance Evidence Vault (7.1). A success fee computes against approvedCreditLimit and never against the requested limit.',
+        "Record the outcome and file the artifact set in the Compliance Evidence Vault (7.1). A success fee computes against approvedCreditLimit and never against the requested limit. Write the decision into the workflow context as `fundingOutcome` ('approved', 'declined' or 'withdrawn') so the branch below can read it - the engine cannot see it otherwise, because resolving an event wait does not carry the event's payload into context.",
       slaMinutes: 60 * 24,
+      next: 'outcome_gate',
+    },
+    outcome_gate: {
+      kind: 'decision',
+      branches: [
+        {
+          when: { field: 'context.fundingOutcome', op: 'eq', value: 'approved' },
+          next: 'notify_offer',
+        },
+        {
+          when: { field: 'context.fundingOutcome', op: 'eq', value: 'declined' },
+          next: 'notify_decline',
+        },
+      ],
+      // Withdrawn, or a `record_outcome` that wrote nothing. Completing in silence is wrong, and
+      // guessing which of the two messages to send would be worse - a client told an offer arrived
+      // when it did not is a mistake no later correction undoes.
+      otherwise: 'phase_1_complete',
+    },
+    notify_offer: {
+      kind: 'agent_task',
+      department: CONCIERGE_DESK,
+      action:
+        'Tell the client an offer has arrived (4.1, offer-received). The template carries DISCLOSURE_MAXIMUM because it says "up to": the figure is the product maximum, not an amount this client has been approved for, and that distinction is the one a client most wants to misread.',
+      slaMinutes: 60 * 8,
+      next: 'phase_1_complete',
+    },
+    notify_decline: {
+      kind: 'agent_task',
+      department: CONCIERGE_DESK,
+      action:
+        'Tell the client the provider declined (4.1, provider-declined), with the reason as the provider gave it. A decline the client hears about late, or from somewhere else, is the one that ends the engagement.',
+      slaMinutes: 60 * 8,
       next: 'phase_1_complete',
     },
     phase_1_complete: { kind: 'terminal', outcome: 'completed' },
@@ -524,10 +578,30 @@ const PHASE_1_PROVENANCE: Readonly<Record<string, NodeBasis>> = {
     reasoning:
       'Flow 5.2 goes straight from submission to "Funding Outcome Ledger (outcome captured)" with no wait. A provider takes days, so a wait is needed; `billing.funding_outcome.recorded` was chosen over a duration so a fast decision is not held behind a timer.',
   },
+  notify_submission: {
+    basis: 'inferred',
+    reasoning:
+      'The blueprint has the client authorize a specific application and then describes nothing said to them until the engagement ends. 4.1 holds an `application-submitted` template for this moment and no step sent it. The wait that follows resolves on a provider decision that takes days, so the alternative to this node is a client who authorized something and then heard nothing - which reads as the firm having done nothing with it.',
+  },
   record_outcome: {
     basis: 'blueprint',
     source:
       'Flow 5.2: "Funding Outcome Ledger", "Pricing / Billing (success fee ... from approvedCreditLimit)", "Compliance Evidence Vault (full artifact set stored)"',
+  },
+  outcome_gate: {
+    basis: 'inferred',
+    reasoning:
+      'The blueprint routes an approval and a decline to the same terminal, so nothing in it distinguishes the two for the purpose of telling the client. A branch is needed because the two messages are different in kind, and it reads `context.fundingOutcome` rather than the resolving event because the engine discards an event wait payload - `record_outcome` writes the fact, exactly as `compute_stack_position` writes `stackHealth` in Phase 2. `otherwise` completes silently rather than guessing, since a withdrawn application is neither.',
+  },
+  notify_offer: {
+    basis: 'inferred',
+    reasoning:
+      'Flow 5.2 ends at the Funding Outcome Ledger and names no client contact. 4.1 holds `offer-received` and nothing sent it. The template says "up to" and therefore carries DISCLOSURE_MAXIMUM, which is the substantive reason this is a template rather than a note an advisor writes: the difference between a product maximum and an approved amount is the one a client most readily misreads in their own favour.',
+  },
+  notify_decline: {
+    basis: 'inferred',
+    reasoning:
+      'The counterpart of notify_offer, and the one more likely to be skipped in practice, which is why it is a step rather than a courtesy. 4.1 holds `provider-declined` and nothing sent it. A client who learns of a decline late, or from the provider, has been left to discover it - and 9.1 counts a decline in the denominator either way, so the firm has recorded the fact whether or not the client was told.',
   },
   phase_1_complete: {
     basis: 'inferred',
@@ -662,7 +736,7 @@ const PHASE_2_PROVENANCE: Readonly<Record<string, NodeBasis>> = {
 
 export const PHASE_0_PLAYBOOK: PlaybookSeed = {
   key: 'phase-0-capital-readiness',
-  version: 1,
+  version: 2,
   phase: 0,
   title: 'Phase 0 - Capital Readiness',
   purpose:
@@ -674,7 +748,7 @@ export const PHASE_0_PLAYBOOK: PlaybookSeed = {
 
 export const PHASE_1_PLAYBOOK: PlaybookSeed = {
   key: 'phase-1-placement',
-  version: 1,
+  version: 2,
   phase: 1,
   title: 'Phase 1 - Placement',
   purpose: 'From a stated capital need to a submitted application and a recorded outcome.',

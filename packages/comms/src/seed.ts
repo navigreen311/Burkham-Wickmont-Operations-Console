@@ -352,10 +352,14 @@ export const SEED_TEMPLATES: readonly SeedTemplate[] = [
 
 /** `playbook-key/node-key` -> the templates that step sends. */
 export const TEMPLATES_BY_PLAYBOOK_NODE: Readonly<Record<string, readonly string[]>> = {
+  'phase-0-capital-readiness/send_welcome': ['client-onboarding-welcome'],
   'phase-0-capital-readiness/invite_bank_connection': ['bank-connection-request'],
   'phase-0-capital-readiness/request_documents': ['document-request'],
   'phase-0-capital-readiness/deliver_blueprint': ['readiness-blueprint-ready'],
   'phase-1-placement/request_client_authorization': ['application-authorization-request'],
+  'phase-1-placement/notify_submission': ['application-submitted'],
+  'phase-1-placement/notify_offer': ['offer-received'],
+  'phase-1-placement/notify_decline': ['provider-declined'],
   'phase-2-stack-management/deliver_brief': ['capital-command-brief-ready'],
 };
 
@@ -395,12 +399,19 @@ export const NOT_A_SEND: readonly string[] = ['phase-0-capital-readiness/book_re
  * templates are unreachable rather than merely unused.
  */
 export const TEMPLATES_WITHOUT_A_STEP: readonly string[] = [
-  'client-onboarding-welcome',
+  // Both reminders want the same thing and the graph language cannot say it: a timer running
+  // ALONGSIDE a wait, firing if the wait has not resolved yet. `WaitNode.until` is a duration or an
+  // event and never both, an event wait carries no timeout, and `slaMinutes` records `slaDueAt`
+  // without anything acting on a breach. Expressing a nudge as a duration wait in the main path
+  // would stall the client who answered promptly - which is the one this would punish.
   'document-request-reminder-sms',
-  'application-submitted',
-  'offer-received',
-  'provider-declined',
+  // The same, and worse: the reminder is due relative to an appointment time that lives in Sales
+  // Motion (1.3) rather than in the workflow context, so even a timer would be counting from the
+  // wrong moment.
   'appointment-reminder-sms',
+  // Not a step in any of these graphs. It fires some months after a facility funds, which is a
+  // schedule rather than a position in the Phase 2 monthly cycle - it wants a trigger of its own,
+  // or a small playbook, and putting it after `deliver_brief` would send it every month.
   'post-funding-checkin',
 ];
 

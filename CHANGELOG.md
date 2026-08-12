@@ -56,6 +56,38 @@ parallel branches authored the content, partitioned by file ownership rather tha
 - **The defect belonged to no package.** It existed only in the sentence "and then you run them",
   which the three-way split by file ownership left nobody owning.
 
+### Added - the client hears about the things that happen to their application (`ai-feature/notify-the-client`)
+
+- **Phase 1 used to go silent at the worst possible moment.** After a client authorised a specific
+  application, the playbook submitted it, waited for a decision and recorded the outcome —
+  **without contacting them again.** Not on submission, not on an offer, not on a decline.
+  Templates for all three existed and nothing sent them. Four nodes close it: `send_welcome` in
+  Phase 0, and `notify_submission`, `notify_offer` and `notify_decline` in Phase 1.
+- **The decline is reached by a branch, not by remembering.** `outcome_gate` reads
+  `context.fundingOutcome`, written by `record_outcome` — **because the engine cannot see the
+  event.** `resolveWaits` matches a wait to an event and a client and then **discards the payload**,
+  so the provider's decision is invisible to a predicate. The fix is the one Phase 2 already used:
+  a task writes the fact into context, exactly as `compute_stack_position` writes `stackHealth`.
+  The engine gap is recorded rather than routed around (ADR-0077).
+- `otherwise` completes silently. A withdrawn application is neither an offer nor a decline, and
+  guessing between two messages is worse than sending none — a client told an offer arrived when it
+  did not is a mistake no later correction undoes.
+- **Ships as v2, and v1 stays.** `publishPlaybook` upserts on `(key, version)` and `tick` reads the
+  definition at the instance's pinned version, so editing v1 in place would have rewritten the graph
+  under every running instance. Phase 0 and Phase 1 declare `version: 2`; Phase 2, unchanged, stays
+  at 1. Verified live — both versions active on the table after seeding. Same class of hazard as
+  ADR-0075: a write that looks idempotent, is not, and damages something already running.
+- Every new node is `inferred` with reasoning rather than a citation, so the generated review list
+  grew by four and a reviewer can argue with the reasoning without opening the blueprint.
+- **Three templates remain unreachable, each blocked on a named capability**: both SMS reminders
+  need a timer running alongside a wait, which `WaitNode.until` cannot express and no SLA-breach
+  hook provides; `post-funding-checkin` is a schedule rather than a position in Phase 2's monthly
+  cycle and wants a trigger of its own.
+- **A pre-existing test fragility surfaced:** `is idempotent` asserted a row count and
+  `version === 1`, but playbooks are firm-wide and their rows outlive a tenant fixture — so the
+  count measured how many times the suite had ever run, passing on fresh CI and failing locally. It
+  now asserts one row per seed at the version that seed declares.
+
 ### Added - the three steps that said they send now have something to send (`ai-feature/send-templates`)
 
 - `bank-connection-request`, `readiness-blueprint-ready` and `capital-command-brief-ready`. Each of
