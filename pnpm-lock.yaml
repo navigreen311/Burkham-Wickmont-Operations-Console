@@ -387,6 +387,9 @@ importers:
 
   packages/comms:
     dependencies:
+      '@bwc/claims':
+        specifier: workspace:*
+        version: link:../claims
       '@bwc/core':
         specifier: workspace:*
         version: link:../core
@@ -399,6 +402,9 @@ importers:
       '@bwc/middleware':
         specifier: workspace:*
         version: link:../middleware
+      '@bwc/scanner':
+        specifier: workspace:*
+        version: link:../scanner
     devDependencies:
       typescript:
         specifier: ^5.8.3
