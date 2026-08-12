@@ -93,6 +93,12 @@ import { registerInterventureRoutes } from './routes/interventure.js';
 import { registerPartnerRoutes } from './routes/partners.js';
 import { registerSalesRoutes } from './routes/sales.js';
 import { registerWarehouseRoutes } from './routes/warehouse.js';
+// The five modules that had no surface until now: 1.4, 7.3, 3.2, 11.11, 2.2/2.4.
+import { registerBillingRoutes } from './routes/billing.js';
+import { registerContractRoutes } from './routes/contracts.js';
+import { registerVaultRoutes } from './routes/vault.js';
+import { registerWorkbenchRoutes } from './routes/workbench.js';
+import { registerWorkflowRoutes } from './routes/workflow.js';
 // Staff security keys and the passkey-only switch (ADR-0059).
 import { registerStaffKeyRoutes } from './routes/staffKeys.js';
 // Compliance and governance surfaces (7.1, 7.2, 7.4, 5.4, 4.5). Each module registers its own
@@ -1094,6 +1100,14 @@ export const createApp = (deps: ConsoleAppDeps = {}): Express => {
   registerRegulatoryRoutes({ ...routeContext, jsonBody });
   registerGovernanceRoutes({ ...routeContext, jsonBody });
   registerMarketingRoutes({ ...routeContext, jsonBody });
+
+  // Reads only - none of these five has a declared action for its writes, and each route says so
+  // in its own `blocked` list rather than leaving a page to wonder.
+  registerBillingRoutes(routeContext);
+  registerContractRoutes(routeContext);
+  registerVaultRoutes(routeContext);
+  registerWorkbenchRoutes(routeContext);
+  registerWorkflowRoutes(routeContext);
 
   // --- Event Ledger (11.3) ------------------------------------------------
 
