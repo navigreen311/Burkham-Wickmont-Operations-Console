@@ -52,6 +52,8 @@ export const EVENT_TYPES = [
   'workflow.task_lease_reclaimed',
   'workflow.decision_evaluated',
   'workflow.wait_started',
+  /** A wait took long enough that the playbook asked somebody to chase it. */
+  'workflow.reminder_raised',
   'workflow.wait_resolved',
   'workflow.sla_breached',
   'workflow.schedule_fired',

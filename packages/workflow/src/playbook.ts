@@ -56,7 +56,40 @@ export interface DecisionNode {
  */
 export interface WaitNode {
   readonly kind: 'wait';
-  readonly until: { readonly durationMinutes: number } | { readonly event: string };
+  readonly until:
+    | { readonly durationMinutes: number }
+    | { readonly event: string }
+    /**
+     * Until a moment held in the instance context, plus or minus an offset.
+     *
+     * A duration is measured from when the wait starts, which cannot express "the day before the
+     * appointment": the appointment is a date somebody recorded, and the gap between booking it
+     * and holding it is exactly what varies. `atContextField` names a context key holding an ISO
+     * timestamp - written by an earlier task through `contextPatch`, the same way
+     * `compute_stack_position` writes `stackHealth` - and `offsetMinutes` shifts from it, negative
+     * for before.
+     *
+     * A missing or unparseable value FAILS the task rather than waiting forever. A wait with no
+     * resolvable moment is a workflow that has quietly stopped, and stopping quietly is the thing
+     * a queue is meant to make impossible.
+     */
+    | { readonly atContextField: string; readonly offsetMinutes?: number };
+  /**
+   * Chase, without giving up the wait.
+   *
+   * An event wait can legitimately sit for days, and the person on the other end may simply have
+   * forgotten. Declaring a reminder raises a task to `remindQueue` when the wait has been parked
+   * this long, and again every interval after, up to `maxReminders`.
+   *
+   * **The instance does not move.** A reminder is an assignment to a department, not a step in the
+   * graph - which is what keeps it from firing after the thing it was chasing has arrived, and
+   * what keeps a nudge out of the path of the client who answered promptly.
+   */
+  readonly remindAfterMinutes?: number;
+  readonly remindQueue?: string;
+  readonly remindSummary?: string;
+  /** Default 1. A chase that repeats forever is a chase nobody set out to send. */
+  readonly maxReminders?: number;
   readonly next: string;
 }
 
@@ -165,8 +198,53 @@ export const validate = (definition: PlaybookDefinition): ValidationIssue[] => {
             problem: 'wait durationMinutes must be a non-negative number',
           });
         }
+      } else if ('atContextField' in node.until) {
+        if (typeof node.until.atContextField !== 'string' || node.until.atContextField === '') {
+          issues.push({
+            nodeKey: key,
+            problem: 'wait atContextField must be a non-empty context key',
+          });
+        }
+        if (node.until.offsetMinutes !== undefined && !Number.isFinite(node.until.offsetMinutes)) {
+          issues.push({ nodeKey: key, problem: 'wait offsetMinutes must be a finite number' });
+        }
       } else if (typeof node.until.event !== 'string' || node.until.event === '') {
         issues.push({ nodeKey: key, problem: 'wait event must be a non-empty event type' });
+      }
+
+      if (node.remindAfterMinutes !== undefined) {
+        // Only an event wait can be chased. A duration wait and a context-time wait both resolve
+        // themselves on a clock nobody has to be reminded about, and declaring a reminder on one
+        // reads as a policy that would never fire.
+        if (!('event' in node.until)) {
+          issues.push({
+            nodeKey: key,
+            problem: 'wait remindAfterMinutes is only meaningful on a wait for an event',
+          });
+        }
+        if (!Number.isFinite(node.remindAfterMinutes) || node.remindAfterMinutes <= 0) {
+          issues.push({ nodeKey: key, problem: 'wait remindAfterMinutes must be positive' });
+        }
+        // A reminder with nobody to send it and nothing to say is a row in a queue that an
+        // operator cannot act on.
+        if (typeof node.remindQueue !== 'string' || node.remindQueue === '') {
+          issues.push({
+            nodeKey: key,
+            problem: 'wait remindAfterMinutes requires remindQueue',
+          });
+        }
+        if (typeof node.remindSummary !== 'string' || node.remindSummary.trim() === '') {
+          issues.push({
+            nodeKey: key,
+            problem: 'wait remindAfterMinutes requires remindSummary',
+          });
+        }
+        if (
+          node.maxReminders !== undefined &&
+          (!Number.isInteger(node.maxReminders) || node.maxReminders < 1)
+        ) {
+          issues.push({ nodeKey: key, problem: 'wait maxReminders must be a positive integer' });
+        }
       }
     }
   }

@@ -339,6 +339,17 @@ model WorkflowTask {
   slaDueAt  DateTime?
   escalatedAt DateTime?
 
+  /// When to chase, for a wait that is allowed to chase. A wait parked on an event can sit for
+  /// days legitimately, and the client on the other end of it may simply have forgotten - so a
+  /// wait node may declare a reminder, and this is when the next one is due. Null means the node
+  /// declared none, or the cap has been reached.
+  ///
+  /// The reminder never leaves the wait. Advancing to a reminder node and back would open a race
+  /// where the awaited event arrives while the instance is off sending a nudge, and the wait
+  /// re-parks having missed it - so the task stays parked and the chase is raised beside it.
+  remindDueAt   DateTime?
+  remindersSent Int       @default(0)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

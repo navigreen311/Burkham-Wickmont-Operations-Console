@@ -90,3 +90,4 @@ missing** — these numbers were never used.
 | 0075 | [A seed runs twice, because that is what people do](0075-a-seed-runs-twice-because-that-is-what-people-do.md)                                                   |
 | 0076 | [The map lives with the templates, and the gap is a list](0076-the-map-lives-with-the-templates-and-the-gap-is-a-list.md)                                       |
 | 0077 | [The client hears the answer, and a new version is how](0077-the-client-hears-the-answer-and-a-new-version-is-how.md)                                           |
+| 0078 | [A chase does not move the instance](0078-a-chase-does-not-move-the-instance.md)                                                                                |
