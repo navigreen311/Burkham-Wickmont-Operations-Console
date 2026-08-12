@@ -20,6 +20,8 @@ const call = async (path) => {
     : { ok: false, reason: payload.reason ?? 'Something went wrong.', status: payload.status };
 };
 
+import { renderAvailable, renderWrites } from './writes.js';
+
 const $ = (id) => document.getElementById(id);
 
 const line = (parent, text) => {
@@ -62,6 +64,7 @@ const loadHolds = async () => {
   }
   status.textContent = result.data.detail;
   blocked($('retention-blocked'), result.data.writes);
+  renderAvailable('retention-available', result.data.writes?.available);
 };
 
 const loadRequests = async () => {
@@ -83,6 +86,7 @@ const loadRequests = async () => {
   }
   status.textContent = result.data.detail;
   blocked($('retention-blocked'), result.data.writes);
+  renderAvailable('retention-available', result.data.writes?.available);
 };
 
 const loadClient = async () => {
@@ -119,8 +123,83 @@ const loadClient = async () => {
     : `NOT deletable. ${eligibility.heldBy ?? eligibility.note}`;
 
   blocked($('retention-blocked'), result.data.writes);
+  renderAvailable('retention-available', result.data.writes?.available);
 };
 
 $('retention-holds-load').addEventListener('click', () => void loadHolds());
 $('retention-requests-load').addEventListener('click', () => void loadRequests());
 $('retention-client-load').addEventListener('click', () => void loadClient());
+
+/**
+ * The controls, declared rather than written out.
+ *
+ * Two of these cannot be taken back, and both say so above the button. ADR-0079 records that the
+ * owner chose to have them here after being shown the argument for keeping them API-only; what
+ * makes that survivable is that each runs the chain at Level 3, is attributable, writes a Ledger
+ * event, and states its consequence where the operator is looking.
+ *
+ * A matter reference and a reason are required by the module, not by this page. The page asks for
+ * them because a form that omits a required field produces a refusal instead of a hold.
+ */
+renderWrites('retention-writes', [
+  {
+    id: 'retention-place',
+    capability: 'Place a legal hold',
+    action: 'place_legal_hold',
+    note: 'Suspends the retention schedule for what it covers. A matter reference is required - a hold nobody can trace to a matter is one nobody will dare release.',
+    buttonLabel: 'Place the hold',
+    done: 'Hold placed. The retention schedule is suspended for what it covers.',
+    fields: [
+      { name: 'clientId', label: 'Client id' },
+      { name: 'matterReference', label: 'Matter reference', placeholder: 'MATTER-2026-01' },
+      { name: 'reason', label: 'Reason' },
+    ],
+    path: () => '/api/console/retention/holds',
+    body: (v) => ({ ...v, kind: 'litigation', scope: 'client' }),
+  },
+  {
+    id: 'retention-release',
+    capability: 'Release a legal hold',
+    action: 'release_legal_hold',
+    note: 'THE DANGEROUS HALF. Releasing puts the records back on a schedule that destroys them. Separate from placing one so the Ledger can tell them apart.',
+    danger: true,
+    buttonLabel: 'Release the hold',
+    done: 'Hold released. These records are governed by their retention schedule again.',
+    fields: [
+      { name: 'holdId', label: 'Hold id' },
+      { name: 'reason', label: 'Reason for releasing' },
+    ],
+    path: (v) => `/api/console/retention/holds/${encodeURIComponent(v.holdId)}/release`,
+    body: (v) => ({ reason: v.reason }),
+  },
+  {
+    id: 'retention-decide',
+    capability: 'Decide a deletion request',
+    action: 'decide_deletion_request',
+    note: 'Approving is a decision somebody can revisit. It does not delete anything - completion below is the act that does.',
+    buttonLabel: 'Record the decision',
+    done: 'Decision recorded. Nothing has been deleted.',
+    fields: [
+      { name: 'requestId', label: 'Request id' },
+      { name: 'approve', label: 'Approve? (true/false)', placeholder: 'false' },
+      { name: 'reason', label: 'Reason' },
+    ],
+    path: (v) => `/api/console/retention/requests/${encodeURIComponent(v.requestId)}/decision`,
+    body: (v) => ({ approve: v.approve === 'true', reason: v.reason }),
+  },
+  {
+    id: 'retention-complete',
+    capability: 'Record that a deletion happened',
+    action: 'decide_deletion_request',
+    note: 'IRREVERSIBLE. This states that the records have been destroyed. Nothing here can bring them back, and the Ledger entry is what the firm would produce if asked.',
+    danger: true,
+    buttonLabel: 'Record the completion',
+    done: 'Completion recorded.',
+    fields: [
+      { name: 'requestId', label: 'Request id' },
+      { name: 'documentsDeleted', label: 'Documents deleted' },
+    ],
+    path: (v) => `/api/console/retention/requests/${encodeURIComponent(v.requestId)}/completion`,
+    body: (v) => ({ documentsDeleted: Number(v.documentsDeleted) }),
+  },
+]);

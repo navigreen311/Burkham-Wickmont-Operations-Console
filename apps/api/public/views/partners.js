@@ -15,6 +15,7 @@
  * Every value reaches the DOM through `textContent`.
  */
 
+import { renderAvailable, renderWrites } from './writes.js';
 const call = async (path) => {
   const response = await fetch(path, { credentials: 'same-origin' });
   const payload = await response.json().catch(() => ({ status: 'failed', reason: 'No response.' }));
@@ -87,6 +88,7 @@ const renderList = async () => {
   }
 
   renderBlockedWrites('partners-blocked', result.data.writes?.blocked);
+  renderAvailable('partners-available', result.data.writes?.available);
   status.textContent = `${result.data.partners.length} partner(s). Recertification cadence: ${result.data.recertificationCadenceDays} days.`;
 };
 
@@ -172,3 +174,30 @@ $('panel-partners').addEventListener('toggle', () => {
 });
 
 $('partners-refresh').addEventListener('click', () => void renderList());
+
+/**
+ * Publishing a curriculum module.
+ *
+ * A MATERIAL republish decertifies every partner who completed the previous version, which is why
+ * the change kind is asked for explicitly rather than defaulted. A default chosen once here would
+ * decertify a network the first time somebody fixed a typo.
+ */
+renderWrites('partners-writes', [
+  {
+    id: 'partners-module',
+    capability: 'Publish a curriculum module',
+    action: 'publish_curriculum_module',
+    note: 'A material republish DECERTIFIES every partner who completed the previous version. An editorial one does not.',
+    danger: true,
+    buttonLabel: 'Publish the module',
+    done: 'Module published.',
+    fields: [
+      { name: 'key', label: 'Module key' },
+      { name: 'title', label: 'Title' },
+      { name: 'objective', label: 'Objective' },
+      { name: 'changeKind', label: 'Change kind (material/editorial)', placeholder: 'editorial' },
+    ],
+    path: () => '/api/console/partners/curriculum',
+    body: (v) => v,
+  },
+]);

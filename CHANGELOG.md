@@ -7,6 +7,33 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added - Batch A, second half: the page controls (`ai-feature/batch-a-controls`)
+
+- **Twelve controls across seven panels, built from a declaration rather than written out twelve
+  times.** `views/writes.js` renders a form from `{capability, action, note, fields, path, body}`;
+  hand-writing each would have produced twelve near-copies, and the copy that drifts is the one
+  nobody is looking at.
+- **Each control names the action the chain will check, above the button.** An operator learns which
+  authority an act needs before pressing it, rather than by being refused.
+- **The trace renders on refusal as well as success.** Without it, "refused because you may not do
+  this" and "refused because the module said no" look identical - and only one of those is
+  something the operator can act on.
+- **Acts that cannot be undone say so beside the button**, in the markup and not by colour alone:
+  `.write-danger` carries a border and the note carries the word IRREVERSIBLE or DANGEROUS, so the
+  warning survives a bad screen or colour-blind vision. This is the mitigation that came with the
+  owner's decision in ADR-0079 to have these controls at all.
+- **A real bug caught by the suite: my generated ids collided.** `contracts-clause-status` already
+  existed on the page, so the new status line silently shared an id with it - a page where a
+  selector picks the wrong element. Every generated id is now prefixed `write-`.
+- **The new e2e presses a control rather than checking one renders.** It submits a hold with no
+  matter reference: the chain authorises, the module refuses, and the spec asserts the module's own
+  sentence AND `authority_level: passed` in the trace - which is what proves the refusal came from
+  the module rather than from the operator's level.
+- Two specs written last change asserted these panels had no controls. Both were right then and
+  both were rewritten - the reveal control now exists and states its purpose requirement, and the
+  retention panel is asserted to carry its irreversibility warning.
+- `pnpm verify` 1774 tests / 95 files; `pnpm test:e2e` **70 passing**.
+
 ### Added - Batch A: the eight Console writes that cannot be undone (`ai-feature/batch-a-writes`)
 
 - **THE FINDING that made the decision easy: nineteen modules had already chosen an Authority Level

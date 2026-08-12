@@ -88,18 +88,49 @@ test.describe('7.5 on the page', () => {
 
     await page.getByRole('button', { name: 'Load undecided deletion requests' }).click();
 
-    // Deleting a client's records is the most consequential act in this Console. It is no longer
-    // listed as a write the surface cannot offer - Batch A declared `decide_deletion_request` at
-    // Level 3 - and this page still grows no control for it, which is the next slice.
+    // Deleting a client's records is the most consequential act in this Console, and it has a
+    // control now. `decide_deletion_request` is declared at Level 3, so it is no longer a write
+    // the surface cannot offer.
     await expect(page.locator('#retention-blocked')).toHaveText('');
 
-    // Narrowly: no control that PERFORMS one. "Load undecided deletion requests" reads the queue
-    // and is not the act - a regex matching the word "deletion" would have caught it and passed
-    // for the wrong reason.
-    await expect(
-      page
-        .locator('#section-retention')
-        .getByRole('button', { name: /^(approve|decide|record|confirm|destroy)/i }),
-    ).toHaveCount(0);
+    // **THE ASSERTION THIS TEST EXISTS FOR, in its new form.** The act that cannot be undone says
+    // so where the operator is looking, not in a tooltip and not only in a comment. ADR-0079
+    // records that the owner chose to have these controls after being shown the argument against;
+    // this is the mitigation that came with them.
+    await expect(page.locator('#write-retention-complete-status')).toBeAttached();
+    const completion = page.locator('#retention-writes');
+    await expect(completion).toContainText('IRREVERSIBLE');
+    await expect(completion).toContainText('Nothing here can bring them back');
+
+    // And the release control is marked as the dangerous half of a hold, separately.
+    await expect(completion).toContainText('DANGEROUS HALF');
+  });
+});
+
+test.describe('a write control, pressed', () => {
+  test('runs the chain, then shows the module refusal and the trace', async ({ page }) => {
+    await signIn(page, E2E_CONSOLE_ACCOUNTS[32]);
+
+    // A well-formed client id that belongs to nothing, and NO matter reference. The chain should
+    // authorise - this operator holds Level 3 - and the module should then refuse, because a hold
+    // nobody can trace to a matter is one nobody will dare release.
+    await page
+      .locator('#write-retention-place-clientId')
+      .fill('00000000-0000-0000-0000-0000000000ff');
+    await page.locator('#write-retention-place-reason').fill('Anticipated litigation.');
+    await page.locator('#write-retention-place-submit').click();
+
+    // **The module's own sentence, not a paraphrase.** A page that rewrote this would drift from
+    // the system that enforced it, and the operator would be reading the page's opinion of a rule.
+    const status = page.locator('#write-retention-place-status');
+    await expect(status).toContainText('refused');
+    await expect(status).toContainText('matter reference');
+
+    // **And the trace, on a refusal.** This is what tells an operator the refusal came from the
+    // module rather than from their Authority Level - the chain passed, and the trace says so.
+    // Without it, "refused" and "you may not do this" look identical.
+    const trace = page.locator('#write-retention-place-trace');
+    await expect(trace).toContainText('authority_level');
+    await expect(trace).toContainText('passed');
   });
 });

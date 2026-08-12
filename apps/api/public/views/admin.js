@@ -22,6 +22,7 @@
  * Every value reaches the DOM through `textContent`.
  */
 
+import { renderAvailable, renderWrites } from './writes.js';
 const call = async (path) => {
   const response = await fetch(path, { credentials: 'same-origin' });
   const payload = await response.json().catch(() => ({ status: 'failed', reason: 'No response.' }));
@@ -134,6 +135,7 @@ const render = (data) => {
     }
   }
 
+  renderAvailable('admin-available', data.writes?.available);
   const blocked = $('admin-blocked');
   blocked.replaceChildren();
   for (const entry of data.writes?.blocked ?? []) {
@@ -173,3 +175,53 @@ $('admin-refresh').addEventListener('click', () => {
   loaded = false;
   void load();
 });
+
+/**
+ * The parameter controls.
+ *
+ * There is deliberately no control for an invariant. Not a disabled one, not a hidden one - none.
+ * A "Level 4 required" input would be a permission somebody eventually holds, and the person most
+ * likely to hold it is the one under pressure to make a number move.
+ */
+renderWrites('admin-writes', [
+  {
+    id: 'admin-set',
+    capability: 'Change a parameter',
+    action: 'change_system_parameter',
+    note: 'A parameter is the number every file is computed against, so a wrong one is wrong retroactively and everywhere at once. The module holds the bounds and refuses outside them.',
+    buttonLabel: 'Change the parameter',
+    done: 'Change recorded.',
+    fields: [
+      { name: 'key', label: 'Parameter key' },
+      { name: 'value', label: 'New value' },
+      { name: 'reason', label: 'Reason' },
+    ],
+    path: () => '/api/console/admin/parameters',
+    body: (v) => ({ key: v.key, value: Number(v.value), reason: v.reason }),
+  },
+  {
+    id: 'admin-promote',
+    capability: 'Promote a staged change',
+    action: 'change_system_parameter',
+    note: 'A staged change is real and is NOT in force. Promoting is what puts it in force.',
+    buttonLabel: 'Promote',
+    done: 'Change promoted and in force.',
+    fields: [{ name: 'changeId', label: 'Change id' }],
+    path: (v) => `/api/console/admin/changes/${encodeURIComponent(v.changeId)}/promotion`,
+    body: () => ({}),
+  },
+  {
+    id: 'admin-rollback',
+    capability: 'Roll a change back',
+    action: 'change_system_parameter',
+    note: 'Recorded as a change in its own right rather than as an undo, so the history reads as what happened.',
+    buttonLabel: 'Roll back',
+    done: 'Rollback recorded.',
+    fields: [
+      { name: 'changeId', label: 'Change id' },
+      { name: 'reason', label: 'Reason' },
+    ],
+    path: (v) => `/api/console/admin/changes/${encodeURIComponent(v.changeId)}/rollback`,
+    body: (v) => ({ reason: v.reason }),
+  },
+]);

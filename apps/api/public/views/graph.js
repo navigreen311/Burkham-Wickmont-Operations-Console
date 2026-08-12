@@ -19,6 +19,7 @@
  * way to lie about an elevated one.
  */
 
+import { renderAvailable, renderWrites } from './writes.js';
 const call = async (path) => {
   const response = await fetch(path, { credentials: 'same-origin' });
   const payload = await response.json().catch(() => ({ status: 'failed', reason: 'No response.' }));
@@ -105,6 +106,7 @@ const render = (data) => {
     );
   }
 
+  renderAvailable('graph-available', data.writes?.available);
   const blocked = $('graph-blocked');
   blocked.replaceChildren();
   for (const entry of data.writes?.blocked ?? []) {
@@ -141,3 +143,43 @@ const load = async () => {
 };
 
 $('graph-load').addEventListener('click', () => void load());
+
+/**
+ * The reveal, which is not a write.
+ *
+ * It is here because the authority model is the only thing that can gate a READ, and an ungated
+ * read of the most sensitive field in the system was reachable by anyone the session let in.
+ *
+ * The value is shown once, in the status line, and goes nowhere else - not into a field a browser
+ * would remember, not into the console, not into the panel's own lists.
+ */
+renderWrites('graph-writes', [
+  {
+    id: 'graph-ssn',
+    capability: 'Reveal an owner SSN',
+    action: 'reveal_protected_identifier',
+    note: 'A purpose is required and is recorded against the reveal. "Why did you look at this" is the question the access log exists to answer, and one that records only that somebody looked answers half of it.',
+    danger: true,
+    buttonLabel: 'Reveal',
+    fields: [
+      { name: 'ownerId', label: 'Owner id' },
+      { name: 'purpose', label: 'Purpose', placeholder: 'Verifying identity for the lender packet' },
+    ],
+    path: (v) => `/api/console/graph/owners/${encodeURIComponent(v.ownerId)}/ssn`,
+    body: (v) => ({ purpose: v.purpose }),
+  },
+  {
+    id: 'graph-ein',
+    capability: 'Reveal an entity EIN',
+    action: 'reveal_protected_identifier',
+    note: 'A company identifier is no less protected, and the same purpose rule applies.',
+    danger: true,
+    buttonLabel: 'Reveal',
+    fields: [
+      { name: 'entityId', label: 'Entity id' },
+      { name: 'purpose', label: 'Purpose' },
+    ],
+    path: (v) => `/api/console/graph/entities/${encodeURIComponent(v.entityId)}/ein`,
+    body: (v) => ({ purpose: v.purpose }),
+  },
+]);
