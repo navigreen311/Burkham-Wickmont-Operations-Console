@@ -56,6 +56,34 @@ parallel branches authored the content, partitioned by file ownership rather tha
 - **The defect belonged to no package.** It existed only in the sentence "and then you run them",
   which the three-way split by file ownership left nobody owning.
 
+### Added - every seeded template now has a step that sends it (`ai-feature/wire-the-reminders`)
+
+- **`TEMPLATES_WITHOUT_A_STEP` is empty.** Twelve templates, twelve reachable. It is kept rather
+  than deleted for the same reason `SENDS_WITHOUT_A_TEMPLATE` is: the invariant they feed is
+  exhaustiveness, and the next template written before its step exists needs somewhere to say so.
+- `await_documents` chases twice, three days apart, to the Concierge Desk. Because the chase hangs
+  off the parked wait rather than being a step, it stops the instant a document lands — a client
+  who sent their papers on Tuesday is not chased on Wednesday.
+- `book_review_call` now records `reviewCallAt`, `await_review_call` waits until a day before it,
+  and `remind_review_call` sends. A duration from booking could not express this: a call booked for
+  next week and one booked for next month both get reminded the day before. **This moves where
+  Phase 0 ends** — the phase completes after the client has been reminded of the call rather than at
+  the moment it was booked, which is a real change to what "Phase 0 complete" means and is recorded
+  as an inference an owner may want to reverse.
+- **`post-funding-follow-up` is a playbook of its own**, started by
+  `billing.funding_outcome.funded`, sleeping ninety days, then asking for the check-in. Not a step
+  in any phase: Phase 2 is a monthly cycle and putting it after `deliver_brief` would send it every
+  month. Ninety days is a figure nobody has confirmed.
+- **The linkage invariant was extended to know about the new shape.** A wait that chases is a second
+  way a playbook can reach a client, and the classification had only ever known about
+  `agent_task`s — so a reminder naming a template would have gone unclassified and unchecked. This
+  is the case the invariant had to survive, and it is why it asserts exhaustiveness rather than a
+  mapping.
+- `TEMPLATES_BY_PLAYBOOK` gains `'post-funding-follow-up': []` — deliberately none, on the record. A
+  playbook missing from that map cannot be told apart from one nobody got to.
+- Phase 0 ships as **v3**; v1 and v2 stay on the table. The seed script is nine steps and registers
+  the trigger per tenant, since a trigger row is per tenant while a playbook is firm-wide.
+
 ### Added - a wait can chase, and a wait can resolve to a date somebody wrote down (`ai-feature/wait-primitives`)
 
 - Two of the three unreachable templates were blocked on the same missing shape: `WaitNode.until`

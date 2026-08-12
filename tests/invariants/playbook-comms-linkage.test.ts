@@ -37,14 +37,34 @@ const CONCIERGE_DESK = 'concierge_desk';
 
 const templateKeys = new Set(SEED_TEMPLATES.map((template) => template.key));
 
-/** Every `playbook-key/node-key` in a seeded playbook whose node is dispatched to 4.1's desk. */
+/**
+ * Every `playbook-key/node-key` in a seeded playbook that causes a client to be contacted.
+ *
+ * Two shapes, because there are now two ways a playbook can reach a client:
+ *
+ *   an `agent_task` dispatched to the Concierge Desk - the ordinary send; and
+ *   a `wait` that chases, whose `remindQueue` is that desk - a send raised beside a parked wait
+ *   rather than as a step (ADR-0078).
+ *
+ * The second was added after this invariant was written, which is the case it had to survive: a new
+ * way to contact a client that the classification did not know about would have gone unclassified
+ * and unnoticed, and the reminder summary would have named a template nothing checked.
+ */
 const clientFacingNodes = V1_PLAYBOOK_SEEDS.flatMap((seed) =>
   Object.entries(seed.definition.nodes)
-    .filter(
-      ([, node]) =>
-        node.kind === 'agent_task' &&
-        (node as { readonly department: string }).department === CONCIERGE_DESK,
-    )
+    .filter(([, node]) => {
+      if (node.kind === 'agent_task') {
+        return (node as { readonly department: string }).department === CONCIERGE_DESK;
+      }
+      if (node.kind === 'wait') {
+        const wait = node as {
+          readonly remindAfterMinutes?: number;
+          readonly remindQueue?: string;
+        };
+        return wait.remindAfterMinutes !== undefined && wait.remindQueue === CONCIERGE_DESK;
+      }
+      return false;
+    })
     .map(([nodeKey]) => `${seed.key}/${nodeKey}`),
 );
 

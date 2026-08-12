@@ -175,6 +175,15 @@ const PHASE_0_DEFINITION: PlaybookDefinition = {
     await_documents: {
       kind: 'wait',
       until: { event: 'vault.document_stored' },
+      // The document chase, and the reason it is a property of the wait rather than a node: the
+      // chase stops the instant a document lands, because the task stops being `waiting` and the
+      // reminder query only returns waiting rows. A client who sent their papers on Tuesday is not
+      // chased on Wednesday (ADR-0078).
+      remindAfterMinutes: 60 * 24 * 3,
+      remindQueue: CONCIERGE_DESK,
+      remindSummary:
+        'Documents are still outstanding for this client. Send the reminder (4.1, document-request-reminder-sms), subject to 4.4 quiet hours.',
+      maxReminders: 2,
       next: 'enrich_intake',
     },
     enrich_intake: {
@@ -273,8 +282,24 @@ const PHASE_0_DEFINITION: PlaybookDefinition = {
       kind: 'agent_task',
       department: CONCIERGE_DESK,
       action:
-        'Schedule the Blueprint Review Call and record it against the lead in Sales Motion (1.3).',
+        'Schedule the Blueprint Review Call and record it against the lead in Sales Motion (1.3). Write the agreed time into the workflow context as `reviewCallAt`, an ISO timestamp - the reminder below is due relative to the call itself, and a duration measured from this step would count from the wrong moment.',
       slaMinutes: 60 * 24 * 3,
+      next: 'await_review_call',
+    },
+    await_review_call: {
+      kind: 'wait',
+      // A day before the call, not a fixed period after booking it: the gap between the two is
+      // exactly what varies. A call booked for next week and one booked for next month both get
+      // reminded the day before.
+      until: { atContextField: 'reviewCallAt', offsetMinutes: -60 * 24 },
+      next: 'remind_review_call',
+    },
+    remind_review_call: {
+      kind: 'agent_task',
+      department: CONCIERGE_DESK,
+      action:
+        'Send the appointment reminder (4.1, appointment-reminder-sms), subject to 4.4 quiet hours. The Blueprint is already in the portal; this is the message that gets the client to the call about it.',
+      slaMinutes: 60 * 4,
       next: 'phase_0_complete',
     },
     phase_0_complete: { kind: 'terminal', outcome: 'completed' },
@@ -367,6 +392,16 @@ const PHASE_0_PROVENANCE: Readonly<Record<string, NodeBasis>> = {
     basis: 'blueprint',
     source:
       'Flow 5.1: "Sales Motion (Blueprint Review Call scheduled)"; 1.3 owns Blueprint Review Calls',
+  },
+  await_review_call: {
+    basis: 'inferred',
+    reasoning:
+      'The blueprint books the call and says nothing about the client being reminded of it. 4.1 holds an `appointment-reminder-sms` for exactly this and nothing sent it. Waiting until a day before the call rather than a fixed period after booking is the whole point: those are the same thing only if every client books the same distance out, which no client does. The moment comes from `reviewCallAt`, which is why `book_review_call` now records it.',
+  },
+  remind_review_call: {
+    basis: 'inferred',
+    reasoning:
+      'The send that the wait above exists for. It also moves where Phase 0 ends: the phase now completes after the client has been reminded of the call rather than at the moment it was booked. That is a real change to what "Phase 0 complete" means and an owner may want the phase to end at booking with the reminder living elsewhere - the alternative is a satellite playbook triggered by the booking, which is more machinery for the same message.',
   },
   phase_0_complete: {
     basis: 'inferred',
@@ -734,9 +769,90 @@ const PHASE_2_PROVENANCE: Readonly<Record<string, NodeBasis>> = {
 
 // --- The seeds ------------------------------------------------------------
 
+// --- Post-funding follow-up -----------------------------------------------
+
+/**
+ * The check-in some months after a facility funds.
+ *
+ * **Not a step in any phase, which is why it is its own playbook.** It fires on a schedule
+ * measured from the day money arrived, and Phase 2 is a monthly cycle - putting it after
+ * `deliver_brief` would send it every month, and putting it in Phase 1 would hold that phase open
+ * for a quarter.
+ *
+ * It needs nothing the engine did not already have. `upsertTrigger` starts a playbook from an
+ * event, and a duration wait can be a start node, so "three months after funding" is a trigger on
+ * `billing.funding_outcome.funded` and a graph that sleeps first. The two reminders in Phase 0
+ * needed new primitives; this one only needed somebody to look.
+ */
+const POST_FUNDING_DEFINITION: PlaybookDefinition = {
+  startNode: 'let_the_facility_settle',
+  nodes: {
+    let_the_facility_settle: {
+      kind: 'wait',
+      // Three months. Long enough that the client has lived with the facility and has an opinion
+      // worth hearing, short enough to be before a promotional rate rolls off.
+      until: { durationMinutes: 60 * 24 * 90 },
+      next: 'check_in',
+    },
+    check_in: {
+      kind: 'agent_task',
+      department: CONCIERGE_DESK,
+      action:
+        'Send the post-funding check-in (4.1, post-funding-checkin): is the facility doing what they took it for, and has anything changed in the business that would change what is available to them. Flag any promotional period nearing its end before it arrives.',
+      slaMinutes: 60 * 24 * 3,
+      next: 'follow_up_complete',
+    },
+    follow_up_complete: { kind: 'terminal', outcome: 'completed' },
+  },
+};
+
+const POST_FUNDING_PROVENANCE: Readonly<Record<string, NodeBasis>> = {
+  let_the_facility_settle: {
+    basis: 'inferred',
+    reasoning:
+      'The blueprint describes no post-funding contact on a schedule. 4.1 holds a `post-funding-checkin` template written around `monthsSinceFunding`, which implies a delay measured from funding and not from anything in a phase graph. Ninety days is a figure nobody has confirmed - it is long enough for the client to have an opinion worth hearing and short enough to precede a promotional rate rolling off, and it is the first thing an owner should change.',
+  },
+  check_in: {
+    basis: 'inferred',
+    reasoning:
+      'The send this playbook exists for, and the template that had no step anywhere. Whether the check-in is a message or a booked call is a policy question: this proposes the message, because the template exists and asks for a time, so the call is what the client replies with rather than something the firm books unasked.',
+  },
+  follow_up_complete: {
+    basis: 'inferred',
+    reasoning:
+      'A terminal, because this graph has one path and no gate. It is listed rather than left implicit so that the provenance map and the node set stay equal, which is what the invariant test asserts in both directions.',
+  },
+};
+
+export const POST_FUNDING_PLAYBOOK: PlaybookSeed = {
+  key: 'post-funding-follow-up',
+  version: 1,
+  // Phase 2 is where a funded client lives, and the phase column is how the console groups these.
+  // The check-in is not a step of the Phase 2 cycle, but it belongs to the same part of the
+  // relationship.
+  phase: 2,
+  title: 'Post-funding follow-up',
+  purpose: 'A check-in some months after a facility funds, started by the funding itself.',
+  identityBasis: PHASE_IDENTITY[2] as string,
+  definition: POST_FUNDING_DEFINITION,
+  provenance: POST_FUNDING_PROVENANCE,
+};
+
+/**
+ * The event that starts it.
+ *
+ * Registered per tenant by the integrator, because a trigger row is per tenant while a playbook is
+ * firm-wide. `billing.funding_outcome.funded` is emitted when an attempt is marked funded, so no
+ * condition is needed - the event already means the only thing this playbook cares about.
+ */
+export const POST_FUNDING_TRIGGER = {
+  eventType: 'billing.funding_outcome.funded',
+  playbookKey: POST_FUNDING_PLAYBOOK.key,
+} as const;
+
 export const PHASE_0_PLAYBOOK: PlaybookSeed = {
   key: 'phase-0-capital-readiness',
-  version: 2,
+  version: 3,
   phase: 0,
   title: 'Phase 0 - Capital Readiness',
   purpose:
@@ -772,6 +888,7 @@ export const V1_PLAYBOOK_SEEDS: readonly PlaybookSeed[] = [
   PHASE_0_PLAYBOOK,
   PHASE_1_PLAYBOOK,
   PHASE_2_PLAYBOOK,
+  POST_FUNDING_PLAYBOOK,
 ];
 
 /**

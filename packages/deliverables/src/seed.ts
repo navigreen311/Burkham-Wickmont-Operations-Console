@@ -133,6 +133,10 @@ export const TEMPLATES_BY_PLAYBOOK: Readonly<Record<string, readonly string[]>> 
   'phase-0-capital-readiness': [READINESS_BLUEPRINT.key],
   'phase-1-placement': [FUNDING_SUITABILITY_MEMO.key],
   'phase-2-stack-management': [CAPITAL_COMMAND_BRIEF.key],
+  // Deliberately none. The post-funding follow-up sends a message and produces no document, and an
+  // empty list says that on the record - a playbook missing from this map cannot be told apart
+  // from one nobody got to, which is the distinction the invariant exists to force.
+  'post-funding-follow-up': [],
 };
 
 /** Everything the V1 playbooks can draft. */
