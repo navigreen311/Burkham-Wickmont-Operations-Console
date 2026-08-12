@@ -56,6 +56,33 @@ parallel branches authored the content, partitioned by file ownership rather tha
 - **The defect belonged to no package.** It existed only in the sentence "and then you run them",
   which the three-way split by file ownership left nobody owning.
 
+### Added - the three steps that said they send now have something to send (`ai-feature/send-templates`)
+
+- `bank-connection-request`, `readiness-blueprint-ready` and `capital-command-brief-ready`. Each of
+  the three playbook steps named 4.1 in its action and reached for a template that did not exist —
+  and read as complete from the playbook side, which is why nobody noticed.
+  `SENDS_WITHOUT_A_TEMPLATE` is now empty and kept, because the invariant it feeds is
+  exhaustiveness: the next step written without a template needs somewhere to say "not yet".
+- **`bank-connection-request` carries the rule that we never ask for a credential**, because a
+  message telling somebody to connect their bank is the one an attacker imitates. The only defence
+  a client can apply is a rule they can hold every message against — including a real one — so the
+  rule travels in the message: never a password, a one-time code or card details, by any channel,
+  and if a message asks, it is not from us. **It also carries no link.** Training a client to click
+  through from an email about their bank teaches the habit that paragraph exists to break; the
+  instruction is to sign in to the portal themselves. Both asserted.
+- **The two delivery notifications notify without becoming the deliverable.** Both playbook steps
+  deliver the document to the Client Portal and notify through 4.1; the document carries the
+  client's financial position and email is not where that belongs. The message says where it is and
+  does not repeat what is in it.
+- **Two disclosures are earned, not decorative.** The honest description of a Blueprint figure is
+  that it is `estimated` and of a Brief figure that it is `projected` — both requires-disclaimer
+  phrases — so the templates use them and carry `DISCLOSURE_ESTIMATE` and `DISCLOSURE_PROJECTION`
+  rather than writing around the words. **Verified by mutation:** removing either disclosure makes
+  `seedMessageTemplates` refuse the whole batch, as does a banned phrase planted in the new bank
+  template. The content is genuinely scanned.
+- Twelve templates now publish against the 108-entry library, verified through
+  `scripts/seed-tenant.mjs` on a fresh tenant.
+
 ### Added - the playbooks and the message templates now agree about what gets sent when (`ai-feature/playbook-comms-linkage`)
 
 - **THE FINDING: six client-facing playbook steps, nine message templates, and not one reference in

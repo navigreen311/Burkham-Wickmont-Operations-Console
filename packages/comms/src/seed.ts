@@ -41,7 +41,7 @@
  * A voice template seeded here would be a script for a system that does not read it.
  */
 
-import { DISCLOSURE_MAXIMUM } from '@bwc/claims';
+import { DISCLOSURE_ESTIMATE, DISCLOSURE_MAXIMUM, DISCLOSURE_PROJECTION } from '@bwc/claims';
 import { scanForTenant } from '@bwc/scanner';
 import { ok, refused, type EventActor, type Outcome } from '@bwc/core';
 import type { Channel } from './windows.js';
@@ -96,6 +96,34 @@ export const SEED_TEMPLATES: readonly SeedTemplate[] = [
     ].join('\n'),
   },
   {
+    key: 'bank-connection-request',
+    channel: 'email',
+    subject: 'Connecting your bank for {{clientLegalName}}',
+    purpose:
+      'Sent when Phase 0 asks the client to connect their bank through Plaid Link in the portal. Carries the rule that we never ask for credentials, because this is the message a phishing attempt would imitate.',
+    body: [
+      'Hello {{firstName}},',
+      '',
+      'The next step is connecting the bank account {{clientLegalName}} trades from. It is how we see the transactions a review depends on, rather than asking you to gather months of statements by hand.',
+      '',
+      'Sign in to your portal and start the connection there. Our provider handles it, and the access it gives us is read-only: we can see transactions, and we cannot move money.',
+      '',
+      // The reason this template carries more than an instruction. A message asking a client to
+      // connect a bank account is the one an attacker imitates, and the defence a client can
+      // actually use is a rule they can check any message against - including this one.
+      'We will never ask you for your bank password, a one-time code, or your card details - not by email, not by text, and not on a call. Nobody here can see those. If a message appears to come from us and asks for any of them, it is not from us.',
+      '',
+      'We have not sent anything to any provider, and connecting your bank does not change that.',
+      '',
+      NOT_A_LENDER,
+      '',
+      'Reply here with any question and it will reach {{advisorName}} directly.',
+      '',
+      '{{advisorName}}',
+      'Burkham Wickmont',
+    ].join('\n'),
+  },
+  {
     key: 'document-request',
     channel: 'email',
     subject: 'Documents needed for {{clientLegalName}}',
@@ -125,6 +153,33 @@ export const SEED_TEMPLATES: readonly SeedTemplate[] = [
       '{{firstName}}, {{advisorName}} at Burkham Wickmont. We are still waiting on {{documentName}} for your file. Reply here or upload it in your portal.',
       SMS_FOOTER,
     ].join(' '),
+  },
+  {
+    key: 'readiness-blueprint-ready',
+    channel: 'email',
+    subject: 'Your Readiness Blueprint for {{clientLegalName}} is ready',
+    purpose:
+      'Sent when an approved Readiness Blueprint has been delivered to the portal at the end of Phase 0. Notifies; it does not carry the document.',
+    body: [
+      'Hello {{firstName}},',
+      '',
+      'Your Readiness Blueprint for {{clientLegalName}} is in your portal.',
+      '',
+      // It notifies, it does not attach. The Blueprint carries a client's financial position, and
+      // email is not where that belongs - the portal is the reason a delivery step exists at all.
+      'It sets out where {{clientLegalName}} stands today, what a provider would see, and which of those things would change with work. Where it puts a number on something, that number is estimated from the information we hold now.',
+      '',
+      DISCLOSURE_ESTIMATE,
+      '',
+      'Nothing in it has been sent to any provider, and no application has been made. That happens only after you authorize a specific one in writing.',
+      '',
+      NOT_A_LENDER,
+      '',
+      '{{advisorName}} will walk you through it on the review call. Reply here if you would rather go through anything before then.',
+      '',
+      '{{advisorName}}',
+      'Burkham Wickmont',
+    ].join('\n'),
   },
   {
     key: 'application-authorization-request',
@@ -250,6 +305,31 @@ export const SEED_TEMPLATES: readonly SeedTemplate[] = [
       'Burkham Wickmont',
     ].join('\n'),
   },
+  {
+    key: 'capital-command-brief-ready',
+    channel: 'email',
+    subject: 'Your Capital Command Brief for {{periodLabel}}',
+    purpose:
+      'Sent when an approved Capital Command Brief has been delivered to the portal during Phase 2 stack management. Notifies; it does not carry the document.',
+    body: [
+      'Hello {{firstName}},',
+      '',
+      'Your Capital Command Brief for {{periodLabel}} is in your portal.',
+      '',
+      'It covers where {{clientLegalName}} stands across the facilities you hold, what they are costing you, and what is coming up on them. Where it looks forward, those figures are projected from what we hold today rather than measured.',
+      '',
+      DISCLOSURE_PROJECTION,
+      '',
+      'If anything in it needs acting on, it says so and says by when.',
+      '',
+      NOT_A_LENDER,
+      '',
+      'Reply here and it will reach {{advisorName}} directly.',
+      '',
+      '{{advisorName}}',
+      'Burkham Wickmont',
+    ].join('\n'),
+  },
 ];
 
 // --- Which playbook step sends which template ------------------------------------------------
@@ -272,22 +352,26 @@ export const SEED_TEMPLATES: readonly SeedTemplate[] = [
 
 /** `playbook-key/node-key` -> the templates that step sends. */
 export const TEMPLATES_BY_PLAYBOOK_NODE: Readonly<Record<string, readonly string[]>> = {
+  'phase-0-capital-readiness/invite_bank_connection': ['bank-connection-request'],
   'phase-0-capital-readiness/request_documents': ['document-request'],
+  'phase-0-capital-readiness/deliver_blueprint': ['readiness-blueprint-ready'],
   'phase-1-placement/request_client_authorization': ['application-authorization-request'],
+  'phase-2-stack-management/deliver_brief': ['capital-command-brief-ready'],
 };
 
 /**
  * Steps that send, and have no template to send.
  *
- * Each names 4.1 in its action and there is nothing for it to reach for. Listed rather than left
- * to be noticed, because an absent template is invisible from the playbook side - the step reads
- * as complete.
+ * **Empty, and kept.** It held three entries when this map was written - every step that named 4.1
+ * and had nothing to reach for. An absent template is invisible from the playbook side, because
+ * the step reads as complete either way, so the absence was recorded rather than left to be
+ * noticed.
+ *
+ * The list stays because the invariant it feeds is exhaustiveness: a client-facing step must
+ * appear in exactly one of these three lists, and deleting this one would leave the next step
+ * written without a template nowhere to go but a failing test with no way to say "not yet".
  */
-export const SENDS_WITHOUT_A_TEMPLATE: readonly string[] = [
-  'phase-0-capital-readiness/invite_bank_connection',
-  'phase-0-capital-readiness/deliver_blueprint',
-  'phase-2-stack-management/deliver_brief',
-];
+export const SENDS_WITHOUT_A_TEMPLATE: readonly string[] = [];
 
 /**
  * Concierge Desk steps that are not sends.
