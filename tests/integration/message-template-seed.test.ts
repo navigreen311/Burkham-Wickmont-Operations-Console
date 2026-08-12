@@ -13,7 +13,12 @@
  */
 
 import { describe, expect, it, beforeAll, afterAll } from 'vitest';
-import { seedFoundingClaims, publish } from '@bwc/claims';
+import {
+  DISCLOSURE_ESTIMATE,
+  DISCLOSURE_PROJECTION,
+  seedFoundingClaims,
+  publish,
+} from '@bwc/claims';
 import {
   SEED_TEMPLATES,
   currentTemplate,
@@ -197,6 +202,63 @@ describe('the templates are the ordinary sends, and they are usable', () => {
     // Voice is deliberately absent: 4.1 routes it through VoiceForge and 4.3 reads transcripts of
     // calls that already happened. A voice template here would be a script nothing reads.
     expect(SEED_TEMPLATES.some((template) => template.channel === 'voice')).toBe(false);
+  });
+
+  it('gives the three steps that had nothing to send something to send', () => {
+    // Each of these steps named 4.1 in its action and reached for a template that did not exist.
+    // The step read as complete from the playbook side, which is why nobody noticed.
+    const keys = SEED_TEMPLATES.map((template) => template.key);
+    expect(keys).toContain('bank-connection-request');
+    expect(keys).toContain('readiness-blueprint-ready');
+    expect(keys).toContain('capital-command-brief-ready');
+  });
+
+  it('never asks a client for a credential, in the message a phishing attempt would imitate', () => {
+    const template = SEED_TEMPLATES.find((entry) => entry.key === 'bank-connection-request');
+    expect(template, 'bank-connection-request is not seeded').toBeDefined();
+    const body = template?.body ?? '';
+
+    // THE ASSERTION THIS TEMPLATE EXISTS FOR. A message telling somebody to connect their bank is
+    // the one an attacker copies, and the only defence a client can actually apply is a rule they
+    // can hold every message against - including a real one. So the rule travels in the message.
+    expect(body).toMatch(/never ask you for your bank password/i);
+    expect(body).toMatch(/one-time code/i);
+    expect(body).toMatch(/not from us/i);
+
+    // And it carries no link. A message about a client's bank that trains them to click through
+    // from email is teaching the habit the paragraph above is trying to break; the instruction is
+    // to sign in to the portal themselves.
+    expect(body).not.toMatch(/https?:\/\//);
+    expect(body).toMatch(/[Ss]ign in to your portal/);
+  });
+
+  it('notifies that a deliverable is ready without becoming the deliverable', () => {
+    for (const key of ['readiness-blueprint-ready', 'capital-command-brief-ready']) {
+      const template = SEED_TEMPLATES.find((entry) => entry.key === key);
+      expect(template, `${key} is not seeded`).toBeDefined();
+      const body = template?.body ?? '';
+
+      // Both playbook steps deliver the document to the Client Portal and notify through 4.1. The
+      // document carries the client's financial position and email is not where that belongs - so
+      // the message says where it is, and does not repeat what is in it.
+      expect(body, key).toMatch(/is in your portal/);
+      expect(body, key).toMatch(/is not a lender/);
+    }
+  });
+
+  it('carries the disclosure each forward-looking figure obliges', () => {
+    const blueprint = SEED_TEMPLATES.find((entry) => entry.key === 'readiness-blueprint-ready');
+    const brief = SEED_TEMPLATES.find((entry) => entry.key === 'capital-command-brief-ready');
+
+    // Both use a requires-disclaimer phrase deliberately rather than writing around it, because
+    // the honest description of a Blueprint figure is that it is estimated and of a Brief figure
+    // that it is projected. The scanner refuses the whole batch if the disclosure is missing, so
+    // these assertions restate a rule the seed already enforces - and name which template it was.
+    expect(blueprint?.body).toMatch(/\bestimated\b/);
+    expect(blueprint?.body).toContain(DISCLOSURE_ESTIMATE);
+
+    expect(brief?.body).toMatch(/\bprojected\b/);
+    expect(brief?.body).toContain(DISCLOSURE_PROJECTION);
   });
 
   it('renders with variables, and leaves an unfilled one visible rather than blank', async () => {
