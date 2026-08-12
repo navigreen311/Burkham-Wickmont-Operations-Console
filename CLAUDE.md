@@ -196,7 +196,7 @@ Every feature or significant change follows this sequence:
 
 - Update `README.md` and add `docs/<feature>.md` (overview, architecture, endpoints, env vars).
 - Update a CHANGELOG entry for added/changed/removed.
-- Architectural choices get an ADR in `docs/decisions/ADR-NNNN-<slug>.md`.
+- Architectural choices get an ADR in `docs/adr/NNNN-<slug>.md`. **One directory, this one.** The first eleven were written to `docs/decisions/ADR-NNNN-<slug>.md` and everything after 0011 went here instead; the two sat side by side long enough for the older set to be reported as missing. Numbering is continuous across both eras - check the highest number in `docs/adr/` before claiming one.
 
 ### 6. Deliver
 

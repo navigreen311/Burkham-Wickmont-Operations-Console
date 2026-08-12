@@ -1,7 +1,7 @@
 # 7.2 State-by-State Regulatory Engine
 
 **Package:** `@bwc/regulatory` · **Schema:** `regulatory`
-**ADR:** [ADR-0009](decisions/ADR-0009-state-activation-requires-a-human-and-a-document.md)
+**ADR:** [ADR-0009](adr/0009-state-activation-requires-a-human-and-a-document.md)
 
 ---
 

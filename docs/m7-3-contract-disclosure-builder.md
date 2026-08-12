@@ -1,7 +1,7 @@
 # 7.3 Contract & Disclosure Builder
 
 **Package:** `@bwc/contracts` · **Schema:** `contracts`
-**ADR:** [ADR-0010](decisions/ADR-0010-an-issued-contract-is-frozen.md)
+**ADR:** [ADR-0010](adr/0010-an-issued-contract-is-frozen.md)
 
 ---
 
@@ -41,7 +41,7 @@ gets checked is whether the obligation is actually met — and generation refuse
 
 ## An issued contract is frozen
 
-Full reasoning in [ADR-0010](decisions/ADR-0010-an-issued-contract-is-frozen.md).
+Full reasoning in [ADR-0010](adr/0010-an-issued-contract-is-frozen.md).
 
 Blueprint 7.3 lists "auto-updates when Regulatory Engine flags rule changes". Read literally, that
 is a feature which reaches into signed agreements and changes their terms — easy to build, and the

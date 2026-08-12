@@ -1,7 +1,7 @@
 # 5.2 Lender Intelligence Database · 5.4 Capital Product Governance Board · 5.3 completed
 
 **Packages:** `@bwc/lenders`, `@bwc/governance`, `@bwc/placement`
-**Schemas:** `lenders`, `governance` · **ADR:** [ADR-0007](decisions/ADR-0007-governance-status-lives-outside-the-provider-record.md)
+**Schemas:** `lenders`, `governance` · **ADR:** [ADR-0007](adr/0007-governance-status-lives-outside-the-provider-record.md)
 
 ---
 
@@ -115,7 +115,7 @@ saving their notes.
 
 ## 5.4 Capital Product Governance Board
 
-The full reasoning is in [ADR-0007](decisions/ADR-0007-governance-status-lives-outside-the-provider-record.md).
+The full reasoning is in [ADR-0007](adr/0007-governance-status-lives-outside-the-provider-record.md).
 In brief: **governance status lives in its own schema** (a provider the board has never seen has no
 row, and absence resolves to _not approved_), and **standing is derived at read time** (a nightly
 staleness job that stops leaves every stale provider reading as approved, with no signal).

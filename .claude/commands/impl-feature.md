@@ -54,7 +54,7 @@ Plan and implement a complete feature end-to-end (design → code → tests → 
 ### 6. Docs
 - Update `README.md` with new feature info.
 - Add `docs/${feature_name}.md` (overview, architecture, endpoints, env vars).
-- Add an ADR under `docs/decisions/` if an architectural choice was made.
+- Add an ADR under `docs/adr/` if an architectural choice was made. One directory; number it after the highest already there.
 - Update `CHANGELOG.md`.
 
 ### 7. Deliverables
