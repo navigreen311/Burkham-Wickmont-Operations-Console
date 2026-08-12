@@ -16,7 +16,7 @@
 import { db } from '@bwc/db';
 import { append } from '@bwc/ledger';
 import type { EventActor } from '@bwc/core';
-import { publishStateModule, type DisclosureRequirement } from './states.js';
+import { currentModule, publishStateModule, type DisclosureRequirement } from './states.js';
 
 interface SeedState {
   readonly state: string;
@@ -24,6 +24,17 @@ interface SeedState {
   readonly citations: readonly string[];
   readonly disclosures: readonly DisclosureRequirement[];
   readonly marketingNotes?: string;
+}
+
+/**
+ * What the seed did, per state.
+ *
+ * A count alone cannot distinguish "seeded seven" from "found seven already there", and those are
+ * different facts about the tenant in front of you.
+ */
+export interface SeedStatesResult {
+  readonly published: readonly string[];
+  readonly skipped: readonly string[];
 }
 
 /**
@@ -161,10 +172,32 @@ export const seedV1PriorityStates = async (
   tenantId: string,
   publishedBy: string,
   actor: EventActor,
-): Promise<number> => {
-  let published = 0;
+  /**
+   * Republish states that already have a module, as MATERIAL changes.
+   *
+   * **Off by default, and the default is the whole point.** Found by running the tenant seed script
+   * twice: this function used to publish unconditionally, so a second run bumped all seven states
+   * to version 2 with `changeKind: 'material'` and identical content. A material change since the
+   * reviewed version is exactly what `standingFor` looks for, so every ACTIVATED state would come
+   * back `needs_counsel_review` with `permitsClientFacingAction: false` - the firm knocked offline
+   * in seven states by re-running a script whose own header called it safe.
+   *
+   * Re-running a seed is the ordinary case, not the error: a half-finished first run, a new state
+   * added to the list, an operator who is not sure whether it took. None of those should require a
+   * lawyer to look at New York again.
+   */
+  republishExisting = false,
+): Promise<SeedStatesResult> => {
+  const published: string[] = [];
+  const skipped: string[] = [];
 
   for (const seed of V1_STATE_SEEDS) {
+    const existing = await currentModule(tenantId, seed.state);
+    if (existing.status === 'ok' && !republishExisting) {
+      skipped.push(seed.state);
+      continue;
+    }
+
     const result = await publishStateModule({
       tenantId,
       state: seed.state,
@@ -176,7 +209,7 @@ export const seedV1PriorityStates = async (
       publishedBy,
       actor,
     });
-    if (result.status === 'ok') published += 1;
+    if (result.status === 'ok') published.push(seed.state);
   }
 
   await append({
@@ -185,12 +218,13 @@ export const seedV1PriorityStates = async (
     actor,
     payload: {
       states: V1_STATE_SEEDS.map((seed) => seed.state),
-      published,
+      published: published.length,
+      skipped: skipped.length,
       note: 'Drafts for counsel review. No state is activated by seeding.',
     },
   });
 
-  return published;
+  return { published, skipped };
 };
 
 // --- State-law change tracker ---------------------------------------------

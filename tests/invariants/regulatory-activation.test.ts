@@ -376,20 +376,56 @@ describe('the V1 priority states', () => {
   it('seeds all seven as drafts, and activates none of them', async () => {
     // The seeded content is a scaffold for counsel, not legal advice - and the gate is what makes
     // that distinction enforceable rather than a disclaimer in a comment.
-    const published = await seedV1PriorityStates(
+    const result = await seedV1PriorityStates(
       fx.tenant.id,
       'compliance@burkhamwickmont.test',
       human(),
     );
-    expect(published).toBe(7);
+    expect(result.published).toHaveLength(7);
+    expect(result.skipped).toEqual([]);
+
+    // Seeded twice, because that is the ordinary case and the second run is where the damage was.
+    // Publishing unconditionally bumped all seven to version 2 as a MATERIAL change, and a
+    // material change since the reviewed version is exactly what sends an ACTIVATED state back to
+    // counsel - so re-running the tenant seed script would have taken the firm offline in seven
+    // states. Nothing is published the second time.
+    const again = await seedV1PriorityStates(
+      fx.tenant.id,
+      'compliance@burkhamwickmont.test',
+      human(),
+    );
+    expect(again.published).toEqual([]);
+    expect(again.skipped).toHaveLength(7);
 
     for (const state of V1_PRIORITY_STATES) {
       const standing = await standingFor(fx.tenant.id, state);
       expect(standing.status, state).toBe('draft');
       expect(standing.permitsClientFacingAction, state).toBe(false);
+      expect(standing.currentVersion, state).toBe(1);
     }
 
     expect(await activeStates(fx.tenant.id)).not.toContain('CA');
+  });
+
+  it('does not send an activated state back to counsel when the seed is re-run', async () => {
+    // The harm the skip prevents, stated as the thing an operator would actually suffer.
+    //
+    // NY is seeded, reviewed by counsel and activated - the normal path to a live state. Re-running
+    // the seed script then republished its module as a MATERIAL change, and `standingFor` sends an
+    // activated state back for review on exactly that. The state goes dark, client-facing action
+    // stops, and a lawyer has to look at New York again because somebody ran a seed twice.
+    await seedV1PriorityStates(fx.tenant.id, 'compliance@burkhamwickmont.test', human());
+
+    const activated = await activate('NY');
+    expect(activated.status).toBe('ok');
+    expect((await standingFor(fx.tenant.id, 'NY')).status).toBe('active');
+
+    await seedV1PriorityStates(fx.tenant.id, 'compliance@burkhamwickmont.test', human());
+
+    const after = await standingFor(fx.tenant.id, 'NY');
+    expect(after.status).toBe('active');
+    expect(after.permitsClientFacingAction).toBe(true);
+    expect(after.currentVersion).toBe(after.reviewedVersion);
   });
 
   it('cites a statute for every seeded state', () => {

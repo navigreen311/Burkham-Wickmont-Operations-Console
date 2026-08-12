@@ -222,18 +222,45 @@ describe('the templates are the ordinary sends, and they are usable', () => {
     expect(unresolvedPlaceholders(partial.body).length).toBeGreaterThan(0);
   });
 
-  it('supersedes rather than edits when seeded again', async () => {
+  it('leaves an existing template alone when seeded again', async () => {
     const before = await currentTemplate(fx.tenant.id, 'document-request');
     if (before.status !== 'ok') throw new Error('expected a published template');
 
     const again = await seedMessageTemplates(fx.tenant.id, 'concierge_desk', human());
-    expect(again.status).toBe('ok');
+    if (again.status !== 'ok') throw new Error('expected the re-run to succeed');
+
+    // THE ASSERTION THIS TEST EXISTS FOR, and it replaces one that asserted the opposite.
+    //
+    // Re-running a seed is the ordinary case - a half-finished first run, a new template added to
+    // the list, an operator unsure whether it took. Publishing unconditionally walked every key to
+    // version 2 with an identical body, and would have superseded an owner's edit with the seeded
+    // draft. Nine templates are named, and on a second run nine are skipped and none published.
+    expect(again.value.skipped).toContain('document-request');
+    expect(again.value.published).toEqual([]);
 
     const after = await currentTemplate(fx.tenant.id, 'document-request');
     if (after.status !== 'ok') throw new Error('expected a published template');
+    expect(after.value.version).toBe(before.value.version);
+  });
 
-    // A message sent in March has to stay explicable, so the old version is superseded and kept
-    // rather than overwritten.
+  it('supersedes rather than edits when a republish is what was meant', async () => {
+    const before = await currentTemplate(fx.tenant.id, 'application-submitted');
+    if (before.status !== 'ok') throw new Error('expected a published template');
+
+    const again = await seedMessageTemplates(
+      fx.tenant.id,
+      'concierge_desk',
+      human(),
+      undefined,
+      true,
+    );
+    if (again.status !== 'ok') throw new Error('expected the republish to succeed');
+
+    const after = await currentTemplate(fx.tenant.id, 'application-submitted');
+    if (after.status !== 'ok') throw new Error('expected a published template');
+
+    // Asked for explicitly, the versioning rule still holds: a message sent in March has to stay
+    // explicable, so the old version is superseded and kept rather than overwritten.
     expect(after.value.version).toBe(before.value.version + 1);
     expect(after.value.body).toBe(before.value.body);
   });
