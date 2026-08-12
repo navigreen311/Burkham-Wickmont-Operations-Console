@@ -99,6 +99,9 @@ import { registerContractRoutes } from './routes/contracts.js';
 import { registerVaultRoutes } from './routes/vault.js';
 import { registerWorkbenchRoutes } from './routes/workbench.js';
 import { registerWorkflowRoutes } from './routes/workflow.js';
+// The last two modules with no surface: 5.5 and 7.5.
+import { registerOutcomeRoutes } from './routes/outcomes.js';
+import { registerRetentionRoutes } from './routes/retention.js';
 // Staff security keys and the passkey-only switch (ADR-0059).
 import { registerStaffKeyRoutes } from './routes/staffKeys.js';
 // Compliance and governance surfaces (7.1, 7.2, 7.4, 5.4, 4.5). Each module registers its own
@@ -1165,6 +1168,8 @@ export const createApp = (deps: ConsoleAppDeps = {}): Express => {
   registerVaultRoutes(routeContext);
   registerWorkbenchRoutes(routeContext);
   registerWorkflowRoutes(routeContext);
+  registerOutcomeRoutes(routeContext);
+  registerRetentionRoutes(routeContext);
 
   // --- Event Ledger (11.3) ------------------------------------------------
 

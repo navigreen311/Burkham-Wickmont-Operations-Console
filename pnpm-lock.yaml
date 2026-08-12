@@ -138,6 +138,9 @@ importers:
       '@bwc/observability':
         specifier: workspace:*
         version: link:../../packages/observability
+      '@bwc/outcomes':
+        specifier: workspace:*
+        version: link:../../packages/outcomes
       '@bwc/partners':
         specifier: workspace:*
         version: link:../../packages/partners
@@ -147,6 +150,9 @@ importers:
       '@bwc/regulatory':
         specifier: workspace:*
         version: link:../../packages/regulatory
+      '@bwc/retention':
+        specifier: workspace:*
+        version: link:../../packages/retention
       '@bwc/risk':
         specifier: workspace:*
         version: link:../../packages/risk
