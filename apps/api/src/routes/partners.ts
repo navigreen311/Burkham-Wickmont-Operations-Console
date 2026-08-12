@@ -33,7 +33,6 @@
  * looked, which corrupts the one record that exists to tell a client who saw their status.
  */
 
-import type { Express, Request, Response } from 'express';
 import {
   MINIMUM_COHORT,
   PARTNER_TRACKS,
@@ -41,6 +40,7 @@ import {
   aggregateStatus,
   approvedClaimsFor,
   canRefer,
+  publishModule,
   completionsFor,
   currentCurriculum,
   findPartner,
@@ -53,18 +53,18 @@ import {
 } from '@bwc/partners';
 import { ok } from '@bwc/core';
 import { send } from '@bwc/http';
-import type { Actor } from '@bwc/identity';
 
-export interface PartnerRouteContext {
-  readonly app: Express;
-  readonly requireStaff: (req: Request, res: Response) => Promise<Actor | undefined>;
-  readonly asyncRoute: (
-    handler: (req: Request, res: Response) => Promise<void>,
-  ) => (req: Request, res: Response) => void;
-  readonly param: (req: Request, name: string) => string;
-  readonly tenantId: string;
-  readonly now: () => Date;
-}
+import type { ConsoleRouteContext } from './context.js';
+
+export type PartnerRouteContext = ConsoleRouteContext;
+
+const AVAILABLE_WRITES = [
+  {
+    capability: 'Publish a curriculum module',
+    action: 'publish_curriculum_module',
+    note: 'Level 3. A material republish DECERTIFIES every partner who completed the previous version, so this is an act against the whole network rather than a document edit.',
+  },
+] as const;
 
 const BLOCKED_WRITES = [
   {
@@ -75,11 +75,10 @@ const BLOCKED_WRITES = [
     why: 'Each emits a Ledger event and so must pass the middleware chain with a declared action. ACTION_MINIMUM_LEVEL has none for administering a partner relationship. send_partner_followup exists at Level 2 and means communicating WITH a partner, which is a different act from ending one.',
   },
   {
-    capability: 'Publish a curriculum module, record a completion, approve or withdraw a claim',
-    module:
-      '@bwc/partners publishModule, recordCompletion, approveClaim, withdrawClaim, approveBrandArrangement',
+    capability: 'Record a completion, approve or withdraw a claim',
+    module: '@bwc/partners recordCompletion, approveClaim, withdrawClaim, approveBrandArrangement',
     missingAction: 'none declared',
-    why: 'Each emits a Ledger event and so must pass the middleware chain with a declared action, and ACTION_MINIMUM_LEVEL declares none. Recording a completion is what certifies a partner to refer clients, so it gates a commercial capability and is not a clerical write.',
+    why: 'Publishing a module moved to `publish_curriculum_module` in Batch A - a material republish decertifies the network, which put it with the irreversible acts. These did not follow it: recording a completion is what certifies a partner to refer clients, so it gates a commercial capability and is not a clerical write, but it is also not irreversible. It belongs to a later batch, at a level somebody still has to choose.',
   },
 ] as const;
 
@@ -103,7 +102,7 @@ const releasableAggregate = (
 });
 
 export const registerPartnerRoutes = (context: PartnerRouteContext): void => {
-  const { app, requireStaff, asyncRoute, param, tenantId, now } = context;
+  const { app, requireStaff, authorised, asyncRoute, jsonBody, param, tenantId, now } = context;
 
   /**
    * The partner list, with the curriculum that governs certification.
@@ -132,7 +131,7 @@ export const registerPartnerRoutes = (context: PartnerRouteContext): void => {
           curriculum,
           tracks: PARTNER_TRACKS,
           recertificationCadenceDays: RECERTIFICATION_CADENCE_DAYS,
-          writes: { available: [], blocked: BLOCKED_WRITES },
+          writes: { available: AVAILABLE_WRITES, blocked: BLOCKED_WRITES },
         }),
       );
     }),
@@ -229,8 +228,37 @@ export const registerPartnerRoutes = (context: PartnerRouteContext): void => {
               '8.2 Partner Agreement & Payout Center computes and RECORDS a payout: it needs a period, a computedBy and an actor. A read cannot supply those, and a page that opened would have written one. The engine exists; the surface does not.',
             module: '8.2 Partner Agreement & Payout Center',
           },
-          writes: { available: [], blocked: BLOCKED_WRITES },
+          writes: { available: AVAILABLE_WRITES, blocked: BLOCKED_WRITES },
         }),
+      );
+    }),
+  );
+
+  // --- Writes -------------------------------------------------------------
+
+  /**
+   * Publish a curriculum module.
+   *
+   * A material republish decertifies every partner who completed the previous version (ADR-0074),
+   * which is why this is an act against the whole network rather than a document edit.
+   */
+  app.post(
+    '/api/console/partners/curriculum',
+    jsonBody,
+    asyncRoute(async (req, res) => {
+      const permitted = await authorised(req, res, { action: 'publish_curriculum_module' });
+      if (!permitted) return;
+
+      send(
+        res,
+        await publishModule({
+          ...(req.body as Record<string, unknown>),
+          tenantId,
+          publishedBy: permitted.actor.id,
+          actor: { id: permitted.actor.id, kind: permitted.actor.kind },
+          now: now(),
+        } as never),
+        { trace: permitted.trace },
       );
     }),
   );

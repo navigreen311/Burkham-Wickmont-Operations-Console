@@ -155,7 +155,14 @@ describe('1.4 billing', () => {
     expect(Array.isArray(data['ladder'])).toBe(true);
     expect(String(data['ladderAbsent'])).toMatch(/nothing to compare/);
     expect(typeof data['availableCreditCents']).toBe('number');
-    expect((data['writes'] as { blocked: unknown[] }).blocked.length).toBeGreaterThan(0);
+
+    // Batch A gave this surface its writes. The assertion was `blocked.length > 0` while none of
+    // them had a declared action; now the offer and the engagement acts are on the available list
+    // at Level 3, and a bare count would have kept passing whichever way that went.
+    const writes = data['writes'] as { available: { action: string }[]; blocked: unknown[] };
+    const actions = writes.available.map((entry) => entry.action);
+    expect(actions).toContain('publish_offer');
+    expect(actions).toContain('manage_engagement');
   });
 });
 

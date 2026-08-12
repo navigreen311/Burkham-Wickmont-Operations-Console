@@ -84,6 +84,100 @@ export const ACTION_MINIMUM_LEVEL = {
 
   /** Level 2. Opening a file is the start of a commercial relationship, not a draft. */
   create_client_record: 2,
+
+  // --- Batch A: the writes that are irreversible, firm-wide, or move money ---
+  //
+  // Seventeen Console capabilities had a working module function and no declared action, so the
+  // surface could read them and not offer them. These are the eight the firm cannot undo.
+  //
+  // **Every one is Level 3, and that was close to decided already.** Nineteen modules had each
+  // picked a level for their own most consequential act - CHANGE_AUTHORITY_LEVEL,
+  // HOLD_AUTHORITY_LEVEL, DELETION_AUTHORITY_LEVEL, TERMINATION_AUTHORITY_LEVEL,
+  // PAYOUT_AUTHORITY_LEVEL and the rest - and every single one chose 3 independently. Declaring
+  // these makes the authority model agree with a judgement the modules had already made and the
+  // chain had no way to enforce.
+
+  /**
+   * Level 3. A parameter is not one client's setting: it is the number every client's file is
+   * computed against, so a wrong one is wrong retroactively and everywhere at once. The module
+   * already says so with `CHANGE_AUTHORITY_LEVEL = 3`.
+   */
+  change_system_parameter: 3,
+
+  /**
+   * Level 3. Publishing an offer supersedes the live one and fixes what the firm charges. It is a
+   * price list, not a quote, and the previous version stops being what a new engagement starts on.
+   */
+  publish_offer: 3,
+
+  /**
+   * Level 3. Starting an engagement commits a client to a fee; cancelling one ends the commercial
+   * relationship; applying a credit moves money. Grouped because they are the same act from three
+   * directions - a change to what this client owes.
+   */
+  manage_engagement: 3,
+
+  /**
+   * Level 3. A clause is wording that lands in every contract generated after it, including ones
+   * nobody re-reads. Contract language is the firm's legal position stated once and relied on many
+   * times.
+   */
+  publish_contract_clause: 3,
+
+  /**
+   * Level 3. A generated contract is a document a client signs. It sits with `submit_application`:
+   * the act of putting something in front of a counterparty under the firm's name.
+   */
+  generate_client_contract: 3,
+
+  /**
+   * Level 3, and the one that is not a write at all.
+   *
+   * Revealing an SSN or EIN produces the most sensitive field the system holds - field-level
+   * encrypted, kept out of logs, events and error messages. It is declared as an action precisely
+   * because the authority model is the only place that can gate a READ, and a read nobody had to
+   * hold a level for was reachable by anyone the session let in.
+   */
+  reveal_protected_identifier: 3,
+
+  /**
+   * Level 3. A hold is a matter, and placing one asserts that litigation is anticipated - it stops
+   * a retention schedule the firm otherwise runs automatically.
+   */
+  place_legal_hold: 3,
+
+  /**
+   * Level 3, and separate from placing one **because releasing is the dangerous half.** A hold in
+   * force costs storage; a hold released early is the thing that lets records be destroyed while
+   * they were still wanted. Two actions rather than one so the Ledger can tell them apart and so a
+   * later policy can lower placing without lowering this.
+   */
+  release_legal_hold: 3,
+
+  /**
+   * Level 3. Deleting a client's records is the most consequential act in this Console and the
+   * only one with no recovery. The module already requires `DELETION_AUTHORITY_LEVEL`.
+   */
+  decide_deletion_request: 3,
+
+  /**
+   * Level 3. Removing a document is irreversible and removes evidence - the artifact set in the
+   * Compliance Evidence Vault is what the firm would produce if asked to show its work.
+   */
+  remove_vault_document: 3,
+
+  /**
+   * Level 3. A retention schedule decides when documents are destroyed without anybody deciding
+   * again, which makes setting one a decision taken once and executed for years.
+   */
+  set_document_retention: 3,
+
+  /**
+   * Level 3. A material republish decertifies every partner who completed the previous version
+   * (ADR-0074), so publishing a module is an act against the whole network rather than a document
+   * edit.
+   */
+  publish_curriculum_module: 3,
 } as const satisfies Record<string, AuthorityLevel>;
 
 /**
@@ -118,6 +212,26 @@ export const GOVERNANCE_ACTIONS: readonly string[] = [
   'trigger_firewall',
   'record_client_consent',
   'create_client_record',
+
+  // Legal holds and deletion decisions, for the same reason and a sharper one.
+  //
+  // **A hold is placed on exactly the client step 4 refuses.** Litigation is anticipated because
+  // something went wrong, so the client is very often in `fail`, on the Do Not Fund list, or behind
+  // a triggered Firewall - and a gate that blocked the hold would mean the firm could not preserve
+  // records precisely when it most needs to, and would keep destroying them on schedule while
+  // somebody worked out why the button did nothing.
+  //
+  // Releasing is here too, and that is the uncomfortable half: the same skip that lets a hold be
+  // placed on a failing client lets one be lifted from them. The alternative is worse - a hold
+  // nobody can release is a retention schedule permanently suspended by whoever placed it - and
+  // the act still needs Level 3, still writes to the Ledger, and still names a matter.
+  'place_legal_hold',
+  'release_legal_hold',
+
+  // A deletion request is a determination ABOUT a client, and a client asking to be forgotten is
+  // not made ineligible to ask by failing an assessment. Their eligibility is decided by
+  // `assessEligibility`, which reads the holds in force - not by the compliance gate.
+  'decide_deletion_request',
 ];
 
 export const isGovernanceAction = (action: string): boolean => GOVERNANCE_ACTIONS.includes(action);

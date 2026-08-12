@@ -55,9 +55,12 @@ test.describe('the five rebuilt panels are wired', () => {
 
     // The blocked list rides on `ok`, and the ladder answered `no_data` - a refusal carries no
     // payload, by design. So it is asserted where the route actually sends it.
+    //
+    // It is EMPTY now: `publish_offer` and `manage_engagement` were declared in Batch A, so 1.4 has
+    // no write left that it cannot offer. This asserted 'none declared' when it had two.
     await page.locator('#billing-client-id').fill('00000000-0000-0000-0000-000000000001');
     await page.getByRole('button', { name: 'Load engagements' }).click();
-    await expect(page.locator('#billing-blocked')).toContainText('none declared');
+    await expect(page.locator('#billing-blocked')).toHaveText('');
   });
 
   test('7.3 refuses a clause set with no jurisdiction', async ({ page }) => {

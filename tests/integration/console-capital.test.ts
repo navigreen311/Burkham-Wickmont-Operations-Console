@@ -552,20 +552,22 @@ describe('1.2 - the graph surface carries no identifier and offers no reveal', (
     expect(reply.body).not.toContain('123456789');
   });
 
-  it('states that a reveal cannot be offered, and why, rather than leaving it absent', async () => {
+  it('offers the reveal now that an action gates it, and says what it costs', async () => {
     const data = dataOf(await call(`/api/console/clients/${graphClientId}/graph`));
-    const blocked = (data['writes'] as Record<string, unknown>)['blocked'] as {
-      capability: string;
-      missingAction: string;
-      why: string;
-    }[];
+    const writes = data['writes'] as Record<string, unknown>;
+    const blocked = writes['blocked'] as { capability: string }[];
+    const available = writes['available'] as { capability: string; action: string; note: string }[];
 
-    const reveal = blocked.find((entry) => /Reveal an SSN/i.test(entry.capability));
-    expect(reveal).toBeDefined();
-    expect(reveal?.missingAction).toBe('none declared');
-    // The reasoning, so a reader knows this is a decision somebody has to make rather than a bug.
-    expect(reveal?.why).toMatch(/false audit record|Level 0/i);
-    expect((data['writes'] as Record<string, unknown>)['available']).toEqual([]);
+    // This assertion replaces one that checked the reveal was BLOCKED and said why. It was right
+    // while nothing gated it: the surface refused rather than offering an ungated read of the most
+    // sensitive field in the system. `reveal_protected_identifier` is that gate.
+    expect(blocked.some((entry) => /Reveal an SSN/i.test(entry.capability))).toBe(false);
+
+    const reveal = available.find((entry) => /Reveal an SSN/i.test(entry.capability));
+    expect(reveal?.action).toBe('reveal_protected_identifier');
+    // A purpose is required and recorded. "Why did you look at this" is what an access log is for,
+    // and one that records only that somebody looked answers half the question.
+    expect(reveal?.note).toMatch(/purpose is required/i);
   });
 
   it('renders an empty graph as empty and says what that means', async () => {
