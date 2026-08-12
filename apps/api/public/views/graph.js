@@ -155,6 +155,36 @@ $('graph-load').addEventListener('click', () => void load());
  */
 renderWrites('graph-writes', [
   {
+    id: 'graph-entity',
+    capability: 'Record an entity',
+    action: 'record_entity_graph',
+    note: 'A structural fact the risk and readiness engines read as given.',
+    buttonLabel: 'Record the entity',
+    done: 'Entity recorded.',
+    fields: [
+      { name: 'clientId', label: 'Client id' },
+      { name: 'legalName', label: 'Legal name' },
+      { name: 'role', label: 'Role', placeholder: 'operating' },
+    ],
+    path: (v) => `/api/console/clients/${encodeURIComponent(v.clientId)}/graph/entities`,
+    body: (v) => ({ legalName: v.legalName, role: v.role }),
+  },
+  {
+    id: 'graph-revenue',
+    capability: 'Record stated revenue',
+    action: 'record_entity_graph',
+    note: 'STATED, and the word is load-bearing: this writes down a claim somebody made. Changing it into a more useful number is fabricate_revenue, which is Level 4 - blocked for every actor, with no approval that unlocks it.',
+    buttonLabel: 'Record it',
+    done: 'Stated revenue recorded.',
+    fields: [
+      { name: 'clientId', label: 'Client id' },
+      { name: 'entityId', label: 'Entity id' },
+      { name: 'annualRevenueCents', label: 'Annual revenue in CENTS' },
+    ],
+    path: (v) => `/api/console/clients/${encodeURIComponent(v.clientId)}/graph/stated-revenue`,
+    body: (v) => ({ entityId: v.entityId, annualRevenueCents: Number(v.annualRevenueCents) }),
+  },
+  {
     id: 'graph-ssn',
     capability: 'Reveal an owner SSN',
     action: 'reveal_protected_identifier',

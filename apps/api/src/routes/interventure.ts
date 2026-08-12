@@ -25,28 +25,23 @@
  * chasing an acknowledgement needs to be able to say which version they are chasing.
  */
 
-import type { Express, Request, Response } from 'express';
 import {
   GREEN_COMPANIES,
   allRelationships,
   awaitingRouting,
   deviationsFor,
+  generateDisclosure,
   handoffsFor,
   mayProceed,
+  raiseInvoice,
+  tagIfVenture,
 } from '@bwc/interventure';
 import { ok, refused } from '@bwc/core';
 import { send } from '@bwc/http';
-import type { Actor } from '@bwc/identity';
 
-export interface InterventureRouteContext {
-  readonly app: Express;
-  readonly requireStaff: (req: Request, res: Response) => Promise<Actor | undefined>;
-  readonly asyncRoute: (
-    handler: (req: Request, res: Response) => Promise<void>,
-  ) => (req: Request, res: Response) => void;
-  readonly param: (req: Request, name: string) => string;
-  readonly tenantId: string;
-}
+import type { ConsoleRouteContext } from './context.js';
+
+export type InterventureRouteContext = ConsoleRouteContext;
 
 /**
  * The two kinds of thing this surface cannot do, kept apart on purpose.
@@ -55,15 +50,31 @@ export interface InterventureRouteContext {
  * an acknowledgement is not ours to give at any authority level, and the day somebody adds
  * `acknowledge_disclosure` to the catalogue is the day this distinction matters most.
  */
-const BLOCKED_WRITES = [
+/**
+ * Three acts at three levels, which is why one line for them was always going to be wrong.
+ *
+ * Generating is mechanical by design. Tagging is a determination. Raising an invoice moves money
+ * between related parties, which is the point where a conflict stops being a disclosure question.
+ */
+const AVAILABLE_WRITES = [
   {
-    capability: 'Generate a conflict disclosure, tag a venture, raise an intercompany invoice',
-    module:
-      '@bwc/interventure generateDisclosure, tagIfVenture, confirmVenture, raiseInvoice, recordDeviation',
-    missingAction: 'none declared',
-    why: 'Each emits a Ledger event and so must pass the middleware chain with a declared action, and ACTION_MINIMUM_LEVEL declares none for inter-venture commerce. Unblocked by a decision about Authority Levels in packages/core.',
-    unblockedBy: 'a declared action',
+    capability: 'Generate a conflict disclosure',
+    action: 'generate_conflict_disclosure',
+    note: 'Level 1. Generated mechanically and deliberately so: a hand-written disclosure varies with how the writer feels about the conflict. GENERATING IS NOT DISCLOSING - it is complete only when acknowledged, and acknowledgement is not offered here at any level.',
   },
+  {
+    capability: 'Tag a client as an inter-venture relationship',
+    action: 'tag_venture',
+    note: 'Level 2. A determination about who this client is to the firm, and what turns the conflict machinery on.',
+  },
+  {
+    capability: 'Raise an intercompany invoice',
+    action: 'raise_intercompany_invoice',
+    note: 'Level 3. Money between related parties - the precise point at which an inter-venture conflict becomes a transaction somebody could be asked to justify.',
+  },
+] as const;
+
+const BLOCKED_WRITES = [
   {
     capability: 'Acknowledge a conflict disclosure, as the venture or as Gardner',
     module: '@bwc/interventure acknowledgeByVenture, acknowledgeByGardner',
@@ -74,7 +85,7 @@ const BLOCKED_WRITES = [
 ] as const;
 
 export const registerInterventureRoutes = (context: InterventureRouteContext): void => {
-  const { app, requireStaff, asyncRoute, param, tenantId } = context;
+  const { app, requireStaff, authorised, asyncRoute, jsonBody, param, tenantId, now } = context;
 
   /**
    * Every tagged relationship, plus what is waiting.
@@ -108,7 +119,7 @@ export const registerInterventureRoutes = (context: InterventureRouteContext): v
            */
           awaitingRouting: routing,
           awaitingRoutingTotal: routing.length,
-          writes: { available: [], blocked: BLOCKED_WRITES },
+          writes: { available: AVAILABLE_WRITES, blocked: BLOCKED_WRITES },
         }),
       );
     }),
@@ -190,7 +201,7 @@ export const registerInterventureRoutes = (context: InterventureRouteContext): v
                     ...(disclosure.gardnerAcknowledgedAt === null ? ['Gardner'] : []),
                   ],
                 },
-          writes: { available: [], blocked: BLOCKED_WRITES },
+          writes: { available: AVAILABLE_WRITES, blocked: BLOCKED_WRITES },
         }),
       );
     }),
@@ -222,8 +233,97 @@ export const registerInterventureRoutes = (context: InterventureRouteContext): v
           handoffsTotal: handoffs.length,
           deviations,
           deviationsTotal: deviations.length,
-          writes: { available: [], blocked: BLOCKED_WRITES },
+          writes: { available: AVAILABLE_WRITES, blocked: BLOCKED_WRITES },
         }),
+      );
+    }),
+  );
+
+  // --- Writes -------------------------------------------------------------
+
+  /** Tag a client as an inter-venture relationship. Idempotent: an existing tag is returned. */
+  app.post(
+    '/api/console/interventure/clients/:clientId/tag',
+    jsonBody,
+    asyncRoute(async (req, res) => {
+      const clientId = param(req, 'clientId');
+      const permitted = await authorised(req, res, { action: 'tag_venture', clientId });
+      if (!permitted) return;
+
+      send(
+        res,
+        await tagIfVenture({
+          tenantId,
+          clientId,
+          actor: { id: permitted.actor.id, kind: permitted.actor.kind },
+          now: now(),
+        }),
+        { trace: permitted.trace },
+      );
+    }),
+  );
+
+  /**
+   * Generate the disclosure.
+   *
+   * The body is generated and hashed, and the hash is checked when an acknowledgement lands - so a
+   * later template change cannot rewrite what somebody acknowledged.
+   */
+  app.post(
+    '/api/console/interventure/clients/:clientId/disclosure',
+    jsonBody,
+    asyncRoute(async (req, res) => {
+      const clientId = param(req, 'clientId');
+      const permitted = await authorised(req, res, {
+        action: 'generate_conflict_disclosure',
+        clientId,
+      });
+      if (!permitted) return;
+
+      const body = req.body as Record<string, unknown>;
+      send(
+        res,
+        await generateDisclosure({
+          tenantId,
+          clientId,
+          engagementId: String(body['engagementId'] ?? ''),
+          engagementDescription: String(body['engagementDescription'] ?? ''),
+          actor: { id: permitted.actor.id, kind: permitted.actor.kind },
+          now: now(),
+        }),
+        { trace: permitted.trace },
+      );
+    }),
+  );
+
+  /** Raise an intercompany invoice. Integer cents, and the module refuses anything else. */
+  app.post(
+    '/api/console/interventure/clients/:clientId/invoices',
+    jsonBody,
+    asyncRoute(async (req, res) => {
+      const clientId = param(req, 'clientId');
+      const permitted = await authorised(req, res, {
+        action: 'raise_intercompany_invoice',
+        clientId,
+      });
+      if (!permitted) return;
+
+      const body = req.body as Record<string, unknown>;
+      send(
+        res,
+        await raiseInvoice({
+          tenantId,
+          clientId,
+          engagementId: String(body['engagementId'] ?? ''),
+          amountCents: Number(body['amountCents']),
+          description: String(body['description'] ?? ''),
+          periodFrom: new Date(String(body['periodFrom'])),
+          periodTo: new Date(String(body['periodTo'])),
+          raisedBy: permitted.actor.id,
+          actor: { id: permitted.actor.id, kind: permitted.actor.kind },
+          now: now(),
+        }),
+        { trace: permitted.trace },
       );
     }),
   );

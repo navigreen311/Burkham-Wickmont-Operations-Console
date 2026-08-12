@@ -19,6 +19,7 @@
  * Every value reaches the DOM through `textContent`.
  */
 
+import { renderAvailable, renderWrites } from './writes.js';
 const call = async (path) => {
   const response = await fetch(path, { credentials: 'same-origin' });
   const payload = await response.json().catch(() => ({ status: 'failed', reason: 'No response.' }));
@@ -94,6 +95,7 @@ const loadRelationships = async () => {
   }
 
   renderBlocked('interventure-blocked', result.data.writes?.blocked);
+  renderAvailable('interventure-available', result.data.writes?.available);
 
   status.textContent = `${result.data.total} tagged relationship(s), ${result.data.awaitingRoutingTotal} invoice(s) awaiting routing.`;
   loaded = true;
@@ -170,3 +172,67 @@ $('panel-interventure').addEventListener('toggle', () => {
 
 $('interventure-refresh').addEventListener('click', () => void loadRelationships());
 $('interventure-engagement-load').addEventListener('click', () => void loadEngagement());
+
+/**
+ * Three controls at three levels.
+ *
+ * Acknowledging a disclosure is NOT among them, at any level. A control for it here would let a
+ * staff member produce the counterparty's acknowledgement - manufacturing the very evidence the
+ * disclosure exists to require (ADR-0063).
+ */
+renderWrites('interventure-writes', [
+  {
+    id: 'iv-tag',
+    capability: 'Tag a client as an inter-venture relationship',
+    action: 'tag_venture',
+    note: 'A determination about who this client is to the firm, and what turns the conflict machinery on. Idempotent - an existing tag is returned rather than duplicated.',
+    buttonLabel: 'Tag the client',
+    done: 'Tagged.',
+    fields: [{ name: 'clientId', label: 'Client id' }],
+    path: (v) => `/api/console/interventure/clients/${encodeURIComponent(v.clientId)}/tag`,
+    body: () => ({}),
+  },
+  {
+    id: 'iv-disclosure',
+    capability: 'Generate a conflict disclosure',
+    action: 'generate_conflict_disclosure',
+    note: 'Generated mechanically, on purpose: a hand-written disclosure varies with how the writer feels about the conflict. GENERATING IS NOT DISCLOSING - it is complete only when the counterparty acknowledges, and there is no control here for that.',
+    buttonLabel: 'Generate',
+    done: 'Disclosure generated. It is not disclosed until acknowledged.',
+    fields: [
+      { name: 'clientId', label: 'Client id' },
+      { name: 'engagementId', label: 'Engagement id' },
+      { name: 'engagementDescription', label: 'What the engagement is' },
+    ],
+    path: (v) => `/api/console/interventure/clients/${encodeURIComponent(v.clientId)}/disclosure`,
+    body: (v) => ({
+      engagementId: v.engagementId,
+      engagementDescription: v.engagementDescription,
+    }),
+  },
+  {
+    id: 'iv-invoice',
+    capability: 'Raise an intercompany invoice',
+    action: 'raise_intercompany_invoice',
+    note: 'Level 3. Money between related parties - the point at which an inter-venture conflict stops being a disclosure question and becomes a transaction somebody could be asked to justify. Integer CENTS.',
+    danger: true,
+    buttonLabel: 'Raise the invoice',
+    done: 'Invoice raised.',
+    fields: [
+      { name: 'clientId', label: 'Client id' },
+      { name: 'engagementId', label: 'Engagement id' },
+      { name: 'amountCents', label: 'Amount in CENTS' },
+      { name: 'description', label: 'Description' },
+      { name: 'periodFrom', label: 'Period from', type: 'date' },
+      { name: 'periodTo', label: 'Period to', type: 'date' },
+    ],
+    path: (v) => `/api/console/interventure/clients/${encodeURIComponent(v.clientId)}/invoices`,
+    body: (v) => ({
+      engagementId: v.engagementId,
+      amountCents: Number(v.amountCents),
+      description: v.description,
+      periodFrom: v.periodFrom,
+      periodTo: v.periodTo,
+    }),
+  },
+]);

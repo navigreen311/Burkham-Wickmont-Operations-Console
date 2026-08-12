@@ -178,6 +178,70 @@ export const ACTION_MINIMUM_LEVEL = {
    * edit.
    */
   publish_curriculum_module: 3,
+
+  // --- Batch B: the determinations ---
+  //
+  // Three capability lines that were scoped as "the Level 2 ones". Two of them turned out not to
+  // be, for the same reason Batch A produced twelve actions from eight lines: a line is a surface
+  // and the acts behind it differ.
+
+  /**
+   * Level 1. A conflict disclosure is generated MECHANICALLY and that is the point of it - a
+   * hand-written one varies with how the writer feels about the conflict, and the version written
+   * by somebody keen to proceed is the one that understates it (ADR-0063).
+   *
+   * So producing the artifact is preparation, not a determination. **Generating is not
+   * disclosing**: the disclosure is complete only when acknowledged, and acknowledgement is not
+   * offered on this surface at any level, because a control for it here would manufacture the
+   * evidence the disclosure exists to require.
+   */
+  generate_conflict_disclosure: 1,
+
+  /**
+   * Level 2. Tagging a client as an inter-venture relationship is a determination about who this
+   * client is to the firm, and it is what turns the conflict machinery on. It sits with
+   * `record_client_consent`: asserting a fact that authorises - or constrains - acts downstream.
+   */
+  tag_venture: 2,
+
+  /**
+   * Level 3. An intercompany invoice moves money between related parties, which is the precise
+   * point where an inter-venture conflict stops being a disclosure question and becomes a
+   * transaction somebody could be asked to justify.
+   */
+  raise_intercompany_invoice: 3,
+
+  /**
+   * Level 2. Recording what a PROVIDER decided - submitted, approved, declined, withdrawn, and the
+   * client's satisfaction with it. The firm is not deciding here; it is writing down somebody
+   * else's decision, which is why it does not sit with `submit_application` at 3.
+   *
+   * It is not clerical either. This is the denominator 9.1 refused to fake and 5.5 exists to make
+   * honest: a decline that nobody records is an approval rate that reads better than the firm
+   * performed.
+   */
+  record_funding_outcome: 2,
+
+  /**
+   * Level 3, and separate from recording any other outcome.
+   *
+   * **Marking an attempt funded stops a refund clock.** Blueprint 1.4 drives refunds from objective
+   * triggers, and the first of them is sixty days approved-but-unfunded. An attempt wrongly marked
+   * funded silently takes a client out of the window that would have refunded them - a financial
+   * consequence to somebody who is not in the room, arriving later and invisibly.
+   */
+  mark_attempt_funded: 3,
+
+  /**
+   * Level 2. Entities, owners, relationships and stated revenue - the structural facts the risk and
+   * readiness engines read as given.
+   *
+   * **Recording what a client stated is Level 2; altering it is Level 4 and never permitted.**
+   * `fabricate_revenue` is on the prohibited list below, and the distinction is the whole of the
+   * rule: this action writes down what somebody said, and no level of authority permits changing it
+   * into what somebody wishes they had said.
+   */
+  record_entity_graph: 2,
 } as const satisfies Record<string, AuthorityLevel>;
 
 /**
@@ -232,6 +296,28 @@ export const GOVERNANCE_ACTIONS: readonly string[] = [
   // not made ineligible to ask by failing an assessment. Their eligibility is decided by
   // `assessEligibility`, which reads the holds in force - not by the compliance gate.
   'decide_deletion_request',
+
+  // --- Batch B ---
+  //
+  // **`record_entity_graph` is here because leaving it out would rebuild the original trap.**
+  // Step 4 refuses anything that is not Pass or Pass with Findings, so a client in
+  // `pending_assessment` - which is every client on the day their file opens - could not have an
+  // entity, an owner or a stated revenue recorded. And the entity graph is an INPUT to the
+  // assessment that would move them out of `pending_assessment`. A new client could never be
+  // assessed, which is word for word the failure this list was created to prevent, one layer out.
+  'record_entity_graph',
+
+  // Recording what a provider decided is the clearest case of a determination ABOUT a client
+  // rather than an act FOR one. A client can be firewalled or moved to `fail` between submission
+  // and answer - that is a common sequence, not an exotic one - and a gate that blocked the record
+  // would leave the decline unrecorded. 9.1's denominator would then improve because a client's
+  // file went wrong, which is precisely backwards.
+  'record_funding_outcome',
+  'mark_attempt_funded',
+
+  // Tagging a venture is how a conflict gets discovered, and a client whose file has gone wrong is
+  // not less likely to be the one with the undisclosed relationship.
+  'tag_venture',
 ];
 
 export const isGovernanceAction = (action: string): boolean => GOVERNANCE_ACTIONS.includes(action);

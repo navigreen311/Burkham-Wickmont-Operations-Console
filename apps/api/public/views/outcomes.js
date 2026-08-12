@@ -12,6 +12,7 @@
  * Every value reaches the DOM through `textContent`.
  */
 
+import { renderAvailable, renderWrites } from './writes.js';
 const call = async (path) => {
   const response = await fetch(path, { credentials: 'same-origin' });
   const payload = await response.json().catch(() => ({ status: 'failed', reason: 'No response.' }));
@@ -74,6 +75,7 @@ const loadRate = async () => {
   status.textContent = shown === null ? data.note : `Approval rate ${shown}. ${data.note}`;
 
   blocked($('outcomes-blocked'), data.writes);
+  renderAvailable('outcomes-available', data.writes?.available);
 };
 
 const loadUnfunded = async () => {
@@ -131,8 +133,68 @@ const loadClient = async () => {
   status.textContent = `${total} attempt(s): ${approved} approved, ${declined} declined, ${pending} pending.`;
 
   blocked($('outcomes-blocked'), result.data.writes);
+  renderAvailable('outcomes-available', result.data.writes?.available);
 };
 
 $('outcomes-rate-load').addEventListener('click', () => void loadRate());
 $('outcomes-unfunded-load').addEventListener('click', () => void loadUnfunded());
 $('outcomes-client-load').addEventListener('click', () => void loadClient());
+
+/**
+ * The outcome controls.
+ *
+ * Marking an attempt funded is its own control at its own level, and it says why: it is the act
+ * that stops a refund clock, and the harm from a wrong one arrives sixty days later in the form of
+ * a refund a client never receives.
+ */
+renderWrites('outcomes-writes', [
+  {
+    id: 'outcomes-approve',
+    capability: 'Record a provider approval',
+    action: 'record_funding_outcome',
+    note: 'The approved credit limit is the figure a success fee computes against - never the requested one.',
+    buttonLabel: 'Record the approval',
+    done: 'Approval recorded.',
+    fields: [
+      { name: 'attemptId', label: 'Attempt id' },
+      { name: 'approvedCreditLimitCents', label: 'Approved limit in CENTS' },
+      { name: 'decidedAt', label: 'Decided at', type: 'date' },
+    ],
+    path: (v) => `/api/console/outcomes/attempts/${encodeURIComponent(v.attemptId)}/approval`,
+    body: (v) => ({
+      approvedCreditLimitCents: Number(v.approvedCreditLimitCents),
+      decidedAt: v.decidedAt,
+    }),
+  },
+  {
+    id: 'outcomes-decline',
+    capability: 'Record a provider decline',
+    action: 'record_funding_outcome',
+    note: 'The half that makes an approval rate honest. A decline nobody records is a rate that reads better than the firm performed.',
+    buttonLabel: 'Record the decline',
+    done: 'Decline recorded.',
+    fields: [
+      { name: 'attemptId', label: 'Attempt id' },
+      { name: 'reason', label: 'Reason as the provider gave it' },
+      { name: 'decidedAt', label: 'Decided at', type: 'date' },
+    ],
+    path: (v) => `/api/console/outcomes/attempts/${encodeURIComponent(v.attemptId)}/decline`,
+    body: (v) => ({ reason: v.reason, decidedAt: v.decidedAt }),
+  },
+  {
+    id: 'outcomes-funded',
+    capability: 'Mark an attempt funded',
+    action: 'mark_attempt_funded',
+    note: 'Level 3, and separate from every other outcome: this STOPS the sixty-day approved-but-unfunded refund trigger. A wrong one denies a refund the client is owed, and does it silently.',
+    danger: true,
+    buttonLabel: 'Mark it funded',
+    done: 'Funding recorded. The refund trigger no longer runs against this attempt.',
+    fields: [
+      { name: 'attemptId', label: 'Attempt id' },
+      { name: 'fundedCents', label: 'Amount funded in CENTS' },
+      { name: 'fundedOn', label: 'Funded on', type: 'date' },
+    ],
+    path: (v) => `/api/console/outcomes/attempts/${encodeURIComponent(v.attemptId)}/funding`,
+    body: (v) => ({ fundedCents: Number(v.fundedCents), fundedOn: v.fundedOn }),
+  },
+]);

@@ -320,23 +320,31 @@ describe('11.6 - the warehouse answers about the past', () => {
 });
 
 describe('10.1 - a page cannot complete a disclosure', () => {
-  it('separates a missing action from a party who is not us', async () => {
-    // **The assertion this surface exists for.** Both entries are blocked; only one would be
-    // unblocked by declaring an action, and collapsing them would suggest otherwise.
+  it('separates a missing action from a party who is not us, proved by time', async () => {
+    // **The assertion this surface exists for, and ADR-0063 is now demonstrated rather than
+    // argued.** Both entries were blocked. Only one of them was ever going to be unblocked by
+    // declaring an action - and in Batch B that is exactly what happened to it, while the other
+    // stayed where it was and always will.
     const data = dataOf(await call('/api/console/interventure/relationships'));
-    const blocked = (data['writes'] as Record<string, unknown>)['blocked'] as {
+    const writes = data['writes'] as Record<string, unknown>;
+    const available = writes['available'] as { capability: string; action: string }[];
+    const blocked = writes['blocked'] as {
       capability: string;
       missingAction: string;
       why: string;
       unblockedBy: string;
     }[];
 
-    const generate = blocked.find((entry) =>
+    // Generating moved. Its `unblockedBy` said "a declared action", and it got one.
+    const generate = available.find((entry) =>
       /Generate a conflict disclosure/i.test(entry.capability),
     );
-    expect(generate?.missingAction).toBe('none declared');
-    expect(generate?.unblockedBy).toMatch(/declared action/);
+    expect(generate?.action).toBe('generate_conflict_disclosure');
+    expect(blocked.some((entry) => /Generate a conflict disclosure/i.test(entry.capability))).toBe(
+      false,
+    );
 
+    // Acknowledging did not, and no batch will move it.
     const acknowledge = blocked.find((entry) =>
       /Acknowledge a conflict disclosure/i.test(entry.capability),
     );
