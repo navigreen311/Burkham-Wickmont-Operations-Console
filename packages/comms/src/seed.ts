@@ -252,6 +252,74 @@ export const SEED_TEMPLATES: readonly SeedTemplate[] = [
   },
 ];
 
+// --- Which playbook step sends which template ------------------------------------------------
+//
+// The playbooks and these templates were authored in the same wave by different people, and nothing
+// connected them: six client-facing steps, nine templates, and not one reference in either
+// direction. An operator working a playbook had no way to know which template a step meant, and
+// six templates described moments no step reached.
+//
+// `TEMPLATES_BY_PLAYBOOK` in `@bwc/deliverables` already solved this shape for the documents a
+// playbook produces, and these three constants mirror it deliberately: the map lives beside the
+// templates, names playbook and node keys as **plain strings** so `@bwc/comms` gains no dependency
+// on `@bwc/workflow`, and an invariant test asserts the agreement in both directions.
+//
+// **The classification is what the test enforces, not the mapping.** Every Concierge Desk node in
+// every seeded playbook has to appear in exactly one of the three lists below, so a new
+// client-facing step cannot be added without somebody saying which template it sends - or saying,
+// on the record, that it sends none. Matching on the action prose instead would be the mistake
+// ADR-0071 already caught once: a string match that quietly fires on nothing.
+
+/** `playbook-key/node-key` -> the templates that step sends. */
+export const TEMPLATES_BY_PLAYBOOK_NODE: Readonly<Record<string, readonly string[]>> = {
+  'phase-0-capital-readiness/request_documents': ['document-request'],
+  'phase-1-placement/request_client_authorization': ['application-authorization-request'],
+};
+
+/**
+ * Steps that send, and have no template to send.
+ *
+ * Each names 4.1 in its action and there is nothing for it to reach for. Listed rather than left
+ * to be noticed, because an absent template is invisible from the playbook side - the step reads
+ * as complete.
+ */
+export const SENDS_WITHOUT_A_TEMPLATE: readonly string[] = [
+  'phase-0-capital-readiness/invite_bank_connection',
+  'phase-0-capital-readiness/deliver_blueprint',
+  'phase-2-stack-management/deliver_brief',
+];
+
+/**
+ * Concierge Desk steps that are not sends.
+ *
+ * `book_review_call` schedules a call and records it against the lead; it names 1.3, not 4.1. The
+ * client hears about the appointment through a reminder, and no step raises one - which is why
+ * `appointment-reminder-sms` is in `TEMPLATES_WITHOUT_A_STEP` rather than mapped to this node.
+ */
+export const NOT_A_SEND: readonly string[] = ['phase-0-capital-readiness/book_review_call'];
+
+/**
+ * Templates describing a moment no playbook reaches.
+ *
+ * **Seven of the nine.** The severe ones are the three in the middle: after a client authorises an
+ * application, Phase 1 runs `submit_application`, `await_provider_decision` and `record_outcome`
+ * and never contacts them again - not on submission, not on an offer, not on a decline. The
+ * templates were written; the steps that would send them do not exist.
+ *
+ * Adding those steps is a proposal about how the firm treats clients, which ADR-0067 says is the
+ * owner's to make and not an engineer's. Until it is made, this list is the record that the
+ * templates are unreachable rather than merely unused.
+ */
+export const TEMPLATES_WITHOUT_A_STEP: readonly string[] = [
+  'client-onboarding-welcome',
+  'document-request-reminder-sms',
+  'application-submitted',
+  'offer-received',
+  'provider-declined',
+  'appointment-reminder-sms',
+  'post-funding-checkin',
+];
+
 export interface TemplateSeedFinding {
   readonly key: string;
   readonly phrase: string;

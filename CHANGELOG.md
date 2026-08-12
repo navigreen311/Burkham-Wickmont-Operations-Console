@@ -56,6 +56,34 @@ parallel branches authored the content, partitioned by file ownership rather tha
 - **The defect belonged to no package.** It existed only in the sentence "and then you run them",
   which the three-way split by file ownership left nobody owning.
 
+### Added - the playbooks and the message templates now agree about what gets sent when (`ai-feature/playbook-comms-linkage`)
+
+- **THE FINDING: six client-facing playbook steps, nine message templates, and not one reference in
+  either direction.** Two matched by coincidence of naming; three steps that say they send had
+  nothing to send; six templates described moments no step reached. Not a disagreement — each side
+  is coherent alone, which is why it was invisible. A step reads as complete whether or not a
+  template exists, and a published template reads as ready whether or not anything reaches it.
+- **The severest case: after a client authorises an application, Phase 1 never contacts them
+  again.** `submit_application`, `await_provider_decision` and `record_outcome` send nothing — not
+  on submission, not on an offer, not on a decline. Templates for all three exist and are
+  unreachable.
+- `TEMPLATES_BY_PLAYBOOK_NODE` in `@bwc/comms` maps `playbook-key/node-key` to template keys,
+  mirroring `TEMPLATES_BY_PLAYBOOK` in `@bwc/deliverables` — including naming playbooks as **plain
+  strings**, so comms gains no dependency on workflow. **Rejected: a `templateKey` field on
+  `AgentTaskNode`**, which would put a Communications concern inside a description of how the firm
+  works, and change a published node schema to record something no engine behaviour consumes
+  (ADR-0076).
+- **Exhaustiveness is the invariant, not the mapping.** Every Concierge Desk node must appear in
+  exactly one of three lists — sends named templates, sends and has none yet, or is not a send
+  (`book_review_call` schedules and names 1.3). A new client-facing step fails the suite until
+  somebody decides which. Classification is structural, by department: prose-matching for "4.1"
+  would stop working the day somebody wrote "the Communications Hub", which is ADR-0071's mistake.
+- **Verified by mutation.** Unclassifying a step, adding a template with no home, and mapping a
+  template that was never seeded each fail on the intended assertion. A green invariant nobody has
+  seen fail may assert nothing.
+- The three missing templates and the missing send steps are **recorded, not closed** — adding them
+  is a proposal about how the firm treats clients, which ADR-0067 places with the owner.
+
 ### Changed - staff enrolment is an invitation, and the granter no longer holds the credential (`ai-feature/staff-enrolment`)
 
 - **THE FINDING: `beginStaffEnrolment` took the subject's password from the GRANTER and handed the
