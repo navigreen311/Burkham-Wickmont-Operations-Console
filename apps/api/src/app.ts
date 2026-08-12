@@ -233,6 +233,50 @@ export const createApp = (deps: ConsoleAppDeps = {}): Express => {
   app.set('trust proxy', config.trustProxy);
 
   /**
+   * A path id that is not a UUID is `no_data`, not a 500 - and not before the session is checked.
+   *
+   * Every route passes a path id straight into a Prisma `where` against an `@db.Uuid` column.
+   * Postgres raises on a malformed one, `asyncRoute` catches it, and the caller gets a 500 with a
+   * database error string for the ordinary act of typing an id wrong.
+   *
+   * **The param callback records the fault; it does not answer.** Answering here would answer
+   * BEFORE authentication - an anonymous caller would learn that an id was malformed instead of
+   * being told to sign in, which is a fact about the request leaking past the session check. The
+   * first version of this did exactly that and four existing suites caught it.
+   *
+   * `requireStaff` is where the two are ordered, because every guarded route already calls it
+   * first. Session, then shape.
+   *
+   * Registered per PARAMETER rather than per route: there are twenty-one route modules and about
+   * thirty id parameters, and a helper each of them had to remember is one the next route forgets.
+   * Any future route with `:clientId` in its path inherits this.
+   *
+   * `state` and `clauseKey` are deliberately absent - a two-letter code and a clause key are not
+   * UUIDs, and their own routes validate them.
+   */
+  const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
+
+  for (const name of [
+    'clientId',
+    'documentId',
+    'engagementId',
+    'instanceId',
+    'providerId',
+    'partnerId',
+    'leadId',
+    'keyId',
+    'exportId',
+    'deliverableId',
+  ]) {
+    app.param(name, (_req, res, next, value) => {
+      if (typeof value !== 'string' || !UUID.test(value)) {
+        (res as Response & { locals: Record<string, unknown> }).locals['malformedId'] = true;
+      }
+      next();
+    });
+  }
+
+  /**
    * The API's policy: nothing, from anywhere.
    *
    * `useDefaults: false` for the reason the portal records - helmet merges its own defaults under
@@ -344,6 +388,19 @@ export const createApp = (deps: ConsoleAppDeps = {}): Express => {
       send(res, NO_SESSION());
       return undefined;
     }
+
+    // Session first, then shape. A malformed id is flagged by the param callback above and
+    // answered only once the caller has proved who they are - otherwise "that is not an id" is a
+    // fact about the request that escapes past the session check.
+    //
+    // The answer is the one a well-formed id that belongs to nothing gets: from outside, "no such
+    // id" and "that is not an id" are the same fact, and two answers would invite somebody to
+    // probe which.
+    if ((res as Response & { locals: Record<string, unknown> }).locals['malformedId'] === true) {
+      send(res, noData('No such record in this tenant.'));
+      return undefined;
+    }
+
     return actor;
   };
 

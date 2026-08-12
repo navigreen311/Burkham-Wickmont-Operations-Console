@@ -348,14 +348,20 @@ describe('10.1 - a page cannot complete a disclosure', () => {
   });
 
   it('requires a client id for a conflict position rather than guessing', async () => {
-    const reply = await call('/api/console/interventure/engagements/some-engagement');
+    // A well-formed engagement id. `some-engagement` passed here only because `mayProceed`
+    // short-circuits on a client with no venture relationship before it reaches the
+    // `conflictDisclosure` query - and that column is `@db.Uuid`, so any client that HAD one
+    // raised in Postgres and returned a 500. The id guard catches it first now.
+    const reply = await call(
+      '/api/console/interventure/engagements/00000000-0000-0000-0000-0000000000e1',
+    );
     expect(reply.json['status']).toBe('refused');
     expect(String(reply.json['reason'])).toMatch(/clientId is required/);
   });
 
   it('reports a non-intercompany engagement as such rather than as an empty disclosure', async () => {
     const reply = await call(
-      `/api/console/interventure/engagements/some-engagement?clientId=${clientId}`,
+      `/api/console/interventure/engagements/00000000-0000-0000-0000-0000000000e1?clientId=${clientId}`,
     );
     // `mayProceed` answers ok for an engagement with no venture relationship - most engagements.
     const data = dataOf(reply);
