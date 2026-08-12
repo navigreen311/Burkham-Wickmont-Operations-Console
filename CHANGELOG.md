@@ -56,6 +56,36 @@ parallel branches authored the content, partitioned by file ownership rather tha
 - **The defect belonged to no package.** It existed only in the sentence "and then you run them",
   which the three-way split by file ownership left nobody owning.
 
+### Added - a wait can chase, and a wait can resolve to a date somebody wrote down (`ai-feature/wait-primitives`)
+
+- Two of the three unreachable templates were blocked on the same missing shape: `WaitNode.until`
+  was a duration **or** an event and never both, an event wait carried no timeout, and `slaMinutes`
+  recorded a deadline nothing acted on. A playbook could wait for a client and could not chase them.
+- **`remindAfterMinutes` / `remindQueue` / `remindSummary` / `maxReminders` on a wait.** The engine
+  raises an 11.4 task to the named queue — the mechanism a human checkpoint already uses — and
+  schedules the next, up to the cap.
+- **THE DESIGN POINT: a chase does not advance the instance.** Routing a timeout to a reminder node
+  and looping back reads naturally, is expressible in the existing graph, and opens a race: while
+  the instance sits on the reminder node there is no `waiting` task, so the awaited event cannot
+  match, the listener moves its cursor past it, and the wait re-parks having missed it. Keeping the
+  wait parked closes it by construction — the moment the event lands the task stops being `waiting`,
+  and `dueReminders` only returns `waiting` rows, so **a chase cannot outlive the thing it was
+  chasing.** A nudge sent to somebody who already answered is worse than no nudge (ADR-0078).
+- **`until: { atContextField, offsetMinutes }`.** A duration runs from when the wait starts, which
+  cannot express "the day before the appointment" — the gap between booking a call and holding it is
+  exactly what varies. An earlier task writes the moment through `contextPatch`, as
+  `compute_stack_position` already writes `stackHealth`. A missing or unparseable moment **fails the
+  task and names the key**; a moment already past resolves immediately.
+- A reminder is refused at validation on a duration or context-time wait — both resolve on a clock
+  nobody needs reminding about, so it would be a policy that never fires.
+- **The third template needs no engine change at all.** `post-funding-checkin` is an event plus a
+  delay, and `upsertTrigger` already starts a playbook from an event with a condition on its
+  payload. Two of three blockers were real; the third was a shape nobody had looked for.
+- **Verified by mutation:** chasing regardless of whether the wait is still waiting, dropping
+  `offsetMinutes`, and never stopping at the cap each fail on the intended assertion.
+- New columns `remindDueAt` / `remindersSent`, and a new ledger event `workflow.reminder_raised`
+  carrying which reminder of how many — so "how many times did you contact me" has an answer.
+
 ### Added - the client hears about the things that happen to their application (`ai-feature/notify-the-client`)
 
 - **Phase 1 used to go silent at the worst possible moment.** After a client authorised a specific

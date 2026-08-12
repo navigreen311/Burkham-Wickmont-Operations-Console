@@ -20,10 +20,14 @@ import { definitionFor, definitionForInstance, latestActive } from './definition
 import {
   breachedSlas,
   claim,
+  deferUntil,
+  dueReminders,
   enqueue,
   fail,
   markEscalated,
+  markReminded,
   park,
+  scheduleReminder,
   reclaimExpiredLeases,
   succeed,
   type QueuedTask,
@@ -243,6 +247,8 @@ export interface TickResult {
   readonly parked: number;
   readonly failed: number;
   readonly escalated: number;
+  /** Chases raised on waits that are taking too long. */
+  readonly reminded: number;
 }
 
 /**
@@ -293,6 +299,60 @@ export const tick = async (options: TickOptions): Promise<TickResult> => {
     escalated += 1;
   }
 
+  // 2b. Chases on waits that are taking too long. Like the SLA pass, independent of claiming -
+  //     the task is parked and will never be claimed until its event arrives, which is the whole
+  //     situation being chased.
+  //
+  //     **The instance does not move.** The wait stays parked, so the chase cannot outlive the
+  //     thing it is chasing: the moment the event lands, the task stops being `waiting` and
+  //     `dueReminders` stops returning it. That is what makes this safe to point at a client - a
+  //     nudge sent to somebody who has already answered is worse than no nudge at all.
+  let reminded = 0;
+  for (const task of await dueReminders(now, options.tenantId)) {
+    const instance = await findInstance(task.instanceId);
+    const definition = instance ? await definitionForInstance(instance) : null;
+    const node = definition?.nodes[task.nodeKey];
+
+    if (!instance || !node || node.kind !== 'wait' || node.remindAfterMinutes === undefined) {
+      // The node stopped declaring a reminder, or the instance is gone. Clear the schedule rather
+      // than re-reading this row on every pass forever.
+      await markReminded(task.id, null);
+      continue;
+    }
+
+    const sent = task.remindersSent + 1;
+    const cap = node.maxReminders ?? 1;
+
+    await raiseNotification({
+      tenantId: task.tenantId,
+      assignedTo: node.remindQueue ?? 'concierge_desk',
+      kind: 'workflow_reminder',
+      summary: node.remindSummary ?? `Chase ${task.nodeKey}`,
+      actor: options.actor,
+      workflowTaskId: task.id,
+    });
+    await append({
+      tenantId: task.tenantId,
+      type: 'workflow.reminder_raised',
+      actor: options.actor,
+      ...(instance.clientId !== null ? { clientId: instance.clientId } : {}),
+      payload: {
+        instanceId: instance.id,
+        nodeKey: task.nodeKey,
+        reminder: sent,
+        of: cap,
+        queue: node.remindQueue,
+      },
+    });
+
+    // Null at the cap: the row leaves `dueReminders` for good rather than being re-counted.
+    await markReminded(
+      task.id,
+      sent >= cap ? null : new Date(now.getTime() + node.remindAfterMinutes * 60_000),
+    );
+    reminded += 1;
+  }
+
   // 3. Claim and execute.
   const claimed = await claim(options.workerId, batchSize, now, undefined, options.tenantId);
   let advanced = 0;
@@ -313,6 +373,7 @@ export const tick = async (options: TickOptions): Promise<TickResult> => {
     parked,
     failed: failures,
     escalated,
+    reminded,
   };
 };
 
@@ -388,6 +449,57 @@ const executeTask = async (
     }
 
     case 'wait': {
+      if ('atContextField' in node.until) {
+        // Resolved at dispatch, from a moment an earlier task recorded. `runAt` in the future is
+        // already how this engine waits, so the only new thing here is where the date comes from.
+        const raw = instance.context[node.until.atContextField];
+        const moment =
+          typeof raw === 'string' || raw instanceof Date ? new Date(raw as string) : null;
+
+        if (moment === null || Number.isNaN(moment.getTime())) {
+          // Failed rather than parked. A wait with no resolvable moment is a workflow that has
+          // stopped without saying so, and the reason names the key so the fix is obvious.
+          await recordFailure(
+            task,
+            `wait needs context.${node.until.atContextField} to be a date and it is ${
+              raw === undefined ? 'not set' : 'not a date'
+            }`,
+            actor,
+            now,
+          );
+          return 'failed';
+        }
+
+        const runAt = new Date(moment.getTime() + (node.until.offsetMinutes ?? 0) * 60_000);
+
+        // Already past - the appointment was booked for tomorrow and this ran late. Resolving now
+        // is right: the alternative is a reminder that never arrives because it is overdue.
+        if (runAt.getTime() <= now.getTime()) {
+          await append({
+            tenantId: task.tenantId,
+            type: 'workflow.wait_resolved',
+            actor,
+            payload: { instanceId: instance.id, nodeKey: task.nodeKey, resolvedBy: 'context_time' },
+          });
+          await advanceTo(task, instance, definition, node.next, actor, now);
+          return 'advanced';
+        }
+
+        await deferUntil(task.id, runAt);
+        await append({
+          tenantId: task.tenantId,
+          type: 'workflow.wait_started',
+          actor,
+          payload: {
+            instanceId: instance.id,
+            nodeKey: task.nodeKey,
+            awaitingContextField: node.until.atContextField,
+            runAt: runAt.toISOString(),
+          },
+        });
+        return 'parked';
+      }
+
       if ('durationMinutes' in node.until) {
         // Claimed means `runAt` has arrived, so the duration has elapsed.
         await append({
@@ -403,6 +515,11 @@ const executeTask = async (
       // rather than fail: the workflow is legitimately waiting, and a `waiting` task is
       // visible as such rather than looking like a stall.
       await park(task.id, now);
+      if (node.remindAfterMinutes !== undefined) {
+        // The chase clock starts when the wait does. Set here rather than at enqueue, because a
+        // wait that was never reached should never be chased.
+        await scheduleReminder(task.id, new Date(now.getTime() + node.remindAfterMinutes * 60_000));
+      }
       await append({
         tenantId: task.tenantId,
         type: 'workflow.wait_started',
@@ -411,6 +528,9 @@ const executeTask = async (
           instanceId: instance.id,
           nodeKey: task.nodeKey,
           awaitingEvent: node.until.event,
+          ...(node.remindAfterMinutes !== undefined
+            ? { remindAfterMinutes: node.remindAfterMinutes }
+            : {}),
         },
       });
       return 'parked';

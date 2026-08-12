@@ -39,6 +39,8 @@ export interface QueuedTask {
   readonly lastError: string | null;
   readonly slaDueAt: Date | null;
   readonly escalatedAt: Date | null;
+  readonly remindDueAt: Date | null;
+  readonly remindersSent: number;
 }
 
 export interface EnqueueInput {
@@ -113,6 +115,8 @@ interface TaskRow {
   lastError: string | null;
   slaDueAt: Date | null;
   escalatedAt: Date | null;
+  remindDueAt: Date | null;
+  remindersSent: number;
 }
 
 const toTask = (row: TaskRow): QueuedTask => ({
@@ -131,6 +135,8 @@ const toTask = (row: TaskRow): QueuedTask => ({
   lastError: row.lastError,
   slaDueAt: row.slaDueAt,
   escalatedAt: row.escalatedAt,
+  remindDueAt: row.remindDueAt,
+  remindersSent: row.remindersSent,
 });
 
 /**
@@ -330,6 +336,59 @@ export const breachedSlas = async (
     },
   });
   return rows.map(toTask);
+};
+
+/**
+ * Push a claimed task back to pending with a later `runAt`, releasing the lease.
+ *
+ * "A wait state is a row with runAt in the future" is how this queue already works; this is that,
+ * for a moment that could only be computed once the instance context was in hand. The task is
+ * claimed again when the time comes and resolves itself then.
+ */
+/** Set when the first chase on a wait falls due. */
+export const scheduleReminder = async (taskId: string, dueAt: Date): Promise<void> => {
+  await db().workflowTask.update({ where: { id: taskId }, data: { remindDueAt: dueAt } });
+};
+
+export const deferUntil = async (taskId: string, runAt: Date): Promise<void> => {
+  await db().workflowTask.update({
+    where: { id: taskId },
+    data: { status: 'pending', runAt, lockedBy: null, leaseExpiresAt: null },
+  });
+};
+
+/**
+ * Waits that are due a chase.
+ *
+ * Only `waiting` rows, and only ones a node gave a `remindDueAt`. A task that has resolved is no
+ * longer waiting, so a reminder cannot be sent about something that has already arrived - the
+ * property that makes this safe to point at a client.
+ */
+export const dueReminders = async (
+  now: Date = new Date(),
+  tenantId?: string,
+): Promise<QueuedTask[]> => {
+  const rows = await db().workflowTask.findMany({
+    where: {
+      status: 'waiting',
+      remindDueAt: { lte: now },
+      ...(tenantId !== undefined ? { tenantId } : {}),
+    },
+  });
+  return rows.map(toTask);
+};
+
+/**
+ * Record a chase, and schedule the next one or stop.
+ *
+ * `remindDueAt` is set to null at the cap, which is what takes the row out of `dueReminders`
+ * permanently rather than leaving it to be re-counted on every pass.
+ */
+export const markReminded = async (taskId: string, nextDueAt: Date | null): Promise<void> => {
+  await db().workflowTask.update({
+    where: { id: taskId },
+    data: { remindersSent: { increment: 1 }, remindDueAt: nextDueAt },
+  });
 };
 
 export const markEscalated = async (taskId: string, now: Date = new Date()): Promise<void> => {
