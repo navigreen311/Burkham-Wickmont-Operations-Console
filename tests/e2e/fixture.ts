@@ -114,6 +114,15 @@ export const E2E_CONSOLE_ACCOUNTS = [
   'e2e-operator-activation@example.com',
   'e2e-operator-evidence@example.com',
   'e2e-operator-claims@example.com',
+  // One per spec in console-rebuilt-views.spec.ts. Sharing an account across spec FILES is the
+  // same replay collision as sharing one inside a file: a spent TOTP step is spent for everybody,
+  // and the specs that break are the ones that ran second.
+  'e2e-operator-view-billing@example.com',
+  'e2e-operator-view-contracts@example.com',
+  'e2e-operator-view-vault@example.com',
+  'e2e-operator-view-workbench@example.com',
+  'e2e-operator-view-workflow@example.com',
+  'e2e-operator-view-integrations@example.com',
 ] as const;
 
 /**

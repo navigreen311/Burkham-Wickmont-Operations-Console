@@ -10,12 +10,18 @@
  */
 
 /**
- * Render the board into a container.
- *
- * @param {HTMLElement} root
- * @param {(path: string) => Promise<{status: string, data?: unknown, reason?: string}>} api
+ * **This file exported a render function that nothing imported, and no script tag loaded it.**
+ * `#integrations-board` rendered an empty box under a "Vendor activation" heading from the day it
+ * merged - on one of the two screens that gate launch. It is now wired like the other sixteen
+ * views: it finds its own container and loads itself. One idiom, because a second one is how a view
+ * ends up unreachable.
  */
-export const renderIntegrations = async (root, api) => {
+const call = async (path) => {
+  const response = await fetch(path, { credentials: 'same-origin' });
+  return response.json().catch(() => ({ status: 'failed', reason: 'No response.' }));
+};
+
+const renderIntegrations = async (root, api) => {
   root.replaceChildren();
 
   const result = await api('/api/integrations/activation');
@@ -119,3 +125,16 @@ export const renderIntegrations = async (root, api) => {
   note.textContent = recording.reason;
   root.append(note);
 };
+
+/**
+ * Bound to a button, not run on load.
+ *
+ * A view that fetches when its module executes fetches while nobody is signed in - the panel then
+ * renders "Sign in to continue." and never re-renders, which is how a wired view looks exactly like
+ * an unwired one. Every other view in this directory is button-triggered for the same reason.
+ */
+const trigger = document.getElementById('integrations-load');
+const board = document.getElementById('integrations-board');
+if (trigger !== null && board !== null) {
+  trigger.addEventListener('click', () => void renderIntegrations(board, call));
+}

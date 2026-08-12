@@ -29,6 +29,12 @@
     <script type="module" src="/console/views/interventure.js"></script>
     <script type="module" src="/console/views/intelligence.js"></script>
     <script type="module" src="/console/views/deliverables.js"></script>
+    <script type="module" src="/console/views/billing.js"></script>
+    <script type="module" src="/console/views/contracts.js"></script>
+    <script type="module" src="/console/views/vault.js"></script>
+    <script type="module" src="/console/views/workbench.js"></script>
+    <script type="module" src="/console/views/workflow.js"></script>
+    <script type="module" src="/console/views/integrations.js"></script>
   </head>
 
   <body>
@@ -177,6 +183,7 @@
       -->
       <section>
         <h3>Vendor activation</h3>
+        <p><button id="integrations-load" type="button">Load the activation board</button></p>
         <div id="integrations-board"></div>
       </section>
 
@@ -655,6 +662,109 @@
         First, and not by accident. No state is activated, so middleware step 5 refuses every
         client-facing action and the firm cannot serve anybody. This is the block that clears it.
       -->
+
+      <!-- The five modules that had routes and no panel until now: 1.4, 7.3, 3.2, 11.11, 2.2. -->
+
+      <section id="section-billing">
+        <h3>Pricing and billing — 1.4</h3>
+        <p>
+          <button id="billing-ladder-load" type="button">Load the published ladder</button>
+        </p>
+        <p id="billing-ladder-status"></p>
+        <ul id="billing-ladder-list"></ul>
+
+        <label for="billing-client-id">Client id</label>
+        <input id="billing-client-id" name="clientId" type="text" />
+        <p><button id="billing-client-load" type="button">Load engagements</button></p>
+        <p id="billing-client-status"></p>
+        <ul id="billing-engagements"></ul>
+
+        <p class="muted">Writes this surface cannot offer:</p>
+        <ul id="billing-blocked"></ul>
+      </section>
+
+      <section id="section-contracts">
+        <h3>Contracts and disclosures — 7.3</h3>
+
+        <label for="contracts-jurisdiction">Jurisdiction (two letters, required)</label>
+        <input id="contracts-jurisdiction" name="jurisdiction" type="text" maxlength="2" />
+        <label for="contracts-tier">Offer tier (optional)</label>
+        <input id="contracts-tier" name="offerTier" type="text" />
+        <p><button id="contracts-clause-load" type="button">Load applicable clauses</button></p>
+        <p id="contracts-clause-status"></p>
+        <ul id="contracts-clauses"></ul>
+
+        <label for="contracts-clause-key">Clause key</label>
+        <input id="contracts-clause-key" name="clauseKey" type="text" />
+        <p><button id="contracts-history-load" type="button">Load every version</button></p>
+        <p id="contracts-history-status"></p>
+        <ul id="contracts-history"></ul>
+
+        <!-- Keyed by engagement, not by client: a client with two has two. -->
+        <label for="contracts-engagement-id">Engagement id</label>
+        <input id="contracts-engagement-id" name="engagementId" type="text" />
+        <p><button id="contracts-exhibit-load" type="button">Load the fee exhibit</button></p>
+        <p id="contracts-exhibit-status"></p>
+        <ul id="contracts-exhibit"></ul>
+
+        <p class="muted">Writes this surface cannot offer:</p>
+        <ul id="contracts-blocked"></ul>
+      </section>
+
+      <section id="section-vault">
+        <h3>Secure document vault — 3.2</h3>
+        <p class="muted">
+          Metadata and the access log. <strong>No document is downloadable here</strong> — bytes
+          reach a client through the Client Portal, which is a separate process on a separate trust
+          boundary.
+        </p>
+
+        <label for="vault-client-id">Client id</label>
+        <input id="vault-client-id" name="clientId" type="text" />
+        <p><button id="vault-load" type="button">Load documents</button></p>
+        <p id="vault-status"></p>
+        <ul id="vault-documents"></ul>
+
+        <label for="vault-document-id">Document id</label>
+        <input id="vault-document-id" name="documentId" type="text" />
+        <p><button id="vault-log-load" type="button">Load the access log</button></p>
+        <p id="vault-log-status"></p>
+        <ul id="vault-log"></ul>
+
+        <p class="muted">Writes this surface cannot offer:</p>
+        <ul id="vault-blocked"></ul>
+      </section>
+
+      <section id="section-workbench">
+        <h3>Founder workbench — 11.11</h3>
+        <p>
+          <button id="workbench-load" type="button">Load the workbench</button>
+          <button id="workbench-decisions-load" type="button">Load the decision queue</button>
+        </p>
+        <p id="workbench-summary"></p>
+        <ul id="workbench-health"></ul>
+        <p id="workbench-status"></p>
+        <ul id="workbench-decisions"></ul>
+      </section>
+
+      <section id="section-workflow">
+        <h3>Workflow instance — 2.2</h3>
+        <p class="muted">
+          One instance by id. There is <strong>no list</strong>: <code>@bwc/workflow</code> exposes
+          no tenant-scoped read, and building one from a table query here would put a module read in
+          the transport. The approval queue is 11.4's and is on the Overview above.
+        </p>
+
+        <label for="workflow-instance-id">Instance id</label>
+        <input id="workflow-instance-id" name="instanceId" type="text" />
+        <p><button id="workflow-load" type="button">Load instance</button></p>
+        <p id="workflow-status"></p>
+        <ul id="workflow-detail"></ul>
+
+        <p class="muted">Writes this surface cannot offer:</p>
+        <ul id="workflow-blocked"></ul>
+      </section>
+
       <section id="section-regulatory">
         <h3>State activation — 7.2 Regulatory Engine</h3>
         <p id="regulatory-headline" class="alarm"></p>
