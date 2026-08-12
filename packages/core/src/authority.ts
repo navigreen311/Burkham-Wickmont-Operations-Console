@@ -242,6 +242,37 @@ export const ACTION_MINIMUM_LEVEL = {
    * into what somebody wishes they had said.
    */
   record_entity_graph: 2,
+
+  // --- Batch C: the casework, and the one act inside it that is not ---
+
+  /**
+   * Level 1. Creating, qualifying and closing a lead is the sales team's own work on a prospect
+   * who is not yet a client of the firm. Qualification decides whether this is somebody the firm
+   * should take on, which sounds weightier than 1 - but the act it gates is `convert_lead`, and
+   * that is where the level belongs. Putting ordinary prospecting behind Level 3 would mean the
+   * firm's most senior person logging every enquiry.
+   */
+  manage_lead: 1,
+
+  /**
+   * **Level 3, and this is the whole of Batch C's finding.**
+   *
+   * `convertLead` creates a client through 1.1 and may start an engagement through 1.4. Those are
+   * `create_client_record` at Level 2 and `manage_engagement` at Level 3 - so a lead conversion
+   * declared at Level 1 would be a lower-level path to both of them.
+   *
+   * ADR-0034's rule, in a new shape: a control somebody can reach another way is not a control. The
+   * level of an action is the level of the most consequential thing it can do, not the level of
+   * what it is usually used for.
+   */
+  convert_lead: 3,
+
+  /**
+   * Level 1. Market and competitor intelligence: ingesting a feed, normalising it, recording what
+   * it found. It writes rather than only observes, which is why it is not 0 alongside
+   * `generate_internal_report` - but nothing here reaches a client or commits the firm.
+   */
+  record_market_intelligence: 1,
 } as const satisfies Record<string, AuthorityLevel>;
 
 /**

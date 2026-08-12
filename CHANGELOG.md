@@ -7,6 +7,22 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added - Batch C: the casework, and the one act inside it that is not (`ai-feature/batch-c-writes`)
+
+- **THE FINDING: `convertLead` is Level 3, and the rest of its line is Level 1.** Converting creates
+  a client through 1.1 and may start an engagement through 1.4 - `create_client_record` at Level 2
+  and `manage_engagement` at Level 3. Declared at Level 1 alongside "close this lead", it would have
+  been a lower-level path to both, and nothing in the name hints that a Level 1 holder would be
+  creating a client and starting a fee.
+- ADR-0034's rule in a new shape: **the level of an action is the level of the heaviest thing it can
+  do, not the level of what it is usually used for** (ADR-0081).
+- `manage_lead` at Level 1 covers create, qualify and close. A Level 1 holder can qualify all day
+  and still not convert - qualification gates conversion, and conversion carries the level.
+- `record_market_intelligence` at Level 1 rather than 0: it writes a feed other reads treat as
+  given. The old refusal's reasoning survives in the note - `analyze_file` at Level 0 authorises
+  reading a file, not creating findings about a client.
+- Blocked writes **7 → 5**. `pnpm verify` 1783 tests / 96 files.
+
 ### Added - Batch B: the determinations, and the trap that came with them (`ai-feature/batch-b-writes`)
 
 - **Scoped as "the three Level 2 writes". Two of the three were not.** Six actions came out of three

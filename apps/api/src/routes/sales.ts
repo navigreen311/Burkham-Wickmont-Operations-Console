@@ -18,7 +18,6 @@
  * like knowledge.
  */
 
-import type { Express, Request, Response } from 'express';
 import {
   INACTIVITY_DAYS,
   MINIMUM_LEADS_FOR_RATE,
@@ -34,21 +33,17 @@ import {
   readingsFor,
   renewalStates,
   staleLeads,
+  closeLead,
+  convertLead,
+  createLead,
+  qualifyLead,
 } from '@bwc/sales';
 import { ok } from '@bwc/core';
 import { send } from '@bwc/http';
-import type { Actor } from '@bwc/identity';
 
-export interface SalesRouteContext {
-  readonly app: Express;
-  readonly requireStaff: (req: Request, res: Response) => Promise<Actor | undefined>;
-  readonly asyncRoute: (
-    handler: (req: Request, res: Response) => Promise<void>,
-  ) => (req: Request, res: Response) => void;
-  readonly param: (req: Request, name: string) => string;
-  readonly tenantId: string;
-  readonly now: () => Date;
-}
+import type { ConsoleRouteContext } from './context.js';
+
+export type SalesRouteContext = ConsoleRouteContext;
 
 /**
  * What this surface cannot do, named function by function.
@@ -57,14 +52,28 @@ export interface SalesRouteContext {
  * cannot escalate it is owed the reason, and the reason is not "not built yet" - the escalation is
  * built, tested and working. What is missing is one line in a file this branch does not own.
  */
-const BLOCKED_WRITES = [
+/**
+ * The lead lifecycle, and the one step in it that is not lifecycle work.
+ *
+ * Creating, qualifying and closing a lead is the sales team's own work on somebody who is not yet a
+ * client. **Converting is a different act at a different level**: it creates a client through 1.1
+ * and may start an engagement through 1.4, so declaring it at Level 1 would have been a lower-level
+ * path to `create_client_record` and `manage_engagement`.
+ */
+const AVAILABLE_WRITES = [
   {
-    capability: 'Create, qualify, convert or close a lead',
-    module:
-      '@bwc/sales createLead, qualifyLead, recordBlueprintDelivered, scheduleReviewCall, convertLead, closeLead',
-    missingAction: 'none declared',
-    why: 'Each emits a Ledger event and so must pass the middleware chain with a declared action. ACTION_MINIMUM_LEVEL has none for moving a lead through the pipeline. create_client_record is about a client - conversion produces one - so borrowing it would authorise the wrong end of the motion at the wrong level.',
+    capability: 'Create, qualify or close a lead',
+    action: 'manage_lead',
+    note: 'Level 1. Work on a prospect who is not yet a client. A qualification needs a note - unexplained, it is a filter nobody can improve and a decision the salesperson who disagrees cannot appeal.',
   },
+  {
+    capability: 'Convert a lead',
+    action: 'convert_lead',
+    note: 'Level 3, and NOT Level 1 like the rest of the lifecycle: converting creates a client and may start an engagement. A lower level here would be a way round the gate on both. Either both happen or neither does - a half-done conversion leaves an orphan client nobody can see.',
+  },
+] as const;
+
+const BLOCKED_WRITES = [
   {
     capability: 'Record activity, a readiness reading, or an attribution correction',
     module: '@bwc/sales recordActivity, recordReadiness, correctAttribution, escalateStaleLeads',
@@ -74,7 +83,7 @@ const BLOCKED_WRITES = [
 ] as const;
 
 export const registerSalesRoutes = (context: SalesRouteContext): void => {
-  const { app, requireStaff, asyncRoute, param, tenantId, now } = context;
+  const { app, requireStaff, authorised, asyncRoute, jsonBody, param, tenantId, now } = context;
 
   /**
    * The pipeline, plus everything that is overdue about it.
@@ -112,7 +121,7 @@ export const registerSalesRoutes = (context: SalesRouteContext): void => {
           conversionByChannel: channels,
           minimumLeadsForRate: MINIMUM_LEADS_FOR_RATE,
           lossReasons: losses,
-          writes: { available: [], blocked: BLOCKED_WRITES },
+          writes: { available: AVAILABLE_WRITES, blocked: BLOCKED_WRITES },
         }),
       );
     }),
@@ -176,8 +185,108 @@ export const registerSalesRoutes = (context: SalesRouteContext): void => {
           trail,
           readings,
           attribution: { original, current, corrections },
-          writes: { available: [], blocked: BLOCKED_WRITES },
+          writes: { available: AVAILABLE_WRITES, blocked: BLOCKED_WRITES },
         }),
+      );
+    }),
+  );
+
+  // --- Writes -------------------------------------------------------------
+
+  /** Record a prospect. Not a client: no client id exists yet, so step 4 has nothing to gate on. */
+  app.post(
+    '/api/console/sales/leads',
+    jsonBody,
+    asyncRoute(async (req, res) => {
+      const permitted = await authorised(req, res, { action: 'manage_lead' });
+      if (!permitted) return;
+
+      send(
+        res,
+        await createLead({
+          ...(req.body as Record<string, unknown>),
+          tenantId,
+          actor: { id: permitted.actor.id, kind: permitted.actor.kind },
+        } as never),
+        { trace: permitted.trace },
+      );
+    }),
+  );
+
+  /** Qualify one. The module requires a note and refuses without it. */
+  app.post(
+    '/api/console/sales/leads/:leadId/qualification',
+    jsonBody,
+    asyncRoute(async (req, res) => {
+      const permitted = await authorised(req, res, { action: 'manage_lead' });
+      if (!permitted) return;
+
+      const body = req.body as Record<string, unknown>;
+      send(
+        res,
+        await qualifyLead({
+          tenantId,
+          leadId: param(req, 'leadId'),
+          qualification: body['qualification'] as never,
+          note: String(body['note'] ?? ''),
+          occurredAt: new Date(String(body['occurredAt'])),
+          actor: { id: permitted.actor.id, kind: permitted.actor.kind },
+        }),
+        { trace: permitted.trace },
+      );
+    }),
+  );
+
+  /** Close it lost. */
+  app.post(
+    '/api/console/sales/leads/:leadId/closure',
+    jsonBody,
+    asyncRoute(async (req, res) => {
+      const permitted = await authorised(req, res, { action: 'manage_lead' });
+      if (!permitted) return;
+
+      const body = req.body as Record<string, unknown>;
+      send(
+        res,
+        await closeLead({
+          tenantId,
+          leadId: param(req, 'leadId'),
+          reason: body['reason'] as never,
+          closedBy: permitted.actor.id,
+          closedOn: new Date(String(body['closedOn'])),
+          actor: { id: permitted.actor.id, kind: permitted.actor.kind },
+        } as never),
+        { trace: permitted.trace },
+      );
+    }),
+  );
+
+  /**
+   * Convert.
+   *
+   * A separate action at Level 3 because of what it does rather than what it is called: a client is
+   * created and an engagement may start. The module makes it all-or-nothing, having previously
+   * created the client first and left an orphan behind when the engagement could not start.
+   */
+  app.post(
+    '/api/console/sales/leads/:leadId/conversion',
+    jsonBody,
+    asyncRoute(async (req, res) => {
+      const permitted = await authorised(req, res, { action: 'convert_lead' });
+      if (!permitted) return;
+
+      const body = req.body as Record<string, unknown>;
+      send(
+        res,
+        await convertLead({
+          ...body,
+          tenantId,
+          leadId: param(req, 'leadId'),
+          convertedBy: permitted.actor.id,
+          convertedOn: new Date(String(body['convertedOn'])),
+          actor: { id: permitted.actor.id, kind: permitted.actor.kind },
+        } as never),
+        { trace: permitted.trace },
       );
     }),
   );

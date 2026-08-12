@@ -26,36 +26,38 @@
  * file, not creating risk findings about a client. See ADR-0063.
  */
 
-import type { Express, Request, Response } from 'express';
 import {
   MINIMUM_COVERAGE,
   PHASE_REQUIREMENTS,
   assessCoverage,
   findingsFor,
   runsFor,
+  ingest,
+  recordFindings,
+  recordNormalizedFeed,
 } from '@bwc/intelligence';
 import { isUnverified, ok, refused, type Provenance } from '@bwc/core';
 import { send } from '@bwc/http';
-import type { Actor } from '@bwc/identity';
 
-export interface IntelligenceRouteContext {
-  readonly app: Express;
-  readonly requireStaff: (req: Request, res: Response) => Promise<Actor | undefined>;
-  readonly asyncRoute: (
-    handler: (req: Request, res: Response) => Promise<void>,
-  ) => (req: Request, res: Response) => void;
-  readonly param: (req: Request, name: string) => string;
-  readonly tenantId: string;
-}
+import type { ConsoleRouteContext } from './context.js';
 
-const BLOCKED_WRITES = [
+export type IntelligenceRouteContext = ConsoleRouteContext;
+
+/**
+ * Market and competitor intelligence.
+ *
+ * Level 1 rather than 0: this WRITES a stored feed that other reads treat as given, which is more
+ * than `generate_internal_report` does. Nothing here reaches a client or commits the firm.
+ */
+const AVAILABLE_WRITES = [
   {
     capability: 'Ingest a feed, record a normalized feed, or record findings',
-    module: '@bwc/intelligence ingest, recordNormalizedFeed, recordFindings',
-    missingAction: 'none declared',
-    why: 'Each emits a Ledger event and so must pass the middleware chain with a declared action, and ACTION_MINIMUM_LEVEL declares none for the pipeline. analyze_file exists at Level 0 and is the wrong label: it authorises reading a file, not creating risk findings about a client, and an ingestion also requires a per-pull consent the action name would not carry.',
+    action: 'record_market_intelligence',
+    note: 'Level 1. It writes a feed other reads treat as given, which is more than analyze_file at Level 0 authorises - that one permits reading a file, not creating findings about a client.',
   },
 ] as const;
+
+const BLOCKED_WRITES = [] as const;
 
 /** A finding's `detail` as the module stores it: a value with the provenance it came from. */
 interface SourcedDetail {
@@ -91,7 +93,7 @@ const confidenceOf = (
 };
 
 export const registerIntelligenceRoutes = (context: IntelligenceRouteContext): void => {
-  const { app, requireStaff, asyncRoute, param, tenantId } = context;
+  const { app, requireStaff, authorised, asyncRoute, jsonBody, param, tenantId, now } = context;
 
   /**
    * What the pipeline knows about one client, and how well it knows it.
@@ -182,9 +184,88 @@ export const registerIntelligenceRoutes = (context: IntelligenceRouteContext): v
           coverage,
           minimumCoverage: MINIMUM_COVERAGE,
 
-          writes: { available: [], blocked: BLOCKED_WRITES },
+          writes: { available: AVAILABLE_WRITES, blocked: BLOCKED_WRITES },
         }),
       );
+    }),
+  );
+
+  // --- Writes -------------------------------------------------------------
+
+  /** Start an ingestion run against a source. */
+  app.post(
+    '/api/console/intelligence/clients/:clientId/ingest',
+    jsonBody,
+    asyncRoute(async (req, res) => {
+      const clientId = param(req, 'clientId');
+      const permitted = await authorised(req, res, {
+        action: 'record_market_intelligence',
+        clientId,
+      });
+      if (!permitted) return;
+
+      const body = req.body as Record<string, unknown>;
+      send(
+        res,
+        await ingest({
+          ...body,
+          tenantId,
+          clientId,
+          monthsRequested: Number(body['monthsRequested']),
+          actor: { id: permitted.actor.id, kind: permitted.actor.kind },
+          now: now(),
+        } as never),
+        { trace: permitted.trace },
+      );
+    }),
+  );
+
+  /**
+   * Record the normalised result of a run.
+   *
+   * Positional arguments and a raw return, unlike most of this codebase - the module predates the
+   * `Outcome` convention here. Wrapped in `ok` so the surface answers in one envelope shape.
+   */
+  app.post(
+    '/api/console/intelligence/clients/:clientId/normalized',
+    jsonBody,
+    asyncRoute(async (req, res) => {
+      const clientId = param(req, 'clientId');
+      const permitted = await authorised(req, res, {
+        action: 'record_market_intelligence',
+        clientId,
+      });
+      if (!permitted) return;
+
+      const run = await recordNormalizedFeed(tenantId, clientId, req.body as never, {
+        id: permitted.actor.id,
+        kind: permitted.actor.kind,
+      });
+      send(res, ok(run), { trace: permitted.trace });
+    }),
+  );
+
+  /** Record what a run found. Returns how many findings were stored. */
+  app.post(
+    '/api/console/intelligence/clients/:clientId/findings',
+    jsonBody,
+    asyncRoute(async (req, res) => {
+      const clientId = param(req, 'clientId');
+      const permitted = await authorised(req, res, {
+        action: 'record_market_intelligence',
+        clientId,
+      });
+      if (!permitted) return;
+
+      const body = req.body as { runId?: unknown; findings?: unknown };
+      const stored = await recordFindings(
+        tenantId,
+        clientId,
+        typeof body.runId === 'string' ? body.runId : null,
+        (Array.isArray(body.findings) ? body.findings : []) as never,
+        { id: permitted.actor.id, kind: permitted.actor.kind },
+      );
+      send(res, ok({ stored }), { trace: permitted.trace });
     }),
   );
 };
