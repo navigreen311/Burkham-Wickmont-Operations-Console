@@ -88,3 +88,4 @@ missing** — these numbers were never used.
 | 0073 | [A published draft ladder beats an empty one, and round numbers beat researched-looking ones](0073-a-published-draft-ladder-beats-an-empty-one.md)              |
 | 0074 | [A curriculum seed must not decertify the network, and it does not assert a sensitivity](0074-a-curriculum-seed-must-not-decertify-the-network.md)              |
 | 0075 | [A seed runs twice, because that is what people do](0075-a-seed-runs-twice-because-that-is-what-people-do.md)                                                   |
+| 0076 | [The map lives with the templates, and the gap is a list](0076-the-map-lives-with-the-templates-and-the-gap-is-a-list.md)                                       |
