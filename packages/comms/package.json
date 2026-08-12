@@ -17,10 +17,12 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@bwc/claims": "workspace:*",
     "@bwc/core": "workspace:*",
     "@bwc/db": "workspace:*",
     "@bwc/ledger": "workspace:*",
-    "@bwc/middleware": "workspace:*"
+    "@bwc/middleware": "workspace:*",
+    "@bwc/scanner": "workspace:*"
   },
   "devDependencies": {
     "typescript": "^5.8.3"

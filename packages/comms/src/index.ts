@@ -19,3 +19,4 @@ export * from './preferences.js';
 export * from './templates.js';
 export * from './send.js';
 export * from './log.js';
+export * from './seed.js';

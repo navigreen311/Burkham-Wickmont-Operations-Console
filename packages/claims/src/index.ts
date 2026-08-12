@@ -18,6 +18,7 @@
 import { db } from '@bwc/db';
 import { append } from '@bwc/ledger';
 import { noData, ok, refused, type EventActor, type Outcome } from '@bwc/core';
+import { FOUNDING_CLAIMS } from './seed.js';
 
 export type ClaimDisposition = 'approved' | 'banned' | 'requires_disclaimer';
 
@@ -203,101 +204,14 @@ export const activeLibrary = async (query: LibraryQuery): Promise<MarketingClaim
 };
 
 /**
- * The starting library, drawn from language the blueprint and specification name explicitly.
+ * Seed the founding library for a tenant.
  *
- * Seeded rather than hardcoded into the Scanner: blueprint 7.4 puts these under weekly Compliance
- * Review Board control, and a list compiled into code cannot be reviewed weekly by anyone but an
- * engineer.
+ * The library itself moved to `seed.ts` when it grew from fourteen entries to a hundred, and grew
+ * a header explaining what may and may not be seeded. The function stays here, with `publish`, so
+ * that `seed.ts` needs only a type from this module and no runtime cycle exists between the two.
+ *
+ * Idempotent - publishing upserts on (tenant, phrase, jurisdiction). Never runs on import.
  */
-export const FOUNDING_CLAIMS: readonly Omit<
-  PublishClaimInput,
-  'tenantId' | 'actor' | 'approvedBy'
->[] = [
-  {
-    phrase: 'guaranteed approval',
-    disposition: 'banned',
-    rationale:
-      'Burkham Wickmont is not the decision-maker on any application. Promising approval both misstates the relationship and is the claim regulators treat as the clearest deceptive-practice marker (FTC Act).',
-  },
-  {
-    phrase: 'guarantee approval',
-    disposition: 'banned',
-    rationale: 'Verb form of "guaranteed approval"; same reasoning.',
-  },
-  {
-    phrase: 'approval is guaranteed',
-    disposition: 'banned',
-    rationale:
-      'Inverted form of "guaranteed approval", and the one a person writes naturally in a sentence. Found while building 4.1: a message reading "Your approval is guaranteed once you sign" passed the scanner cleanly, because the library held only the noun-phrase order. The scanner is exact-phrase by design - substring matching would flag "no guarantee of approval" - so covering a paraphrase means adding it here, which is what the Compliance Review Board owns this list for.',
-  },
-  {
-    phrase: 'approval guaranteed',
-    disposition: 'banned',
-    rationale: 'Reversed form of the same claim; same reasoning as the entry above.',
-  },
-  {
-    phrase: 'no risk',
-    disposition: 'banned',
-    rationale:
-      'Every capital placement carries risk, and personal guarantees make some of it personal. The phrase is false on its face for this product set.',
-  },
-  {
-    phrase: 'risk free',
-    disposition: 'banned',
-    rationale: 'Variant of "no risk"; same reasoning.',
-  },
-  {
-    phrase: 'we can remove negative items',
-    disposition: 'banned',
-    rationale:
-      'Credit repair language. Saying it would recharacterize Burkham Wickmont as a Credit Repair Organization under CROA - principle 1, and the single fastest way to change what the company legally is.',
-  },
-  {
-    phrase: 'remove negative items',
-    disposition: 'banned',
-    rationale: 'Shorter form of the credit repair claim; same reasoning.',
-  },
-  {
-    phrase: 'fix your credit',
-    disposition: 'banned',
-    rationale: 'Credit repair framing; same CROA exposure.',
-  },
-  {
-    phrase: 'we are a lender',
-    disposition: 'banned',
-    rationale:
-      'Burkham Wickmont facilitates placement and is not a lender. Principle 1 - no communication may recharacterize the company.',
-  },
-  {
-    phrase: 'pre-approved',
-    disposition: 'banned',
-    rationale:
-      'A term of art with a specific meaning under FCRA firm-offer rules that this service does not satisfy.',
-  },
-  {
-    phrase: 'investment advice',
-    disposition: 'banned',
-    rationale: 'Would recharacterize the company as an investment adviser. Principle 1.',
-  },
-  {
-    phrase: 'estimated',
-    disposition: 'requires_disclaimer',
-    rationale:
-      'An estimate presented without its basis reads as a commitment. Blueprint 3.1 requires derived figures to ship how they were derived.',
-    requiredDisclosure:
-      'Estimates are based on the information available at the time of preparation and are not an offer or commitment of credit.',
-  },
-  {
-    phrase: 'up to',
-    disposition: 'requires_disclaimer',
-    rationale:
-      'Ceiling language implies attainability. Requires the qualifying disclosure so the figure is not read as an expectation.',
-    requiredDisclosure:
-      'Amounts shown are maximums for the product described and are not an indication of the amount any particular applicant will be approved for.',
-  },
-];
-
-/** Seed the founding library for a tenant. Idempotent - publishing upserts by phrase. */
 export const seedFoundingClaims = async (
   tenantId: string,
   approvedBy: string,
@@ -310,3 +224,6 @@ export const seedFoundingClaims = async (
   }
   return published;
 };
+
+export * from './seed.js';
+export * from './proposed.js';
