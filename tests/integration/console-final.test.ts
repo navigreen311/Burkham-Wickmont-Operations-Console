@@ -257,15 +257,22 @@ describe('11.7 - an invariant is absent, not permission-gated', () => {
     expect(totals['parameters']).toBe((data['parameters'] as unknown[]).length);
   });
 
-  it('offers no write, and says configuration is what is missing', async () => {
+  it('offers the parameter write and still cannot touch an invariant', async () => {
     const data = dataOf(await call('/api/console/admin/configuration'));
     const writes = data['writes'] as Record<string, unknown>;
-    expect(writes['available']).toEqual([]);
-    const blocked = writes['blocked'] as { capability: string; why: string }[];
-    expect(blocked.length).toBeGreaterThan(0);
-    // And editing an invariant is NOT listed as blocked - that would put it on the same footing as
-    // a parameter change waiting on a decision, and imply an action would unlock it.
+
+    // Batch A declared `change_system_parameter`. The assertion this replaces required the
+    // available list to be EMPTY, which was right while nothing gated the write.
+    const available = writes['available'] as { action: string }[];
+    expect(available.map((entry) => entry.action)).toContain('change_system_parameter');
+
+    // **The part that has not changed and must not.** Editing an invariant is not a blocked write
+    // awaiting an action - there is no function to call, in any package, at any level. It stays
+    // off both lists: naming it as blocked would put it on the same footing as a parameter change
+    // waiting on a decision, and imply that declaring an action would unlock it.
+    const blocked = writes['blocked'] as { capability: string }[];
     expect(blocked.map((entry) => entry.capability).join(' ')).not.toMatch(/invariant/i);
+    expect(available.map((entry) => JSON.stringify(entry)).join(' ')).not.toMatch(/invariant/i);
   });
 });
 

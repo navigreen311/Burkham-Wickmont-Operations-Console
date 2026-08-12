@@ -15,35 +15,38 @@
  * and it matters because a clause in force in March is what governs a March contract.
  */
 
-import type { Express, Request, Response } from 'express';
-import { applicableClauses, buildFeeExhibit, clauseHistory } from '@bwc/contracts';
+import {
+  applicableClauses,
+  buildFeeExhibit,
+  clauseHistory,
+  generateContract,
+  publishClause,
+} from '@bwc/contracts';
 import { exhibitInputFor } from '@bwc/billing';
 import { ok, refused } from '@bwc/core';
 import { send } from '@bwc/http';
-import type { Actor } from '@bwc/identity';
 
-export interface ContractsRouteContext {
-  readonly app: Express;
-  readonly requireStaff: (req: Request, res: Response) => Promise<Actor | undefined>;
-  readonly asyncRoute: (
-    handler: (req: Request, res: Response) => Promise<void>,
-  ) => (req: Request, res: Response) => void;
-  readonly param: (req: Request, name: string) => string;
-  readonly tenantId: string;
-  readonly now: () => Date;
-}
+import type { ConsoleRouteContext } from './context.js';
 
-const BLOCKED_WRITES = [
+export type ContractsRouteContext = ConsoleRouteContext;
+
+const AVAILABLE_WRITES = [
   {
-    capability: 'Publish a clause, or generate a contract for a client',
-    module: '@bwc/contracts publishClause, generateContract',
-    missingAction: 'none declared',
-    why: 'Both write to the Ledger and so need a declared action, and none exists for contract authoring. Generation in particular is the act that FREEZES a document and its hash - it is not a preview, and a surface that offered it as one would be inviting somebody to produce a signable artefact by clicking to look at it.',
+    capability: 'Publish a clause',
+    action: 'publish_contract_clause',
+    note: 'Level 3. Wording that lands in every contract generated after it, including ones nobody re-reads. A citation is required.',
+  },
+  {
+    capability: 'Generate a contract for a client',
+    action: 'generate_client_contract',
+    note: 'Level 3. A document a client signs. The jurisdiction gate runs first, so a state the firm may not act in never has a contract computed for it.',
   },
 ] as const;
 
+const BLOCKED_WRITES = [] as const;
+
 export const registerContractRoutes = (context: ContractsRouteContext): void => {
-  const { app, requireStaff, asyncRoute, param, tenantId } = context;
+  const { app, requireStaff, authorised, asyncRoute, jsonBody, param, tenantId } = context;
 
   /**
    * The clauses that would apply to a jurisdiction and product today.
@@ -84,7 +87,7 @@ export const registerContractRoutes = (context: ContractsRouteContext): void => 
           jurisdiction,
           offerTier: offerTier ?? null,
           clauses,
-          writes: { available: [], blocked: BLOCKED_WRITES },
+          writes: { available: AVAILABLE_WRITES, blocked: BLOCKED_WRITES },
         }),
       );
     }),
@@ -124,6 +127,68 @@ export const registerContractRoutes = (context: ContractsRouteContext): void => 
       }
 
       send(res, buildFeeExhibit(terms.value));
+    }),
+  );
+
+  // --- Writes -------------------------------------------------------------
+
+  /** Publish a clause. Wording that lands in every contract generated after it. */
+  app.post(
+    '/api/console/contracts/clauses',
+    jsonBody,
+    asyncRoute(async (req, res) => {
+      const permitted = await authorised(req, res, { action: 'publish_contract_clause' });
+      if (!permitted) return;
+
+      const body = req.body as {
+        key?: unknown;
+        text?: unknown;
+        citation?: unknown;
+        jurisdiction?: unknown;
+      };
+      send(
+        res,
+        await publishClause({
+          tenantId,
+          key: String(body.key ?? ''),
+          text: String(body.text ?? ''),
+          // Required by the module: a clause with no citation is wording nobody can argue with.
+          citation: String(body.citation ?? ''),
+          ...(typeof body.jurisdiction === 'string' ? { jurisdiction: body.jurisdiction } : {}),
+          publishedBy: permitted.actor.id,
+          actor: { id: permitted.actor.id, kind: permitted.actor.kind },
+        }),
+        { trace: permitted.trace },
+      );
+    }),
+  );
+
+  /** Generate a contract for a client. A document somebody signs, so it sits at Level 3. */
+  app.post(
+    '/api/console/contracts/engagements/:engagementId/contract',
+    jsonBody,
+    asyncRoute(async (req, res) => {
+      const body = req.body as { clientId?: unknown; state?: unknown };
+      const clientId = typeof body.clientId === 'string' ? body.clientId : undefined;
+
+      const permitted = await authorised(req, res, {
+        action: 'generate_client_contract',
+        ...(clientId !== undefined ? { clientId } : {}),
+      });
+      if (!permitted) return;
+
+      send(
+        res,
+        await generateContract({
+          tenantId,
+          engagementId: param(req, 'engagementId'),
+          clientId: String(clientId ?? ''),
+          state: String(body.state ?? '').toUpperCase(),
+          generatedBy: permitted.actor.id,
+          actor: { id: permitted.actor.id, kind: permitted.actor.kind },
+        } as never),
+        { trace: permitted.trace },
+      );
     }),
   );
 };

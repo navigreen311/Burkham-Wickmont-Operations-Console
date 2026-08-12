@@ -20,36 +20,33 @@
  *     `whyFixed`. Not a parameter list with an `editable: false` flag - a flag is a field somebody
  *     flips, and the two lists must not be one list wearing a boolean.
  *  3. Serves staged changes and history, because a staged change is real and not a label.
- *  4. Offers no write. `setParameter`, `promoteStagedChange` and `rollback` each emit a Ledger
- *     event and so need `chain()` with a declared action; `ACTION_MINIMUM_LEVEL` declares none for
- *     configuration. See ADR-0063.
+ *  4. Offers the parameter writes, through the chain. `setParameter`, `promoteStagedChange` and
+ *     `rollback` each emit a Ledger event and so need `chain()` with a declared action -
+ *     `change_system_parameter`, Level 3, declared in Batch A. Editing an INVARIANT is still not
+ *     here and never will be: there is no function to call, at any level.
  *
  * **`effectiveValue` reads applied changes only**, which is what makes staging real. The route
  * carries both, separately labelled, so a page cannot show a staged value as though it were in
  * force - that would be the staging mechanism working in the store and lying on the screen.
  */
 
-import type { Express, Request, Response } from 'express';
 import {
   CHANGE_AUTHORITY_LEVEL,
   INVARIANTS,
   PARAMETERS,
   allEffectiveValues,
   changeHistory,
+  promoteStagedChange,
+  rollback,
+  setParameter,
   stagedChanges,
 } from '@bwc/admin';
-import { ok } from '@bwc/core';
+import { ok, refused } from '@bwc/core';
 import { send } from '@bwc/http';
-import type { Actor } from '@bwc/identity';
 
-export interface AdminRouteContext {
-  readonly app: Express;
-  readonly requireStaff: (req: Request, res: Response) => Promise<Actor | undefined>;
-  readonly asyncRoute: (
-    handler: (req: Request, res: Response) => Promise<void>,
-  ) => (req: Request, res: Response) => void;
-  readonly tenantId: string;
-}
+import type { ConsoleRouteContext } from './context.js';
+
+export type AdminRouteContext = ConsoleRouteContext;
 
 /**
  * The writes this surface cannot offer.
@@ -59,17 +56,18 @@ export interface AdminRouteContext {
  * on the same footing as a parameter change that is merely waiting on a decision, and imply that
  * declaring an action would unlock it. It would not. The invariants list says so in its own words.
  */
-const BLOCKED_WRITES = [
+const AVAILABLE_WRITES = [
   {
     capability: 'Change a parameter, promote a staged change, or roll one back',
-    module: '@bwc/admin setParameter, promoteStagedChange, rollback',
-    missingAction: 'none declared',
-    why: `Each emits a Ledger event and so must pass the middleware chain with a declared action, and ACTION_MINIMUM_LEVEL declares none for configuration. The module already requires a human at Authority Level ${CHANGE_AUTHORITY_LEVEL} and already bounds every value - what is missing is the action name, which is a judgement about Authority Levels and belongs in packages/core.`,
+    action: 'change_system_parameter',
+    note: `Level ${CHANGE_AUTHORITY_LEVEL}. A parameter is not one setting on one file - it is the number every file is computed against, so a wrong one is wrong retroactively and everywhere at once. A reason is required; the module holds the bounds.`,
   },
 ] as const;
 
+const BLOCKED_WRITES = [] as const;
+
 export const registerAdminRoutes = (context: AdminRouteContext): void => {
-  const { app, requireStaff, asyncRoute, tenantId } = context;
+  const { app, requireStaff, authorised, asyncRoute, jsonBody, param, tenantId } = context;
 
   /**
    * What may be configured, what may not, and what is currently in force.
@@ -178,8 +176,91 @@ export const registerAdminRoutes = (context: AdminRouteContext): void => {
             history: history.length,
           },
 
-          writes: { available: [], blocked: BLOCKED_WRITES },
+          writes: { available: AVAILABLE_WRITES, blocked: BLOCKED_WRITES },
         }),
+      );
+    }),
+  );
+
+  // --- Writes -------------------------------------------------------------
+
+  /**
+   * Change a parameter, promote a staged change, or roll one back.
+   *
+   * A parameter is not one client's setting: it is the number every client's file is computed
+   * against, so a wrong one is wrong retroactively and everywhere at once.
+   */
+  app.post(
+    '/api/console/admin/parameters',
+    jsonBody,
+    asyncRoute(async (req, res) => {
+      const permitted = await authorised(req, res, { action: 'change_system_parameter' });
+      if (!permitted) return;
+
+      const body = req.body as { key?: unknown; value?: unknown; reason?: unknown };
+      const value = Number(body.value);
+      if (!Number.isFinite(value)) {
+        // The module holds the range and the invariant; this holds only the shape. A NaN reaching
+        // `setParameter` would be refused there too, with a message about a bound rather than
+        // about the value not being a number.
+        send(res, refused('value must be a number.', 'Input validation'));
+        return;
+      }
+
+      send(
+        res,
+        await setParameter({
+          tenantId,
+          key: String(body.key ?? ''),
+          value,
+          reason: String(body.reason ?? ''),
+          changedBy: permitted.actor.id,
+          actor: { id: permitted.actor.id, kind: permitted.actor.kind },
+        }),
+        { trace: permitted.trace },
+      );
+    }),
+  );
+
+  app.post(
+    '/api/console/admin/changes/:changeId/promotion',
+    jsonBody,
+    asyncRoute(async (req, res) => {
+      const permitted = await authorised(req, res, { action: 'change_system_parameter' });
+      if (!permitted) return;
+
+      send(
+        res,
+        await promoteStagedChange({
+          tenantId,
+          changeId: param(req, 'changeId'),
+          promotedBy: permitted.actor.id,
+          actor: { id: permitted.actor.id, kind: permitted.actor.kind },
+        }),
+        { trace: permitted.trace },
+      );
+    }),
+  );
+
+  /** Rolling back is a change too, and is recorded as one rather than as an undo. */
+  app.post(
+    '/api/console/admin/changes/:changeId/rollback',
+    jsonBody,
+    asyncRoute(async (req, res) => {
+      const permitted = await authorised(req, res, { action: 'change_system_parameter' });
+      if (!permitted) return;
+
+      const body = req.body as { reason?: unknown };
+      send(
+        res,
+        await rollback({
+          tenantId,
+          changeId: param(req, 'changeId'),
+          reason: String(body.reason ?? ''),
+          rolledBackBy: permitted.actor.id,
+          actor: { id: permitted.actor.id, kind: permitted.actor.kind },
+        }),
+        { trace: permitted.trace },
       );
     }),
   );

@@ -31,7 +31,6 @@
  * of an SSN in a proxy log is a disclosure nobody chose.
  */
 
-import type { Express, Request, Response } from 'express';
 import { CAPITAL_NEEDS, type CapitalNeed } from '@bwc/lenders';
 import {
   deriveProfile,
@@ -42,22 +41,16 @@ import {
   isolatedEntities,
   loadGraph,
   primaryEntity,
+  revealEin,
+  revealSsn,
   unavailableFields,
 } from '@bwc/graph';
 import { ok, refused, toIso, type Provenance } from '@bwc/core';
 import { send } from '@bwc/http';
-import type { Actor } from '@bwc/identity';
 
-export interface GraphRouteContext {
-  readonly app: Express;
-  readonly requireStaff: (req: Request, res: Response) => Promise<Actor | undefined>;
-  readonly asyncRoute: (
-    handler: (req: Request, res: Response) => Promise<void>,
-  ) => (req: Request, res: Response) => void;
-  readonly param: (req: Request, name: string) => string;
-  readonly tenantId: string;
-  readonly now: () => Date;
-}
+import type { ConsoleRouteContext } from './context.js';
+
+export type GraphRouteContext = ConsoleRouteContext;
 
 /**
  * Exposure arithmetic runs over amounts recorded on debt edges, which somebody entered.
@@ -83,6 +76,24 @@ const recordedByStaff = (at: Date): Provenance => ({
  * Levels that belongs with the people who wrote the other fifteen, and every one of them carries a
  * paragraph of reasoning in `packages/core/src/authority.ts`.
  */
+/**
+ * The one entry here that is not a write.
+ *
+ * Revealing an SSN or EIN produces the most sensitive field the system holds. It is declared as an
+ * action precisely because the authority model is the only place that can gate a READ - and a read
+ * nobody had to hold a level for was reachable by anyone the session let in.
+ *
+ * A purpose is required and is recorded. "Why did you look at this" is the question an access log
+ * exists to answer, and a log that records only that somebody looked answers half of it.
+ */
+const AVAILABLE_WRITES = [
+  {
+    capability: 'Reveal an SSN or EIN',
+    action: 'reveal_protected_identifier',
+    note: 'Level 3. A purpose is required and recorded with the reveal. The value is returned once and never logged, echoed in an error, or written to an event.',
+  },
+] as const;
+
 const BLOCKED_WRITES = [
   {
     capability: 'Record an entity, owner or relationship',
@@ -91,19 +102,13 @@ const BLOCKED_WRITES = [
     missingAction: 'none declared',
     why: "Each writes a Ledger event and so must pass the middleware chain with a declared action. ACTION_MINIMUM_LEVEL has no action for recording a structural fact about a client's household. Choosing one is a judgement about Authority Levels and belongs in packages/core, which this branch does not own.",
   },
-  {
-    capability: 'Reveal an SSN or EIN',
-    module: '@bwc/graph revealSsn, revealEin',
-    missingAction: 'none declared',
-    why: 'A reveal discloses a government identifier and writes graph.ssn.revealed, so it must pass the middleware chain with a declared action, and ACTION_MINIMUM_LEVEL declares none. The nearest candidates are read_document and analyze_file, both Level 0; labelling an SSN disclosure as either would put a false audit record in an append-only store, which is worse than the button not existing. The module already refuses without a stated purpose - what is missing is the Authority Level, not the reason.',
-  },
 ] as const;
 
 const isCapitalNeed = (value: unknown): value is CapitalNeed =>
   typeof value === 'string' && (CAPITAL_NEEDS as readonly string[]).includes(value);
 
 export const registerGraphRoutes = (context: GraphRouteContext): void => {
-  const { app, requireStaff, asyncRoute, param, tenantId, now } = context;
+  const { app, requireStaff, authorised, asyncRoute, jsonBody, param, tenantId, now } = context;
 
   /**
    * The graph for one client: nodes, edges, exposure, detections and the risk band.
@@ -157,7 +162,7 @@ export const registerGraphRoutes = (context: GraphRouteContext): void => {
           findings,
           isolatedEntityIds: isolatedEntities(graph),
           risk,
-          writes: { available: [], blocked: BLOCKED_WRITES },
+          writes: { available: AVAILABLE_WRITES, blocked: BLOCKED_WRITES },
         }),
       );
     }),
@@ -218,6 +223,83 @@ export const registerGraphRoutes = (context: GraphRouteContext): void => {
           profile: derived.value,
           unavailableFields: unavailableFields(derived.value),
         }),
+      );
+    }),
+  );
+
+  // --- Gated reads --------------------------------------------------------
+
+  /**
+   * Reveal an owner's SSN.
+   *
+   * POST rather than GET, and deliberately: a GET carrying "reveal the SSN" ends up in browser
+   * history, proxy logs and a `Referer` header, and the purpose would travel in a query string.
+   */
+  app.post(
+    '/api/console/graph/owners/:ownerId/ssn',
+    jsonBody,
+    asyncRoute(async (req, res) => {
+      const permitted = await authorised(req, res, { action: 'reveal_protected_identifier' });
+      if (!permitted) return;
+
+      const body = req.body as { purpose?: unknown };
+      const purpose = String(body.purpose ?? '').trim();
+      if (purpose.length < 10) {
+        // The module requires one too. Refusing here as well means the caller is told what is
+        // wrong before an unnecessary decryption is attempted.
+        send(
+          res,
+          refused(
+            'A purpose is required, in enough words to be answerable later. "Why did you look at this" is the question the access log exists to answer.',
+            'Blueprint 1.2 - protected identifiers are revealed for a recorded reason',
+          ),
+        );
+        return;
+      }
+
+      send(
+        res,
+        await revealSsn({
+          tenantId,
+          ownerId: param(req, 'ownerId'),
+          actor: { id: permitted.actor.id, kind: permitted.actor.kind },
+          purpose,
+        }),
+        { trace: permitted.trace },
+      );
+    }),
+  );
+
+  /** Reveal an entity's EIN. Same rules; a company identifier is no less protected. */
+  app.post(
+    '/api/console/graph/entities/:entityId/ein',
+    jsonBody,
+    asyncRoute(async (req, res) => {
+      const permitted = await authorised(req, res, { action: 'reveal_protected_identifier' });
+      if (!permitted) return;
+
+      const body = req.body as { purpose?: unknown };
+      const purpose = String(body.purpose ?? '').trim();
+      if (purpose.length < 10) {
+        send(
+          res,
+          refused(
+            'A purpose is required, in enough words to be answerable later.',
+            'Blueprint 1.2 - protected identifiers are revealed for a recorded reason',
+          ),
+        );
+        return;
+      }
+
+      send(
+        res,
+        await revealEin({
+          tenantId,
+          entityId: param(req, 'entityId'),
+          actor: { id: permitted.actor.id, kind: permitted.actor.kind },
+          purpose,
+        }),
+        { trace: permitted.trace },
       );
     }),
   );

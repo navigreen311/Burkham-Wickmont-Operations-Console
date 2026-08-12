@@ -233,19 +233,22 @@ test.describe('1.2 on the page', () => {
     await expect(page.locator('#graph-risk-band')).toContainText('Graph risk');
   });
 
-  test('offers no reveal control, and states on the page why it cannot', async () => {
+  test('no longer claims a reveal cannot be offered, and still shows no identifier', async () => {
     await openPanel('panel-graph');
 
     await page.locator('#graph-client-id').fill(NO_SUCH_CLIENT);
     await page.locator('#graph-load').click();
 
-    // The panel must never grow a reveal control, whatever the id resolves to.
-    await expect(page.getByRole('button', { name: /reveal/i })).toHaveCount(0);
-
-    // And the reason is on the screen, so an operator does not file this as an oversight.
+    // Batch A declared `reveal_protected_identifier`, so the panel stopped saying the reveal is
+    // impossible. This spec asserted the opposite and was right while nothing gated it.
     const blocked = page.locator('#graph-blocked');
-    await expect(blocked).toContainText('Reveal an SSN or EIN');
-    await expect(blocked).toContainText('middleware chain');
+    await expect(blocked).not.toContainText('Reveal an SSN or EIN');
+
+    // **The property that has not changed.** The API can now authorise a reveal; this PAGE still
+    // has no control for one, and no identifier reaches it. The page rendering an SSN is a
+    // separate decision from the API being able to return one, and it has not been taken.
+    await expect(page.getByRole('button', { name: /reveal/i })).toHaveCount(0);
+    await expect(page.locator('#panel-graph')).not.toContainText('123456789');
   });
 });
 

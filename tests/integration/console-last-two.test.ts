@@ -229,13 +229,26 @@ describe('7.5 - a hold is a matter, and an overdue one keeps holding', () => {
     expect(String(eligibility['heldBy'] ?? eligibility['note']).length).toBeGreaterThan(0);
   });
 
-  it('names the authority both irreversible acts need', async () => {
+  it('offers both irreversible acts, and names the authority each needs', async () => {
     const data = dataOf(await call('/api/console/retention/requests'));
-    const blocked = (data['writes'] as { blocked: { why: string }[] }).blocked;
+    const writes = data['writes'] as {
+      available: { capability: string; action: string; note: string }[];
+      blocked: unknown[];
+    };
 
-    expect(blocked.length).toBe(2);
-    expect(blocked.some((entry) => entry.why.includes(String(HOLD_AUTHORITY_LEVEL)))).toBe(true);
-    expect(blocked.some((entry) => entry.why.includes(String(DELETION_AUTHORITY_LEVEL)))).toBe(
+    // This replaces an assertion that both were BLOCKED and named their level in the refusal. They
+    // are offered now, through the chain, at those same levels - the module had already chosen
+    // HOLD_AUTHORITY_LEVEL and DELETION_AUTHORITY_LEVEL, and declaring the actions is what let the
+    // authority model agree with a judgement it previously had no way to enforce.
+    expect(writes.blocked).toEqual([]);
+    expect(
+      writes.available.some((entry) => entry.note.includes(String(HOLD_AUTHORITY_LEVEL))),
+    ).toBe(true);
+    expect(DELETION_AUTHORITY_LEVEL).toBe(HOLD_AUTHORITY_LEVEL);
+
+    // And the panel still says which cannot be undone, which is what the refusal used to carry.
+    expect(writes.available.some((entry) => /IRREVERSIBLE/.test(entry.note))).toBe(true);
+    expect(writes.available.map((entry) => entry.action).includes('decide_deletion_request')).toBe(
       true,
     );
   });

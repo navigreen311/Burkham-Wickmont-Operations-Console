@@ -14,47 +14,66 @@
  * `deletable: false` would leave an operator with nothing to act on.
  */
 
-import type { Express, Request, Response } from 'express';
 import {
   DELETION_AUTHORITY_LEVEL,
   HOLD_AUTHORITY_LEVEL,
   activeHolds,
   assessEligibility,
+  decideRequest,
+  placeHold,
+  recordCompletion,
+  recordReview,
+  releaseHold,
   requestsFor,
   undecidedRequests,
 } from '@bwc/retention';
 import { ok } from '@bwc/core';
 import { send } from '@bwc/http';
-import type { Actor } from '@bwc/identity';
 
-export interface RetentionRouteContext {
-  readonly app: Express;
-  readonly requireStaff: (req: Request, res: Response) => Promise<Actor | undefined>;
-  readonly asyncRoute: (
-    handler: (req: Request, res: Response) => Promise<void>,
-  ) => (req: Request, res: Response) => void;
-  readonly param: (req: Request, name: string) => string;
-  readonly tenantId: string;
-  readonly now: () => Date;
-}
+import type { ConsoleRouteContext } from './context.js';
 
-const BLOCKED_WRITES = [
+export type RetentionRouteContext = ConsoleRouteContext;
+
+/**
+ * What this surface now offers, and what each one cannot be taken back.
+ *
+ * Both are irreversible in the direction that matters, and the panel says so rather than leaving
+ * an operator to infer it from a button label.
+ */
+const AVAILABLE_WRITES = [
   {
-    capability: 'Place or release a legal hold, record a hold review',
-    module: '@bwc/retention placeHold, releaseHold, recordReview',
-    missingAction: 'none declared',
-    why: `Each writes a Ledger event and needs a declared action; none exists. The module already requires a human at Authority Level ${HOLD_AUTHORITY_LEVEL} and a matter reference - releasing a hold is the dangerous half, because it is what lets records be destroyed - but the action name is a judgement about Authority Levels and belongs in packages/core.`,
+    capability: 'Place a legal hold, or record its review',
+    action: 'place_legal_hold',
+    note: `Level ${HOLD_AUTHORITY_LEVEL}, and a matter reference is required - a hold nobody can trace to a matter is one nobody will dare release. Placing one suspends the retention schedule for what it covers.`,
   },
   {
-    capability: 'Decide or complete a deletion request',
-    module: '@bwc/retention decideRequest, recordCompletion',
-    missingAction: 'none declared',
-    why: `Deleting a client's records is irreversible and the module already requires a human at Authority Level ${DELETION_AUTHORITY_LEVEL}. A button for it on a read surface would be the single most consequential control in this Console reachable by accident.`,
+    capability: 'Release a legal hold',
+    action: 'release_legal_hold',
+    note: 'THE DANGEROUS HALF. Releasing is what lets records be destroyed on schedule again. It is a separate action from placing one so the Ledger can tell them apart.',
+  },
+  {
+    capability: 'Decide a deletion request, or record its completion',
+    action: 'decide_deletion_request',
+    note: 'IRREVERSIBLE. Recording completion says a client’s records have been destroyed; nothing here can bring them back. Deletion is refused while any hold is in force, and that refusal names the hold.',
   },
 ] as const;
 
+/**
+ * Nothing left, and the reason the previous entry is worth remembering.
+ *
+ * It read: "A button for it on a read surface would be the single most consequential control in
+ * this Console reachable by accident." That was true of a surface with no authority chain in front
+ * of it. It has one now - Level ${DELETION_AUTHORITY_LEVEL}, a recorded actor, a required reason,
+ * a Ledger event, and a hold check that refuses while anything is in force.
+ *
+ * **The owner was shown that argument and chose the button anyway**, which is theirs to choose. The
+ * mitigation is that the act is gated, attributable and stated as irreversible on the panel, not
+ * that it is hidden.
+ */
+const BLOCKED_WRITES = [] as const;
+
 export const registerRetentionRoutes = (context: RetentionRouteContext): void => {
-  const { app, requireStaff, asyncRoute, param, tenantId, now } = context;
+  const { app, requireStaff, authorised, asyncRoute, jsonBody, param, tenantId, now } = context;
 
   /**
    * Every hold in force, with the ones whose review is overdue marked.
@@ -80,7 +99,7 @@ export const registerRetentionRoutes = (context: RetentionRouteContext): void =>
             holds.length === 0
               ? 'No hold is in force. Records are governed by their retention schedule alone.'
               : `${holds.length} hold(s) in force, ${holds.filter((hold) => hold.reviewOverdue).length} overdue for review. An overdue hold keeps holding.`,
-          writes: { available: [], blocked: BLOCKED_WRITES },
+          writes: { available: AVAILABLE_WRITES, blocked: BLOCKED_WRITES },
         }),
       );
     }),
@@ -101,7 +120,7 @@ export const registerRetentionRoutes = (context: RetentionRouteContext): void =>
             requests.length === 0
               ? 'Nothing is waiting on a deletion decision.'
               : `${requests.length} request(s) undecided. Each needs a Level ${DELETION_AUTHORITY_LEVEL} human and a recorded reason.`,
-          writes: { available: [], blocked: BLOCKED_WRITES },
+          writes: { available: AVAILABLE_WRITES, blocked: BLOCKED_WRITES },
         }),
       );
     }),
@@ -130,8 +149,152 @@ export const registerRetentionRoutes = (context: RetentionRouteContext): void =>
           // leaves an operator with nothing to act on.
           eligibility,
           requests: history,
-          writes: { available: [], blocked: BLOCKED_WRITES },
+          writes: { available: AVAILABLE_WRITES, blocked: BLOCKED_WRITES },
         }),
+      );
+    }),
+  );
+
+  // --- Writes -------------------------------------------------------------
+  //
+  // Each authorises BEFORE reading the body, so a caller with no session learns nothing about what
+  // the route wants. The module performs its own validation after: a matter reference, a reason of
+  // real length, a hold that exists. Two checks of different things, not a duplicate.
+
+  /** Place a hold. Governance-classified: the client it covers is often the one step 4 refuses. */
+  app.post(
+    '/api/console/retention/holds',
+    jsonBody,
+    asyncRoute(async (req, res) => {
+      const body = req.body as {
+        clientId?: unknown;
+        kind?: unknown;
+        scope?: unknown;
+        matterReference?: unknown;
+        reason?: unknown;
+      };
+      const clientId = typeof body.clientId === 'string' ? body.clientId : undefined;
+
+      const permitted = await authorised(req, res, {
+        action: 'place_legal_hold',
+        ...(clientId !== undefined ? { clientId } : {}),
+      });
+      if (!permitted) return;
+
+      const placed = await placeHold({
+        tenantId,
+        kind: body.kind as never,
+        scope: body.scope as never,
+        ...(clientId !== undefined ? { clientId } : {}),
+        matterReference: String(body.matterReference ?? ''),
+        reason: String(body.reason ?? ''),
+        placedBy: permitted.actor.id,
+        now: now(),
+      });
+      send(res, placed, { trace: permitted.trace });
+    }),
+  );
+
+  /** Record a review. Keeps a hold current; does not release it. */
+  app.post(
+    '/api/console/retention/holds/:holdId/review',
+    jsonBody,
+    asyncRoute(async (req, res) => {
+      const permitted = await authorised(req, res, { action: 'place_legal_hold' });
+      if (!permitted) return;
+
+      const body = req.body as { notes?: unknown };
+      send(
+        res,
+        await recordReview({
+          tenantId,
+          holdId: param(req, 'holdId'),
+          reviewedBy: permitted.actor.id,
+          notes: String(body.notes ?? ''),
+          now: now(),
+        }),
+        { trace: permitted.trace },
+      );
+    }),
+  );
+
+  /**
+   * Release a hold - a separate action from placing one.
+   *
+   * This is what puts records back on a schedule that destroys them, so it is the one act here
+   * whose consequence arrives later and silently.
+   */
+  app.post(
+    '/api/console/retention/holds/:holdId/release',
+    jsonBody,
+    asyncRoute(async (req, res) => {
+      const permitted = await authorised(req, res, { action: 'release_legal_hold' });
+      if (!permitted) return;
+
+      const body = req.body as { reason?: unknown };
+      send(
+        res,
+        await releaseHold({
+          tenantId,
+          holdId: param(req, 'holdId'),
+          releasedBy: permitted.actor.id,
+          reason: String(body.reason ?? ''),
+          now: now(),
+        }),
+        { trace: permitted.trace },
+      );
+    }),
+  );
+
+  /** Decide a deletion request. Approving does not delete - completion is a second act. */
+  app.post(
+    '/api/console/retention/requests/:requestId/decision',
+    jsonBody,
+    asyncRoute(async (req, res) => {
+      const permitted = await authorised(req, res, { action: 'decide_deletion_request' });
+      if (!permitted) return;
+
+      const body = req.body as { approve?: unknown; reason?: unknown };
+      send(
+        res,
+        await decideRequest({
+          tenantId,
+          requestId: param(req, 'requestId'),
+          approve: body.approve === true,
+          decidedBy: permitted.actor.id,
+          reason: String(body.reason ?? ''),
+          now: now(),
+        }),
+        { trace: permitted.trace },
+      );
+    }),
+  );
+
+  /**
+   * Record that the deletion happened.
+   *
+   * **The irreversible one.** Deciding to approve is a decision somebody can revisit; recording
+   * completion is a statement that the records are gone. It is a separate route from the decision
+   * for that reason, rather than a flag on it.
+   */
+  app.post(
+    '/api/console/retention/requests/:requestId/completion',
+    jsonBody,
+    asyncRoute(async (req, res) => {
+      const permitted = await authorised(req, res, { action: 'decide_deletion_request' });
+      if (!permitted) return;
+
+      const body = req.body as { documentsDeleted?: unknown };
+      send(
+        res,
+        await recordCompletion({
+          tenantId,
+          requestId: param(req, 'requestId'),
+          documentsDeleted: Number(body.documentsDeleted ?? -1),
+          actor: { id: permitted.actor.id, kind: permitted.actor.kind },
+          now: now(),
+        }),
+        { trace: permitted.trace },
       );
     }),
   );

@@ -88,8 +88,18 @@ test.describe('7.5 on the page', () => {
 
     await page.getByRole('button', { name: 'Load undecided deletion requests' }).click();
 
-    // Deleting a client's records is the most consequential control in this Console. It has no
-    // button, and the panel says why rather than leaving an absence to be read as an oversight.
-    await expect(page.locator('#retention-blocked')).toContainText('irreversible');
+    // Deleting a client's records is the most consequential act in this Console. It is no longer
+    // listed as a write the surface cannot offer - Batch A declared `decide_deletion_request` at
+    // Level 3 - and this page still grows no control for it, which is the next slice.
+    await expect(page.locator('#retention-blocked')).toHaveText('');
+
+    // Narrowly: no control that PERFORMS one. "Load undecided deletion requests" reads the queue
+    // and is not the act - a regex matching the word "deletion" would have caught it and passed
+    // for the wrong reason.
+    await expect(
+      page
+        .locator('#section-retention')
+        .getByRole('button', { name: /^(approve|decide|record|confirm|destroy)/i }),
+    ).toHaveCount(0);
   });
 });

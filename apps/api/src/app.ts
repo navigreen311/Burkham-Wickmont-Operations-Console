@@ -1142,7 +1142,20 @@ export const createApp = (deps: ConsoleAppDeps = {}): Express => {
    * object carries, which TypeScript accepts for a variable - excess-property checking applies to
    * object literals, not to a value passed by name.
    */
-  const routeContext = { app, requireStaff, asyncRoute, param, tenantId: config.tenantId, now };
+  // `authorised` and `jsonBody` travel on the shared object now that route modules carry writes.
+  // A module that only reads simply never destructures them - and the excess-property check the
+  // comment above describes does not apply to a value passed by name, which is what makes one
+  // object serve both.
+  const routeContext = {
+    app,
+    requireStaff,
+    authorised,
+    asyncRoute,
+    jsonBody,
+    param,
+    tenantId: config.tenantId,
+    now,
+  };
   registerCapitalRoutes({ ...routeContext, jsonBody });
   registerDashboardRoutes(routeContext);
   registerGraphRoutes(routeContext);
@@ -1161,14 +1174,19 @@ export const createApp = (deps: ConsoleAppDeps = {}): Express => {
   registerGovernanceRoutes({ ...routeContext, jsonBody });
   registerMarketingRoutes({ ...routeContext, jsonBody });
 
-  // Reads only - none of these five has a declared action for its writes, and each route says so
-  // in its own `blocked` list rather than leaving a page to wonder.
+  // Billing, contracts and vault carry Batch A writes now; workbench, workflow and outcomes are
+  // still reads, and each says so in its own `blocked` list rather than leaving a page to wonder.
   registerBillingRoutes(routeContext);
   registerContractRoutes(routeContext);
   registerVaultRoutes(routeContext);
   registerWorkbenchRoutes(routeContext);
   registerWorkflowRoutes(routeContext);
   registerOutcomeRoutes(routeContext);
+
+  // Batch A. Retention holds and deletion decisions are the irreversible end of the seventeen
+  // capabilities that had a module function and no declared action, so they take `authorised` and
+  // a body parser. `place_legal_hold`, `release_legal_hold` and `decide_deletion_request` are
+  // governance-classified: a hold is placed on exactly the client middleware step 4 refuses.
   registerRetentionRoutes(routeContext);
 
   // --- Event Ledger (11.3) ------------------------------------------------

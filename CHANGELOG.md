@@ -7,6 +7,42 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added - Batch A: the eight Console writes that cannot be undone (`ai-feature/batch-a-writes`)
+
+- **THE FINDING that made the decision easy: nineteen modules had already chosen an Authority Level
+  for their own most consequential act, and every one chose 3.** `CHANGE_AUTHORITY_LEVEL`,
+  `HOLD_AUTHORITY_LEVEL`, `DELETION_AUTHORITY_LEVEL`, `TERMINATION_AUTHORITY_LEVEL`,
+  `PAYOUT_AUTHORITY_LEVEL` and the rest - independently, in different packages. Declaring these
+  actions makes the authority model agree with a judgement the modules had made and the chain had no
+  way to enforce.
+- **Twelve actions from eight capability lines.** The seventeen blocked lines are surfaces, not acts
+  - they bundle ~61 functions, and several bundle a routine act with an irreversible one. Placing
+    and releasing a legal hold became **two actions**: both Level 3, but different acts with different
+    consequences, and the Ledger has to say which was taken.
+- **`reveal_protected_identifier` is not a write.** It is declared because the authority model is
+  the only place that can gate a READ, and a read nobody had to hold a level for was reachable by
+  anyone the session let in. A purpose is required and recorded.
+- **Three are governance actions**, skipping middleware step 4: `place_legal_hold`,
+  `release_legal_hold`, `decide_deletion_request`. **A hold is placed on exactly the client step 4
+  refuses** - litigation is anticipated because something went wrong, so the client is very often in
+  `fail` or behind a triggered Firewall, and a gate that blocked the hold would stop the firm
+  preserving records precisely when it most needs to.
+- **The irreversible acts got controls, and that was the owner's call.** ADR-0032/0033 said keep
+  deletion completion, vault removal and SSN reveal API-only; the owner was shown that argument and
+  chose otherwise. Each is gated at Level 3, runs the chain, is attributable, writes a Ledger event,
+  and is **named as irreversible on the panel** (ADR-0079).
+- **`routes/context.ts` exists at last** - four modules carried an identical context with a comment
+  saying it should collapse "the moment anybody owns both"; there were twenty-two copies. The seven
+  gaining writes adopt it; the read-only fifteen were left alone.
+- **Six existing tests failed when this landed and all six were right to.** Each asserted these
+  capabilities were blocked. Rewritten to assert the new state while keeping what has not changed:
+  an invariant is still absent rather than permission-gated, the page still renders no SSN, the
+  retention panel still grows no control for a deletion.
+- Blocked writes **17 → 10**. `pnpm verify` 1774 tests / 95 files; `pnpm test:e2e` 69 passing.
+- **The page controls are not in this change.** Actions declared, API routes gated and tested,
+  panels no longer claiming these writes are impossible - but no view renders an `available` list
+  yet, so nothing on screen has grown a button. That is the second half of Batch A.
+
 ### Added - the modules were built, and now they hold something (`ai-feature/seed-*`, PRs #63 #64 #65)
 
 Six packages had a shape and no content. The scanner refused on an empty claim library, partner

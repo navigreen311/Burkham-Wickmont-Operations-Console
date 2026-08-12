@@ -19,34 +19,39 @@
  * `packages/core`, not in a route file that happens to need one.
  */
 
-import type { Express, Request, Response } from 'express';
-import { engagementsForClient, ladder, totalAvailableCredit } from '@bwc/billing';
-import { noData, ok } from '@bwc/core';
+import {
+  applyCredit,
+  cancelEngagement,
+  engagementsForClient,
+  ladder,
+  publishOffer,
+  startEngagement,
+  totalAvailableCredit,
+} from '@bwc/billing';
+import { noData, ok, refused } from '@bwc/core';
 import { send } from '@bwc/http';
-import type { Actor } from '@bwc/identity';
 
-export interface BillingRouteContext {
-  readonly app: Express;
-  readonly requireStaff: (req: Request, res: Response) => Promise<Actor | undefined>;
-  readonly asyncRoute: (
-    handler: (req: Request, res: Response) => Promise<void>,
-  ) => (req: Request, res: Response) => void;
-  readonly param: (req: Request, name: string) => string;
-  readonly tenantId: string;
-  readonly now: () => Date;
-}
+import type { ConsoleRouteContext } from './context.js';
 
-const BLOCKED_WRITES = [
+export type BillingRouteContext = ConsoleRouteContext;
+
+const AVAILABLE_WRITES = [
   {
-    capability: 'Publish an offer, start or cancel an engagement, apply a credit',
-    module: '@bwc/billing publishOffer, startEngagement, cancelEngagement, applyCredit',
-    missingAction: 'none declared',
-    why: 'Each writes a Ledger event and so needs a declared action in ACTION_MINIMUM_LEVEL. None exists for billing. The module already enforces its own rules - a credit draws on a specific billing record so a double credit is arithmetically impossible, and declining a refund needs a Level 3 human with a recorded reason - but the action name is a decision about Authority Levels and belongs in packages/core.',
+    capability: 'Publish an offer',
+    action: 'publish_offer',
+    note: 'Level 3. A price list, not a quote: publishing supersedes the live rung, and a new engagement starts on the new one.',
+  },
+  {
+    capability: 'Start or cancel an engagement, apply a credit',
+    action: 'manage_engagement',
+    note: 'Level 3. Starting commits this client to a fee, cancelling ends the commercial relationship, and a credit moves money. Money is integer cents throughout.',
   },
 ] as const;
 
+const BLOCKED_WRITES = [] as const;
+
 export const registerBillingRoutes = (context: BillingRouteContext): void => {
-  const { app, requireStaff, asyncRoute, param, tenantId } = context;
+  const { app, requireStaff, authorised, asyncRoute, jsonBody, param, tenantId } = context;
 
   /**
    * The published ladder, which is the answer to "what does this cost anybody".
@@ -62,7 +67,7 @@ export const registerBillingRoutes = (context: BillingRouteContext): void => {
       send(
         res,
         rungs.length > 0
-          ? ok({ rungs, writes: { available: [], blocked: BLOCKED_WRITES } })
+          ? ok({ rungs, writes: { available: AVAILABLE_WRITES, blocked: BLOCKED_WRITES } })
           : noData(
               "No offer has been published for this tenant. An empty ladder is not a free service - it is a price list nobody has written, and every arm's-length comparison (ADR-0018) needs one.",
             ),
@@ -109,8 +114,117 @@ export const registerBillingRoutes = (context: BillingRouteContext): void => {
               ? null
               : 'No offer is published for this tenant, so there is nothing to compare a price against.',
           availableCreditCents: credit,
-          writes: { available: [], blocked: BLOCKED_WRITES },
+          writes: { available: AVAILABLE_WRITES, blocked: BLOCKED_WRITES },
         }),
+      );
+    }),
+  );
+
+  // --- Writes -------------------------------------------------------------
+
+  /** Publish an offer. A price list, not a quote: it supersedes the live one. */
+  app.post(
+    '/api/console/billing/offers',
+    jsonBody,
+    asyncRoute(async (req, res) => {
+      const permitted = await authorised(req, res, { action: 'publish_offer' });
+      if (!permitted) return;
+
+      send(
+        res,
+        await publishOffer({
+          ...(req.body as Record<string, unknown>),
+          tenantId,
+          publishedBy: permitted.actor.id,
+          actor: { id: permitted.actor.id, kind: permitted.actor.kind },
+        } as never),
+        { trace: permitted.trace },
+      );
+    }),
+  );
+
+  /** Start an engagement. Commits this client to a fee. */
+  app.post(
+    '/api/console/billing/engagements',
+    jsonBody,
+    asyncRoute(async (req, res) => {
+      const body = req.body as { clientId?: unknown; offerKey?: unknown; startedOn?: unknown };
+      const clientId = typeof body.clientId === 'string' ? body.clientId : undefined;
+
+      const permitted = await authorised(req, res, {
+        action: 'manage_engagement',
+        ...(clientId !== undefined ? { clientId } : {}),
+      });
+      if (!permitted) return;
+
+      const startedOn =
+        typeof body.startedOn === 'string' ? new Date(body.startedOn) : new Date(NaN);
+      if (Number.isNaN(startedOn.getTime())) {
+        send(res, refused('startedOn must be a date.', 'Input validation'));
+        return;
+      }
+
+      send(
+        res,
+        await startEngagement({
+          tenantId,
+          clientId: String(clientId ?? ''),
+          offerKey: String(body.offerKey ?? ''),
+          startedOn,
+          actor: { id: permitted.actor.id, kind: permitted.actor.kind },
+        } as never),
+        { trace: permitted.trace },
+      );
+    }),
+  );
+
+  /** Cancel one. The end of a commercial relationship, so it carries a reason. */
+  app.post(
+    '/api/console/billing/engagements/:engagementId/cancellation',
+    jsonBody,
+    asyncRoute(async (req, res) => {
+      const permitted = await authorised(req, res, { action: 'manage_engagement' });
+      if (!permitted) return;
+
+      const body = req.body as { reason?: unknown; cancelledOn?: unknown };
+      const cancelledOn =
+        typeof body.cancelledOn === 'string' ? new Date(body.cancelledOn) : new Date(NaN);
+      if (Number.isNaN(cancelledOn.getTime())) {
+        send(res, refused('cancelledOn must be a date.', 'Input validation'));
+        return;
+      }
+
+      send(
+        res,
+        await cancelEngagement({
+          tenantId,
+          engagementId: param(req, 'engagementId'),
+          reason: String(body.reason ?? ''),
+          cancelledOn,
+          actor: { id: permitted.actor.id, kind: permitted.actor.kind },
+        }),
+        { trace: permitted.trace },
+      );
+    }),
+  );
+
+  /** Apply a credit. Money, so integer cents and a Level 3 human. */
+  app.post(
+    '/api/console/billing/engagements/:engagementId/credit',
+    jsonBody,
+    asyncRoute(async (req, res) => {
+      const permitted = await authorised(req, res, { action: 'manage_engagement' });
+      if (!permitted) return;
+
+      send(
+        res,
+        await applyCredit({
+          ...(req.body as Record<string, unknown>),
+          tenantId,
+          engagementId: param(req, 'engagementId'),
+          actor: { id: permitted.actor.id, kind: permitted.actor.kind },
+        } as never),
+        { trace: permitted.trace },
       );
     }),
   );

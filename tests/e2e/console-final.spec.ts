@@ -110,10 +110,16 @@ test.describe('11.7 on the page', () => {
     await expect(page.locator('#admin-staged')).toContainText('No change is staged');
   });
 
-  test('states the configuration write it cannot offer', async () => {
+  test('no longer lists the parameter change as blocked, and still hides no invariant', async () => {
     await openPanel('panel-admin');
-    await expect(page.locator('#admin-blocked')).toContainText('Change a parameter');
-    await expect(page.locator('#admin-blocked')).toContainText('middleware chain');
+
+    // `change_system_parameter` is declared, so this is not a write the surface cannot offer.
+    await expect(page.locator('#admin-blocked')).not.toContainText('Change a parameter');
+
+    // The rule that has not moved: an invariant is ABSENT, not permission-gated. It is counted and
+    // rendered as its own collection - "fixed and not configurable" - never as a parameter row
+    // wearing a false flag.
+    await expect(page.locator('#panel-admin')).toContainText('fixed and not configurable');
   });
 });
 
