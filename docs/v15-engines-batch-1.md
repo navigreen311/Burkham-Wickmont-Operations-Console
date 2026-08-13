@@ -3,9 +3,15 @@
 Four V1.5 modules built as pure engines — no routes, no pages — plus the ordering key ADR-0034 named
 and left open.
 
-Run everything with `pnpm verify`. The engines have no HTTP surface yet, so there are no URLs to
-demo; the tests are the demonstration, and each file's header says which property it exists to
-prove.
+Run everything with `pnpm verify`.
+
+**All four have surfaces now, and this paragraph used to say otherwise.** It read "the engines have
+no HTTP surface yet, so there are no URLs to demo". 5.5 and 7.5 got theirs when the last two modules
+without panels were built; 8.4 got its own in a later slice (ADR-0084). The ordering key is not a
+module and never needed one.
+
+The tests remain the demonstration of each property, and each file's header still says which
+property it exists to prove.
 
 | Slice                             | Package                       | ADR      | Tests                                                                                                  |
 | --------------------------------- | ----------------------------- | -------- | ------------------------------------------------------------------------------------------------------ |

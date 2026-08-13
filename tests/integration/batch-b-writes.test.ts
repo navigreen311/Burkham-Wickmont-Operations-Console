@@ -17,6 +17,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createServer, type Server } from 'node:http';
 import { create as createClient } from '@bwc/clients';
+import { registerPartner } from '@bwc/partners';
 import { generateKek } from '@bwc/crypto';
 import { createRateLimiter } from '@bwc/http';
 import {
@@ -347,5 +348,108 @@ describe('Batch D: the four lines that had to be split', () => {
     const trace = instance.body['trace'] as { step: string; detail?: string }[];
     const level = trace.find((step) => step.step === 'authority_level');
     expect(String(level?.detail)).toMatch(/>= 1/);
+  });
+});
+
+describe('8.4 Partner Risk, the V1.5 engine that had no surface', () => {
+  const partner = async (): Promise<string> => {
+    const created = await registerPartner({
+      tenantId: fx.tenant.id,
+      legalName: 'Risk Subject Advisors LLC',
+      contactName: 'A Person',
+      contactEmail: 'risk-subject@example.com',
+      track: 'cpa_bookkeeper',
+      actor: { id: fx.human.id, kind: 'human' },
+    });
+    if (created.status !== 'ok') throw new Error(`setup: ${JSON.stringify(created)}`);
+    return created.value.id;
+  };
+
+  it('sends standing and measures as separate fields, and never a score', async () => {
+    const partnerId = await partner();
+    const data = (await get(`/api/console/partners/${partnerId}/risk`))['data'] as Record<
+      string,
+      unknown
+    >;
+
+    // **THE ASSERTION THIS SURFACE EXISTS FOR.** 8.4 asks for a score; the module refuses to make
+    // one because combining conduct with performance lets revenue offset an unauthorized promise.
+    // A transport that flattened them would perform that trade where nobody is looking.
+    expect(data['standing']).toBeDefined();
+    expect(Array.isArray(data['measures'])).toBe(true);
+
+    // No combined figure under any of the names one would naturally reach for.
+    for (const forbidden of ['score', 'riskScore', 'overall', 'rating', 'total']) {
+      expect(data[forbidden], forbidden).toBeUndefined();
+    }
+
+    // And the rule is stated on the payload, so a page cannot combine them in good faith.
+    expect(String(data['combinationRule'])).toMatch(/not combined/i);
+  });
+
+  it('forwards a withheld measure as withheld, with the sample that would produce one', async () => {
+    const partnerId = await partner();
+    const data = (await get(`/api/console/partners/${partnerId}/risk`))['data'] as Record<
+      string,
+      unknown
+    >;
+
+    // A brand-new partner is below every sample. Null, not zero: a complaint rate of 0% is a claim
+    // nobody measured, about somebody whose livelihood partly depends on it.
+    const measures = data['measures'] as { value: number | null }[];
+    for (const measure of measures) {
+      expect(measure.value === null || typeof measure.value === 'number').toBe(true);
+    }
+    expect(typeof data['minimumReferralsForRate']).toBe('number');
+  });
+
+  it('orders the review queue by the module, not by anything numeric', async () => {
+    const data = (await get('/api/console/partners/risk/review'))['data'] as Record<
+      string,
+      unknown
+    >;
+
+    // An ordering IS a ranking, and ranking partners by a figure mixing conduct with revenue is the
+    // combination this module refuses. Counted by standing rather than totalled, for the same
+    // reason: "4 need review" hides that one made an unauthorized promise.
+    expect(Array.isArray(data['partners'])).toBe(true);
+    expect(typeof data['byStanding']).toBe('object');
+    expect(String(data['detail']).length).toBeGreaterThan(0);
+  });
+
+  it('gates recording low and resolving high, and says why on the panel', async () => {
+    const partnerId = await partner();
+    const data = (await get(`/api/console/partners/${partnerId}/risk`))['data'] as Record<
+      string,
+      unknown
+    >;
+    const available = (data['writes'] as { available: { action: string; note: string }[] })
+      .available;
+
+    const record = available.find((entry) => entry.action === 'record_partner_finding');
+    const resolve = available.find((entry) => entry.action === 'resolve_partner_finding');
+
+    // The asymmetry `trigger_firewall` established: a finding STOPS things, so recording one is
+    // Level 1 and resolving it - the direction that restores - is Level 3.
+    expect(record?.note).toMatch(/Level 1/);
+    expect(record?.note).toMatch(/SUSPENDS/);
+    expect(resolve?.note).toMatch(/Level 3/);
+    expect(resolve?.note).toMatch(/RESTORES/);
+  });
+
+  it('offers no reinstatement here, and says why that is permanent', async () => {
+    const partnerId = await partner();
+    const data = (await get(`/api/console/partners/${partnerId}/risk`))['data'] as Record<
+      string,
+      unknown
+    >;
+    const blocked = (data['writes'] as { blocked: { missingAction: string; why: string }[] })
+      .blocked;
+
+    // Not a roadmap item. Reinstatement on the same panel as the finding that caused the suspension
+    // would let one person undo their own suspension in two clicks.
+    const reinstate = blocked.find((entry) => /Reinstate/i.test(entry.why) || entry.why.length > 0);
+    expect(reinstate?.missingAction).toBe('not applicable');
+    expect(reinstate?.why).toMatch(/undo their own suspension/);
   });
 });

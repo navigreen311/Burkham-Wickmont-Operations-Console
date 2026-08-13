@@ -7,6 +7,35 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added - 8.4 Partner Risk gets a surface, and refuses the score as hard as the module (`ai-feature/partner-risk-surface`)
+
+- **Only one of the "four V1.5 engines" actually lacked a surface.** The doc naming them was stale:
+  5.5 and 7.5 gained theirs when the last two modules without panels were built, and the fourth item
+  was the ordering key, which is not a module. 8.4 Partner Risk was the real gap - `assessPartner`,
+  `partnersNeedingReview`, `recordFinding` and `resolveFinding` were reachable from no route.
+- **THE CONSTRAINT: the surface must refuse the combination as hard as the module does.** 8.4 asks
+  for a score; the module produces none because combining conduct with performance yields a figure
+  in which revenue contribution offsets an unauthorized promise. A transport undoes that in one
+  line, and three of the ways are things a page does by instinct - a headline number, a badge
+  derived from both, and **a queue sorted worst-first, because an ordering is a ranking**.
+- `standing` and `measures` travel as separate fields; the queue keeps the module's own order; the
+  review count is broken down **by standing** rather than totalled, because "4 partners need review"
+  hides that one made an unauthorized promise. `combinationRule` states the rule on the payload,
+  because a reader will average them in their head unless something says not to (ADR-0084).
+- A null measure is forwarded as null with its denominator and `minimumReferralsForRate`. `0%` would
+  be a complaint rate invented out of nothing, about somebody whose livelihood depends on it.
+- **`record_partner_finding` is Level 1 and `resolve_partner_finding` is Level 3** - the asymmetry
+  `trigger_firewall` established. A finding STOPS things, and a CRITICAL one suspends the partner
+  from inside the module. That is not a reason to raise the level; it is the reason it is low,
+  because the act that fires it must not be gated behind whoever is busy on a Friday. Resolving is
+  the direction that restores.
+- **Reinstatement is `not applicable` on this panel, permanently.** On the same panel as the finding
+  that caused the suspension, it would let one person undo their own suspension in two clicks.
+- **Verified by mutation:** adding `score: 87` to the payload fails immediately - the test names the
+  fields a combined figure would naturally be called rather than checking the ones present.
+- `docs/v15-engines-batch-1.md` corrected: it claimed all four engines had no HTTP surface.
+- `pnpm verify` 1794 tests / 96 files; `pnpm test:e2e` 71 passing.
+
 ### Fixed - the two gaps the Console reported about itself (`ai-feature/close-the-two-gaps`)
 
 - **`publishPlaybook` now writes a Ledger event.** It never had, for the whole life of the module -

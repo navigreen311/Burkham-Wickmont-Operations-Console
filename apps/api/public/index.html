@@ -24,6 +24,7 @@
     <script type="module" src="/console/views/graph.js"></script>
     <script type="module" src="/console/views/sales.js"></script>
     <script type="module" src="/console/views/partners.js"></script>
+    <script type="module" src="/console/views/partnerRisk.js"></script>
     <script type="module" src="/console/views/admin.js"></script>
     <script type="module" src="/console/views/warehouse.js"></script>
     <script type="module" src="/console/views/interventure.js"></script>
@@ -393,6 +394,35 @@
           <div id="sales-writes-activity"></div>
 
           <ul id="sales-blocked"></ul>
+      </details>
+
+      <!-- 8.4 Partner Risk. Standing and measures are two blocks and never one figure. -->
+      <details id="panel-partner-risk">
+        <summary>8.4 Partner Risk</summary>
+        <p class="muted">
+          8.4 asks for a score and there is not one, deliberately. <strong>Conduct and performance
+          are not combined</strong> &mdash; a figure mixing them lets revenue contribution offset an
+          unauthorized promise, which is the trade design principle 1 forbids.
+        </p>
+
+        <label for="partner-risk-id">Partner id</label>
+        <input id="partner-risk-id" name="partnerId" type="text" />
+        <p><button id="partner-risk-load" type="button">Load standing and measures</button></p>
+        <p id="partner-risk-status"></p>
+
+        <h4>Conduct &mdash; categorical, worst-of</h4>
+        <ul id="partner-risk-standing"></ul>
+
+        <h4>Performance &mdash; numeric, withheld below the sample</h4>
+        <ul id="partner-risk-measures"></ul>
+
+        <p><button id="partner-risk-review-load" type="button">Load the review queue</button></p>
+        <p id="partner-risk-review-status"></p>
+        <ul id="partner-risk-review"></ul>
+
+        <h4>What this surface can do</h4>
+        <ul id="partner-risk-available"></ul>
+        <div id="partner-risk-writes"></div>
       </details>
 
       <details id="panel-partners">
