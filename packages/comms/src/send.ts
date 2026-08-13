@@ -21,6 +21,7 @@ import { createHash } from 'node:crypto';
 import { db } from '@bwc/db';
 import { append } from '@bwc/ledger';
 import { chain } from '@bwc/middleware';
+import { activationStanding } from '@bwc/integration';
 import { notBuilt, ok, refused, type EventActor, type Outcome } from '@bwc/core';
 import { mayContact, preferencesFor, routeUrgent } from './preferences.js';
 import type { Channel } from './windows.js';
@@ -143,11 +144,19 @@ export const send = async (input: SendInput): Promise<Outcome<SendResult>> => {
     },
   });
 
-  // 4. The provider seam. Nothing is gated in, so nothing was delivered - and saying otherwise
-  // would put "the client was told" in a compliance log when they were not.
+  // 4. The provider seam, and it is a GATE rather than a hardcoded refusal.
+  //
+  // This used to return `not_built` from a constant sentence, which meant switching email on was a
+  // code edit - no evidence, no accountable person, no record. `email` and `sms` are vendors now
+  // (ADR-0085), so the refusal names what is actually outstanding and going live requires the same
+  // four evidence items Plaid needs.
+  //
+  // Read at the moment of the send, never cached: a withdrawn DPA has to stop the next message
+  // rather than the next deploy.
+  const standing = await activationStanding(channel === 'sms' ? 'sms' : 'email');
   return notBuilt(
-    '11.5 Integration Layer - email and SMS providers',
-    `The message passed every gate and was logged as approved to send (${row.id}), but no delivery provider is gated in, so it has not been delivered. ${verdict.detail}`,
+    `11.5 Integration Layer - ${channel} provider`,
+    `The message passed every gate and was logged as approved to send (${row.id}), but it has not been delivered: ${standing.explanation} ${verdict.detail}`,
   );
 };
 

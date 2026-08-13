@@ -20,6 +20,7 @@
     "@bwc/claims": "workspace:*",
     "@bwc/core": "workspace:*",
     "@bwc/db": "workspace:*",
+    "@bwc/integration": "workspace:*",
     "@bwc/ledger": "workspace:*",
     "@bwc/middleware": "workspace:*",
     "@bwc/scanner": "workspace:*"

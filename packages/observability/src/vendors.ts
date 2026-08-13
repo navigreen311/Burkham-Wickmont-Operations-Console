@@ -41,6 +41,25 @@ export const GATED_VENDORS: readonly GatedVendor[] = [
     label: 'Personal credit provider API',
     gate: 'Decision B - per-pull authorization, behind the same security review.',
   },
+  // The delivery processors, brought under the same gate in ADR-0085. They were absent from this
+  // list for the same reason they were absent from VENDOR_IDS - nobody had counted a message
+  // carrier as a vendor - and a health board that omits them reports on a subset while looking
+  // complete.
+  {
+    key: 'email',
+    label: 'Email delivery provider',
+    gate: 'No provider selected. Carries client names, application status and document requests, so it needs the same four evidence items as a data vendor.',
+  },
+  {
+    key: 'sms',
+    label: 'SMS delivery provider',
+    gate: 'No provider selected. Subject to 4.4 quiet hours on top of the vendor gate.',
+  },
+  {
+    key: 'voice',
+    label: 'Voice capture provider',
+    gate: 'No provider selected. All-party recording consent is an invariant rather than a parameter, so the consent rule binds regardless of what this gate says.',
+  },
 ];
 
 /**

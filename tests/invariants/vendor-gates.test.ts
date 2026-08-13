@@ -14,6 +14,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   ACTIVATION_AUTHORITY_LEVEL,
   CLIENT_ONBOARDING_VENDORS,
+  REQUIRED_EVIDENCE,
   VENDOR_EVIDENCE_KINDS,
   VENDOR_GATES,
   VENDOR_IDS,
@@ -298,5 +299,35 @@ describe("CLAUDE.md's standing constraint", () => {
     if (result.status !== 'not_built') throw new Error('expected not_built');
     expect(result.reason).toMatch(/Argus security review/);
     expect(result.reason).toMatch(/signed DPA/);
+  });
+});
+
+describe('every external processor is under the gate, not just the data vendors', () => {
+  it('counts the delivery processors as vendors', () => {
+    // **THE ASSERTION THIS SLICE EXISTS FOR.** Email, SMS and voice were outside `VENDOR_IDS`
+    // entirely - no gate record, no evidence requirement, no reserved configuration. Each refused
+    // from a hardcoded line in its own module, so switching one on was a code edit: no evidence, no
+    // accountable person, no Ledger entry. That is the mechanism ADR-0065 removed for the other
+    // four, and it survived here because nobody had counted a message carrier as a vendor.
+    for (const vendor of ['email', 'sms', 'voice'] as const) {
+      expect(VENDOR_IDS, vendor).toContain(vendor);
+      expect(VENDOR_GATES[vendor], vendor).toBeDefined();
+    }
+  });
+
+  it('requires the same four evidence items of a message carrier as of a data vendor', () => {
+    // No lighter treatment for the delivery seams. Email carries client names, application status
+    // and document requests to an outside processor - personal data under any DPA regime.
+    for (const vendor of VENDOR_IDS) {
+      expect(REQUIRED_EVIDENCE[vendor], vendor).toEqual(VENDOR_EVIDENCE_KINDS);
+    }
+  });
+
+  it('leaves every vendor unactivated on the fail-closed floor, delivery included', () => {
+    for (const vendor of VENDOR_IDS) {
+      expect(isActivated(vendor), vendor).toBe(false);
+      // And the outstanding list names what is missing rather than reporting a bare false.
+      expect(outstandingPreconditions(vendor).length, vendor).toBeGreaterThan(0);
+    }
   });
 });

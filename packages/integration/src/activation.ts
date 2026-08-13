@@ -85,6 +85,11 @@ export const REQUIRED_EVIDENCE: Readonly<Record<VendorId, readonly VendorEvidenc
   business_bureau: VENDOR_EVIDENCE_KINDS,
   personal_credit: VENDOR_EVIDENCE_KINDS,
   capitalforge: VENDOR_EVIDENCE_KINDS,
+  // The delivery processors. Same four items, and for the same reason: a company carrying client
+  // communications is a third party carrying client communications.
+  email: VENDOR_EVIDENCE_KINDS,
+  sms: VENDOR_EVIDENCE_KINDS,
+  voice: VENDOR_EVIDENCE_KINDS,
 };
 
 /**

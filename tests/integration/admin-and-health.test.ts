@@ -424,7 +424,25 @@ describe('11.8 system health', () => {
       // Zero calls is not zero errors. A green Plaid row on a system that has never called Plaid
       // is the most confidently wrong thing this module could produce.
       expect(row?.state, vendor.key).toBe('unmonitored');
-      expect(row?.detail, vendor.key).toMatch(/Decision [AB]/);
+      // Every row says WHY it is gated. The assertion used to require "Decision A" or "Decision B",
+      // which held while every gated vendor was a data source; the delivery processors added in
+      // ADR-0085 are gated for a different reason and cite no such decision.
+      expect(String(row?.detail).length, vendor.key).toBeGreaterThan(40);
+    }
+
+    // The three data vendors still cite the decision that put them behind the gate.
+    for (const key of ['plaid', 'business_bureau', 'personal_credit']) {
+      const row = health.components.find((component) => component.key === `vendor_${key}`);
+      expect(row?.detail, key).toMatch(/Decision [AB]/);
+    }
+
+    // And the three delivery processors appear at all, which they did not before: a health board
+    // that omits a category reports on a subset while looking complete.
+    for (const key of ['email', 'sms', 'voice']) {
+      expect(
+        health.components.some((component) => component.key === `vendor_${key}`),
+        key,
+      ).toBe(true);
     }
   });
 

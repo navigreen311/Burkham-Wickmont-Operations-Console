@@ -78,42 +78,31 @@ All four are at **zero of four** evidence items. None is partially cleared.
 
 ---
 
-## 3. The finding: three seams have no gate at all
+## 3. Resolved — the three ungated seams are now gated
 
-**Email, SMS and voice are not in `VENDOR_IDS`.** They have no `VendorGate`, no entry in
-`REQUIRED_EVIDENCE`, no activation path, and **no reserved environment variable**. Verified
-directly: neither `packages/comms/src/send.ts` nor `packages/calls/src/capture.ts` imports
-`@bwc/integration` or consults `isActivated`.
+> **Status: closed by ADR-0085.** This section recorded the finding that prompted the change, and
+> is kept rather than deleted so the reasoning survives with it.
 
-Each returns `not_built` from a hardcoded line in its own module. **Going live means editing that
-line and deploying** — which is precisely the mechanism ADR-0065 removed for the other four,
-described there as what "let client bank statements and credit reports leave the firm."
+**Email, SMS and voice were not in `VENDOR_IDS`.** They had no `VendorGate`, no entry in
+`REQUIRED_EVIDENCE`, no activation path and no reserved environment variable. Neither
+`comms/send.ts` nor `calls/capture.ts` imported `@bwc/integration` or consulted `isActivated` —
+each returned `not_built` from a hardcoded line, so **going live meant editing that line and
+deploying.** That was the exact mechanism ADR-0065 removed for the other four, described there as
+what "let client bank statements and credit reports leave the firm."
 
-This matters most for **email**, the single most-blocking seam in the system:
+It mattered most for email, which carries client names, application status and document requests —
+personal data under any DPA regime, and the only category of external processor that could have
+been switched on without a security review, a signed agreement, an accountable person, or a Ledger
+event.
 
-| Seam               | Stubs                                           | What it blocks                                                                |
-| ------------------ | ----------------------------------------------- | ----------------------------------------------------------------------------- |
-| Email provider     | 6 in `@bwc/identity`, plus the shared send path | Every client send; password-reset delivery; email-address change confirmation |
-| SMS                | shares `comms/send.ts` with email               | The two reminder templates (document chase, appointment)                      |
-| Voice / VoiceForge | 3                                               | Call capture, transcript, and the whole 4.3 analysis chain                    |
+**What changed.** All three are vendors now: in `VENDOR_IDS`, in `VENDOR_GATES` at the fail-closed
+floor, and in `REQUIRED_EVIDENCE` at **the same four items** as a data vendor. `comms/send.ts` and
+`calls/capture.ts` consult `activationStanding` at the moment of each call, so the refusal names the
+outstanding evidence rather than a constant sentence — and switching one on now takes the same
+evidence Plaid needs. They also appear on the vendor health board, which previously omitted the
+category while looking complete.
 
-Counts are `notBuilt` call sites, verified per file. `comms/send.ts` is a single stub covering both
-email and SMS, which is why it is named rather than double-counted.
-
-Email carries client names, application status and document requests — personal data under any DPA
-regime. It is currently the only category of external processor that could be switched on without a
-security review, a signed agreement, an accountable person, or a Ledger event.
-
-**Recommendation, and it is code rather than paperwork:** add `email`, `sms` and `voice` to
-`VENDOR_IDS` and `REQUIRED_EVIDENCE`, and route `comms/send.ts` and `calls/capture.ts` through
-`gatedAdapter`. That is a small change — the model already exists — and it puts all seven seams
-under one rule. Until it is made, this pack is the only place the asymmetry is written down.
-
-`@bwc/comms` already refuses honestly today (_"the message passed every gate and was logged as
-approved to send, but no delivery provider is gated in, so it has not been delivered"_), so the
-risk is not that it lies. The risk is that switching it on requires nobody's signature.
-
----
+The seven seams are one set under one rule. The table in §6 reflects that.
 
 ## 4. The remaining stubs
 
@@ -168,6 +157,7 @@ a configuration setting.
 | SMS             | **no**      | —                 | **no**        | **no**          |
 | Voice           | **no**      | —                 | **no**        | **no**          |
 
-Three vendor selections and one governance change stand between this system and its first live
-seam. None of them is engineering work on the modules themselves — every one of the eighteen stubs
+**Six vendor selections** stand between this system and its first live seam — the three data
+vendors still open, plus email, SMS and voice, which need a chosen provider before their evidence
+can be recorded at all. The governance change this pack called for has been made. None of them is engineering work on the modules themselves — every one of the eighteen stubs
 sits behind a working engine that has been built and tested.

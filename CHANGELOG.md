@@ -7,6 +7,37 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed - a message carrier is a vendor (`ai-feature/gate-the-delivery-seams`)
+
+- **THE HOLE five completeness assessments missed**, because every one counted stubs rather than
+  asking what governed them: email, SMS and voice were not in `VENDOR_IDS`. No gate record, no
+  evidence requirement, no reserved configuration, no row on the health board. Neither
+  `comms/send.ts` nor `calls/capture.ts` imported `@bwc/integration` or consulted `isActivated` -
+  each refused from a hardcoded sentence, so **going live meant editing that sentence and
+  deploying.** That is the mechanism ADR-0065 removed for the other four.
+- It survived because nobody had counted a message carrier as a vendor. Plaid holds bank data and
+  obviously needs a DPA; an email provider carries client names, application status and document
+  requests - the same regimes - and reads like plumbing.
+- **All three are vendors now, with no lighter treatment**: in `VENDOR_IDS`, in `VENDOR_GATES` at
+  the fail-closed floor, and in `REQUIRED_EVIDENCE` at the same four evidence items a data vendor
+  needs (ADR-0085).
+- `comms/send.ts` and `calls/capture.ts` consult `activationStanding` **at the moment of each
+  call**, so a withdrawn DPA stops the next message rather than the next deploy. The refusal names
+  what is outstanding instead of a constant.
+- **Voice got the same rule, not a stricter one.** All-party recording consent is an invariant and
+  binds regardless of the gate: the gate governs whether a provider may be called, the consent rule
+  whether a call may be recorded. Two controls, neither substituting for the other.
+- **Verified by mutation:** restoring the hardcoded sentence fails immediately, because the test
+  requires the refusal to name outstanding evidence and a constant cannot.
+- Three existing tests failed and all three were right to - including the health board's, which
+  required every gated vendor to cite "Decision A" or "Decision B". True while every gated vendor
+  was a data source; the delivery processors cite no such decision. It now requires each row to
+  explain itself, and separately checks the data vendors still cite theirs.
+- `docs/vendor-readiness.md` updated in place: the finding is marked resolved rather than deleted,
+  and the count corrected to **six vendor selections**, not three. The other three were always
+  required and simply were not being counted.
+- `pnpm verify` 1797 tests / 96 files; `pnpm test:e2e` 71 passing.
+
 ### Added - 8.4 Partner Risk gets a surface, and refuses the score as hard as the module (`ai-feature/partner-risk-surface`)
 
 - **Only one of the "four V1.5 engines" actually lacked a surface.** The doc naming them was stale:
