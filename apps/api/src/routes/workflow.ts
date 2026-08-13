@@ -6,19 +6,18 @@
  * `/api/console/queue`. Building a parallel list here would be a second answer to "what is waiting
  * on me", and the two would disagree the first time one of them was filtered.
  *
- * What is genuinely missing, and is named rather than worked around:
- *
- * **`@bwc/workflow` has no tenant-scoped list read.** It exposes `findInstance(instanceId)` and
- * nothing that answers "what is running for this tenant". A route could query the table directly
- * and produce that list in ten lines - and it would be a module read living in the transport, which
- * is the thing this repository has refused everywhere else. So this surface reads ONE instance by
- * id, and the list is a gap in 2.2 rather than a gap in this file.
+ * **The list read exists now.** This file used to say `@bwc/workflow` had none - it exposed
+ * `findInstance(instanceId)` and nothing that answered "what is running for this tenant" - and
+ * refused to produce one by querying the table here, because a module read living in the transport
+ * is the thing this repository has refused everywhere else. The gap was reported on the panel and
+ * has been closed in the module where it belonged: `instancesFor(tenantId, filter)`.
  */
 
 import {
   completeExternalTask,
   definitionForInstance,
   findInstance,
+  instancesFor,
   publishPlaybook,
   start,
 } from '@bwc/workflow';
@@ -42,14 +41,14 @@ const AVAILABLE_WRITES = [
   },
 ] as const;
 
-const BLOCKED_WRITES = [
-  {
-    capability: 'List what is running',
-    module: '@bwc/workflow',
-    missingAction: 'no module read exists',
-    why: 'Not blocked by an Authority Level - there is no function to call. `findInstance` takes an id and nothing answers "what is running for this tenant". Querying the table from this route would put a module read in the transport, so the gap is left where it belongs.',
-  },
-] as const;
+/**
+ * Empty, and the entry that was here is worth remembering.
+ *
+ * It read: "Not blocked by an Authority Level - there is no function to call." That was true, and
+ * it was the last such entry on any panel in the Console. `instancesFor` exists now, so the surface
+ * answers "what is running" from a module read rather than from a query the transport invented.
+ */
+const BLOCKED_WRITES = [] as const;
 
 export const registerWorkflowRoutes = (context: WorkflowRouteContext): void => {
   const { app, requireStaff, authorised, asyncRoute, jsonBody, param, tenantId, now } = context;
@@ -90,6 +89,48 @@ export const registerWorkflowRoutes = (context: WorkflowRouteContext): void => {
     }),
   );
 
+  /**
+   * What is running for this tenant.
+   *
+   * Newest first and capped. An unbounded list of every instance a tenant has ever run is a page
+   * nobody can use and a query that gets slower every month.
+   */
+  app.get(
+    '/api/console/workflow/instances',
+    asyncRoute(async (req, res) => {
+      if (!(await requireStaff(req, res))) return;
+
+      const query = req.query as Record<string, unknown>;
+      const instances = await instancesFor(tenantId, {
+        ...(typeof query['status'] === 'string' ? { status: query['status'] as never } : {}),
+        ...(typeof query['clientId'] === 'string' ? { clientId: query['clientId'] } : {}),
+        ...(typeof query['playbookKey'] === 'string' ? { playbookKey: query['playbookKey'] } : {}),
+      });
+
+      send(
+        res,
+        ok({
+          instances,
+          total: instances.length,
+          /**
+           * Counted here rather than left to the page, because "12 instances" hides the only
+           * distinction an operator cares about: a waiting instance is fine and a failed one is not.
+           */
+          summary: {
+            running: instances.filter((instance) => instance.status === 'running').length,
+            waiting: instances.filter((instance) => instance.status === 'waiting').length,
+            failed: instances.filter((instance) => instance.status === 'failed').length,
+          },
+          detail:
+            instances.length === 0
+              ? 'No workflow instance matches. That is an answer rather than an empty screen: no client is mid-playbook under this filter.'
+              : `${instances.length} instance(s), newest first.`,
+          writes: { available: AVAILABLE_WRITES, blocked: BLOCKED_WRITES },
+        }),
+      );
+    }),
+  );
+
   // --- Writes -------------------------------------------------------------
 
   /**
@@ -114,6 +155,10 @@ export const registerWorkflowRoutes = (context: WorkflowRouteContext): void => {
           version: Number(body['version']),
           phase: Number(body['phase']),
           definition: body['definition'] as never,
+          // Attribution is required by the module now, and this is the caller that made it matter:
+          // a Level 3 button on an act that changes how the firm serves every client afterwards.
+          tenantId,
+          actor: { id: permitted.actor.id, kind: permitted.actor.kind },
         }),
         { trace: permitted.trace },
       );

@@ -7,6 +7,32 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed - the two gaps the Console reported about itself (`ai-feature/close-the-two-gaps`)
+
+- **`publishPlaybook` now writes a Ledger event.** It never had, for the whole life of the module -
+  publishing a playbook is the firm changing the rules by which it serves every client who starts on
+  one afterwards, and principle 3 says a state change is an event. ADR-0069 recorded the gap when
+  only tests could reach it; **Batch D put a Level 3 button on it**, which turned a documented gap
+  into an unrecorded act one click away.
+- **`tenantId` and `actor` are REQUIRED on `PublishInput`, not optional.** Optional was the smaller
+  change and the wrong one: the seed and thirty-five test call sites would have gone on publishing
+  anonymously, and the Console button would have been the only place the act was recorded. A control
+  a caller can skip is not a control (ADR-0034), and an event most callers omit is not an audit
+  trail. Every caller was updated, `seedV1Playbooks` included (ADR-0083).
+- **The event says whether it was a republish**, read before the upsert. `upsert` on `(key, version)`
+  makes a first publish and a republish identical in the row, and they are different acts: one adds
+  a version, the other rewrites a definition instances may already be pinned to.
+- **`instancesFor(tenantId, filter)` closes the last `no module read exists` entry in the Console.**
+  The module offered only `findInstance(instanceId)`, and the route had refused to fill the gap by
+  querying the table itself - a module read in the transport is what this repository refuses
+  everywhere else. Newest first, capped at 200, with running/waiting/failed counted separately
+  because "12 instances" hides the only distinction an operator cares about.
+- **Both verified by mutation:** removing the `append` and hard-coding `republished: false` each
+  fail on the intended assertion.
+- The test that asserted a 404 on the missing list read was rewritten, not deleted - it was right
+  for as long as no module read existed.
+- `pnpm verify` 1789 tests / 96 files; `pnpm test:e2e` **71 passing**.
+
 ### Added - Batch D: the seventeen are declared (`ai-feature/batch-d-writes`)
 
 - **No roadmap-blocked write remains anywhere in the Console.** Seventeen capability lines became

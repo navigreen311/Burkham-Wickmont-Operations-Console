@@ -75,7 +75,14 @@ const AWAIT_DOCS: PlaybookDefinition = {
 
 describe('triggers fire exactly once', () => {
   it('starts a workflow when a matching event is written', async () => {
-    await publishPlaybook({ key: key('onboarding'), version: 1, phase: 0, definition: ONBOARDING });
+    await publishPlaybook({
+      key: key('onboarding'),
+      version: 1,
+      phase: 0,
+      definition: ONBOARDING,
+      tenantId: fx.tenant.id,
+      actor: actor(),
+    });
     await upsertTrigger({
       tenantId: fx.tenant.id,
       eventType: 'client.created',
@@ -97,6 +104,8 @@ describe('triggers fire exactly once', () => {
       version: 1,
       phase: 0,
       definition: ONBOARDING,
+      tenantId: fx.tenant.id,
+      actor: actor(),
     });
     const trigger = await upsertTrigger({
       tenantId: fx.tenant.id,
@@ -138,7 +147,14 @@ describe('triggers fire exactly once', () => {
   });
 
   it('respects a condition, firing only when the predicate holds', async () => {
-    await publishPlaybook({ key: key('escalate'), version: 1, phase: 0, definition: ONBOARDING });
+    await publishPlaybook({
+      key: key('escalate'),
+      version: 1,
+      phase: 0,
+      definition: ONBOARDING,
+      tenantId: fx.tenant.id,
+      actor: actor(),
+    });
     await upsertTrigger({
       tenantId: fx.tenant.id,
       eventType: 'client.compliance_state_changed',
@@ -191,7 +207,14 @@ describe('triggers fire exactly once', () => {
     // the time. A probabilistic guard is how the first version of this defect survived its own
     // fix.
     const digitKey = `digit-suffix-${fx.tenant.slug}-12345678`;
-    await publishPlaybook({ key: digitKey, version: 1, phase: 0, definition: ONBOARDING });
+    await publishPlaybook({
+      key: digitKey,
+      version: 1,
+      phase: 0,
+      definition: ONBOARDING,
+      tenantId: fx.tenant.id,
+      actor: actor(),
+    });
     await upsertTrigger({
       tenantId: fx.tenant.id,
       eventType: 'client.created',
@@ -215,6 +238,8 @@ describe('triggers fire exactly once', () => {
       version: 1,
       phase: 0,
       definition: ONBOARDING,
+      tenantId: fx.tenant.id,
+      actor: actor(),
     });
     const trigger = await upsertTrigger({
       tenantId: fx.tenant.id,
@@ -245,6 +270,8 @@ describe('triggers fire exactly once', () => {
       version: 1,
       phase: 0,
       definition: ONBOARDING,
+      tenantId: fx.tenant.id,
+      actor: actor(),
     });
     const trigger = await upsertTrigger({
       tenantId: fx.tenant.id,
@@ -272,7 +299,14 @@ describe('triggers fire exactly once', () => {
 
 describe('event waits resolve', () => {
   it('resolves a parked wait when its event arrives, and not before', async () => {
-    await publishPlaybook({ key: key('await-docs'), version: 1, phase: 0, definition: AWAIT_DOCS });
+    await publishPlaybook({
+      key: key('await-docs'),
+      version: 1,
+      phase: 0,
+      definition: AWAIT_DOCS,
+      tenantId: fx.tenant.id,
+      actor: actor(),
+    });
 
     const client = await createClient(fx.tenant.id, 'Waiting Co', actor());
     const t0 = new Date('2026-08-10T14:00:00Z');
@@ -329,6 +363,8 @@ describe('event waits resolve', () => {
       version: 1,
       phase: 0,
       definition: AWAIT_DOCS,
+      tenantId: fx.tenant.id,
+      actor: actor(),
     });
 
     const mine = await createClient(fx.tenant.id, 'Mine Co', actor());
@@ -363,7 +399,14 @@ describe('event waits resolve', () => {
 
 describe('the listener terminates', () => {
   it('does not loop on the events it writes itself', async () => {
-    await publishPlaybook({ key: key('selffeed'), version: 1, phase: 0, definition: ONBOARDING });
+    await publishPlaybook({
+      key: key('selffeed'),
+      version: 1,
+      phase: 0,
+      definition: ONBOARDING,
+      tenantId: fx.tenant.id,
+      actor: actor(),
+    });
     // A trigger on an event type the listener itself produces. Bounding each pass by the max
     // seq read at the start is what stops this from running away inside one pass.
     await upsertTrigger({

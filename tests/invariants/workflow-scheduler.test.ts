@@ -85,7 +85,14 @@ describe('cron evaluation', () => {
 
 describe('scheduler firing', () => {
   it('fires a due schedule once and advances to the next occurrence', async () => {
-    await publishPlaybook({ key: key('brief'), version: 1, phase: 2, definition: BRIEF });
+    await publishPlaybook({
+      key: key('brief'),
+      version: 1,
+      phase: 2,
+      definition: BRIEF,
+      tenantId: fx.tenant.id,
+      actor: actor(),
+    });
 
     const created = await upsertSchedule({
       tenantId: fx.tenant.id,
@@ -113,7 +120,14 @@ describe('scheduler firing', () => {
   });
 
   it('fires once after a long outage rather than once per missed window', async () => {
-    await publishPlaybook({ key: key('brief-catchup'), version: 1, phase: 2, definition: BRIEF });
+    await publishPlaybook({
+      key: key('brief-catchup'),
+      version: 1,
+      phase: 2,
+      definition: BRIEF,
+      tenantId: fx.tenant.id,
+      actor: actor(),
+    });
     await upsertSchedule({
       tenantId: fx.tenant.id,
       key: key('catchup'),
@@ -136,7 +150,14 @@ describe('scheduler firing', () => {
   });
 
   it('fires a due schedule exactly once under concurrent passes', async () => {
-    await publishPlaybook({ key: key('brief-race'), version: 1, phase: 2, definition: BRIEF });
+    await publishPlaybook({
+      key: key('brief-race'),
+      version: 1,
+      phase: 2,
+      definition: BRIEF,
+      tenantId: fx.tenant.id,
+      actor: actor(),
+    });
     await upsertSchedule({
       tenantId: fx.tenant.id,
       key: key('race'),
@@ -161,7 +182,14 @@ describe('scheduler firing', () => {
   });
 
   it('does nothing for a disabled schedule', async () => {
-    await publishPlaybook({ key: key('brief-off'), version: 1, phase: 2, definition: BRIEF });
+    await publishPlaybook({
+      key: key('brief-off'),
+      version: 1,
+      phase: 2,
+      definition: BRIEF,
+      tenantId: fx.tenant.id,
+      actor: actor(),
+    });
     await upsertSchedule({
       tenantId: fx.tenant.id,
       key: key('disabled'),
@@ -178,7 +206,14 @@ describe('scheduler firing', () => {
   });
 
   it('disables a schedule whose playbook does not exist, rather than retrying forever', async () => {
-    await publishPlaybook({ key: key('brief-ghost'), version: 1, phase: 2, definition: BRIEF });
+    await publishPlaybook({
+      key: key('brief-ghost'),
+      version: 1,
+      phase: 2,
+      definition: BRIEF,
+      tenantId: fx.tenant.id,
+      actor: actor(),
+    });
     await upsertSchedule({
       tenantId: fx.tenant.id,
       key: key('ghost'),
@@ -197,7 +232,14 @@ describe('scheduler firing', () => {
   });
 
   it('stores the timezone rather than assuming UTC', async () => {
-    await publishPlaybook({ key: key('brief-tz'), version: 1, phase: 2, definition: BRIEF });
+    await publishPlaybook({
+      key: key('brief-tz'),
+      version: 1,
+      phase: 2,
+      definition: BRIEF,
+      tenantId: fx.tenant.id,
+      actor: actor(),
+    });
     await upsertSchedule({
       tenantId: fx.tenant.id,
       key: key('tz'),
@@ -213,7 +255,14 @@ describe('scheduler firing', () => {
   });
 
   it('records the instance it started', async () => {
-    await publishPlaybook({ key: key('brief-inst'), version: 1, phase: 2, definition: BRIEF });
+    await publishPlaybook({
+      key: key('brief-inst'),
+      version: 1,
+      phase: 2,
+      definition: BRIEF,
+      tenantId: fx.tenant.id,
+      actor: actor(),
+    });
     await upsertSchedule({
       tenantId: fx.tenant.id,
       key: key('inst'),

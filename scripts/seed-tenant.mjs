@@ -139,7 +139,7 @@ await step('3/9 deliverable templates (firm-wide)', async () => {
 
 // 4. The Phase 0-2 playbooks, which name the templates registered above.
 await step('4/9 phase 0-2 playbooks (firm-wide)', async () => {
-  const result = await seedV1Playbooks();
+  const result = await seedV1Playbooks(tenantId, actor);
   if (result.refused.length > 0) {
     refusals.push(
       `playbooks: ${result.refused.map((entry) => `${entry.key} (${entry.reason})`).join('; ')}`,

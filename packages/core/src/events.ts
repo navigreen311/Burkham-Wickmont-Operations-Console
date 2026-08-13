@@ -40,6 +40,8 @@ export const EVENT_TYPES = [
   // Tenant isolation (11.2)
   'tenancy.cross_tenant_access_blocked',
   // Workflow Engine (2.2) - Decision C. The Engine writes these and listens for others.
+  /** The firm changed the rules by which it serves clients. Principle 3. */
+  'workflow.playbook_published',
   'workflow.started',
   'workflow.completed',
   'workflow.failed',

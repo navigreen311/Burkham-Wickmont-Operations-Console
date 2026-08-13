@@ -60,7 +60,14 @@ const SIMPLE: PlaybookDefinition = {
 
 const newInstance = async (name: string, now: Date = new Date()) => {
   const playbookKey = key(name);
-  await publishPlaybook({ key: playbookKey, version: 1, phase: 0, definition: SIMPLE });
+  await publishPlaybook({
+    key: playbookKey,
+    version: 1,
+    phase: 0,
+    definition: SIMPLE,
+    tenantId: fx.tenant.id,
+    actor: actor(),
+  });
   const started = await start({ tenantId: fx.tenant.id, playbookKey, actor: actor(), now });
   if (started.status !== 'ok') throw new Error(`could not start: ${JSON.stringify(started)}`);
   return started.value;
@@ -208,6 +215,8 @@ describe('zero silent workflow failures', () => {
           done: { kind: 'terminal', outcome: 'completed' },
         },
       },
+      tenantId: fx.tenant.id,
+      actor: actor(),
     });
     const t0 = new Date();
     const started = await start({ tenantId: fx.tenant.id, playbookKey, actor: actor(), now: t0 });
