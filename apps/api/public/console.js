@@ -46,6 +46,11 @@ const list = (id, items, empty) => {
   element.replaceChildren();
 
   if (items.length === 0) {
+    // An empty string means the caller's summary line already said it, so the list stays silent.
+    // Rendering a blank <li> would leave a bullet with nothing beside it, which reads as a row that
+    // failed to load rather than an absence somebody accounted for.
+    if (empty === '') return;
+
     const li = document.createElement('li');
     li.textContent = empty;
     element.append(li);
@@ -117,6 +122,11 @@ $('form-sign-in').addEventListener('submit', async (event) => {
     notice(result.reason);
     return;
   }
+
+  // A session exists now. Panel modules that need an authenticated fetch listen for this rather
+  // than running one at module execution, which happens before anybody has signed in and comes
+  // back refused - leaving a control that looks broken instead of unauthenticated.
+  window.dispatchEvent(new CustomEvent('bwc:signed-in'));
 
   // The code is cleared whatever happens next: it is single-use by the time the server has seen it,
   // and a spent code left in the field looks like a field that still works.
@@ -273,10 +283,60 @@ const enterOverview = async (announce = '') => {
       : `${result.data.myOpenTasks} open.`;
 
   const queue = await api.queue();
+  // C6. The empty text was the summary sentence again, so an empty queue said it twice. The
+  // summary above owns the sentence; the list stays silent when it has nothing to add.
+  list('queue-list', queue.ok ? queue.data.map((task) => `${task.kind}: ${task.summary}`) : [], '');
+
+  /**
+   * C4. Decision E's categories, counted and not scored.
+   *
+   * Rendered in the order the states are declared rather than by size or severity: sorting a
+   * categorical field by count is an ordering the category system does not have, and a reader
+   * takes the top row as the worst one. Every state is listed even at zero, because an absent row
+   * and a zero row look identical and only one of them is a fact.
+   */
+  const compliance = result.data.compliance ?? {};
+  const stateLabels = {
+    pending_assessment: 'Pending assessment',
+    pass: 'Pass',
+    pass_with_findings: 'Pass with Findings',
+    needs_review: 'Needs Review',
+    fail: 'Fail',
+  };
+  const assessed = Object.entries(compliance).reduce((n, [, count]) => n + count, 0);
+  $('compliance-summary').textContent =
+    assessed === 0
+      ? 'No client file is open in this tenant, so there is no compliance state to report.'
+      : 'Counted per state. Not totalled into a score, and not ordered by severity.';
   list(
-    'queue-list',
-    queue.ok ? queue.data.map((task) => `${task.kind}: ${task.summary}`) : [],
-    'Nothing assigned to you is open.',
+    'compliance-states',
+    Object.keys(stateLabels).map((key) => `${stateLabels[key]}: ${compliance[key] ?? 0}`),
+    '',
+  );
+
+  /**
+   * C7. Collingswood handoffs, in three counts.
+   *
+   * `awaitingConsent` is the one to act on: nothing may be shared until that client has given their
+   * own per-handoff consent. `withCollingswood` is data that has already left the firm, which is a
+   * different fact and never added to the first.
+   */
+  const handoffs = result.data.handoffs ?? { awaitingConsent: 0, withCollingswood: 0, declined: 0 };
+  const anyHandoff = handoffs.awaitingConsent + handoffs.withCollingswood + handoffs.declined;
+  $('handoffs-summary').textContent =
+    anyHandoff === 0
+      ? 'No Personal Layer handoff has been proposed. Nothing is waiting on a client consent.'
+      : 'Per-handoff consent: a client who agreed to one introduction has not agreed to the next.';
+  list(
+    'handoffs-states',
+    anyHandoff === 0
+      ? []
+      : [
+          `Awaiting the client's consent: ${handoffs.awaitingConsent}`,
+          `Transferred to Collingswood: ${handoffs.withCollingswood}`,
+          `Declined: ${handoffs.declined}`,
+        ],
+    '',
   );
 
   $('obligations-summary').textContent =
@@ -295,7 +355,8 @@ const enterOverview = async (announce = '') => {
             }, due ${item.dueAt}`,
         )
       : [],
-    'Nothing outstanding.',
+    // C5. Same duplication as the queue: the summary above already says it.
+    '',
   );
 
   // Inviting is the same Level 3 decision the module enforces. Hidden below it as a courtesy; the

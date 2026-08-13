@@ -27,6 +27,7 @@ import {
   recordEvidence,
   withdrawEvidence,
 } from '@bwc/integration';
+import { JURISDICTION_REFUSAL, toUspsStateCode } from '@bwc/core';
 import { cleanupTenant, makeFixture, type Fixture } from '../setup.js';
 
 let fx: Fixture;
@@ -329,5 +330,61 @@ describe('every external processor is under the gate, not just the data vendors'
       // And the outstanding list names what is missing rather than reporting a bare false.
       expect(outstandingPreconditions(vendor).length, vendor).toBeGreaterThan(0);
     }
+  });
+});
+
+describe('the activation board is complete, or says why something is absent', () => {
+  it('carries every seam that holds client financial data', () => {
+    // The completeness rule. A board that silently omits a processor reads as a cleared one, which
+    // is the failure mode this whole surface exists to prevent.
+    for (const vendor of ['plaid', 'business_bureau', 'personal_credit', 'capitalforge'] as const) {
+      expect(VENDOR_IDS, vendor).toContain(vendor);
+    }
+  });
+
+  it('carries the communications carriers separately from the platform seams', () => {
+    // They are not covered by CapitalForge's evidence: blueprint 4.3 routes voice through
+    // CapitalForge to VoiceForge, but the carrier that moves the message is a different processor
+    // with its own attestation, and it holds client names and application status.
+    for (const vendor of ['email', 'sms', 'voice'] as const) {
+      expect(VENDOR_IDS, vendor).toContain(vendor);
+      expect(REQUIRED_EVIDENCE[vendor], vendor).toEqual(VENDOR_EVIDENCE_KINDS);
+    }
+  });
+
+  it('never collapses a partially evidenced vendor to activated', () => {
+    // The four-item structure stays until all four are evidenced. Plaid has its vendor selection
+    // settled and is still not activated - one item is not a tick.
+    for (const vendor of VENDOR_IDS) {
+      const outstanding = outstandingPreconditions(vendor);
+      if (outstanding.length > 0) expect(isActivated(vendor), vendor).toBe(false);
+    }
+  });
+});
+
+describe('jurisdiction is a member of a list, not a string two characters wide', () => {
+  it('accepts a USPS code in any case', () => {
+    for (const value of ['NY', 'ny', ' ca ', 'Tx']) {
+      expect(toUspsStateCode(value), value).not.toBeNull();
+    }
+  });
+
+  it('refuses the shapes a length check let through', () => {
+    // **The defect.** The old guard was `length !== 2` applied after `toUpperCase()`, which refuses
+    // 'NewYork' and 'N.Y.' correctly and accepts anything else two characters wide.
+    for (const value of ['12', 'N-', '$$', 'ZZ', 'XX']) {
+      expect(toUspsStateCode(value), value).toBeNull();
+    }
+  });
+
+  it('refuses the shapes it always refused', () => {
+    for (const value of ['NewYork', 'N.Y.', '', 'N', 'NYC', null, undefined, 42]) {
+      expect(toUspsStateCode(value as never), String(value)).toBeNull();
+    }
+  });
+
+  it('offers the refusal sentence from one place, so client and server agree', () => {
+    expect(JURISDICTION_REFUSAL).toMatch(/2-letter USPS state code/);
+    expect(JURISDICTION_REFUSAL).toMatch(/NY, CA, TX/);
   });
 });

@@ -100,6 +100,9 @@ export default [
         window: 'readonly',
         navigator: 'readonly',
         fetch: 'readonly',
+        // The page dispatches one to tell panel modules a session exists, so they can defer their
+        // first authenticated fetch instead of making it before sign-in.
+        CustomEvent: 'readonly',
         atob: 'readonly',
         btoa: 'readonly',
         URLSearchParams: 'readonly',

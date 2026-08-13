@@ -201,6 +201,64 @@
         <ul id="health-components"></ul>
       </section>
 
+      <section id="section-resolve-review">
+        <h3>Resolve a Needs Review compliance state</h3>
+        <!--
+          C8. The load-bearing act for this role. Decision E freezes placement while a client is in
+          Needs Review, so the client waits on exactly this decision - and 3.7 keeps the freeze until
+          it is made. `transitionComplianceState` writes the transition and its reason to the Event
+          Ledger; this surface supplies the reason and never the verdict.
+
+          Two destinations, deliberately. Pass is absent: a file that reached Needs Review had a
+          finding, and clearing it to Pass would discard the finding rather than acknowledge it.
+          Pass with Findings keeps the finding on the record; Fail routes to Do Not Fund Governance.
+        -->
+        <label for="resolve-client">Client id</label>
+        <input id="resolve-client" name="clientId" type="text" />
+        <p><button id="resolve-load" type="button">Load the current findings</button></p>
+        <p id="resolve-status"></p>
+        <ul id="resolve-findings"></ul>
+
+        <label for="resolve-decision">Resolution</label>
+        <select id="resolve-decision" name="to">
+          <option value="">Select a resolution…</option>
+          <option value="pass_with_findings">Pass with Findings — findings acknowledged, on the record</option>
+          <option value="fail">Fail — escalate to Do Not Fund Governance</option>
+        </select>
+
+        <label for="resolve-reason">Reasoning (required, recorded in the Event Ledger)</label>
+        <input id="resolve-reason" name="reason" type="text" />
+        <p><button id="resolve-submit" type="button">Record the resolution</button></p>
+        <p id="resolve-result"></p>
+        <ul id="resolve-trace"></ul>
+      </section>
+
+      <section>
+        <h3>Compliance state</h3>
+        <!--
+          Decision E. The state is CATEGORICAL, and this surface has to stay categorical with it:
+          counts per state, in the order the categories are declared, with no total, no ordering by
+          severity and no bar. A number invites an average, and an average of a breach and a success
+          is a smaller breach.
+
+          `pending_assessment` is shown alongside the four assessed categories because it is where
+          every client starts. Showing only the four would hide every file opened today.
+        -->
+        <p id="compliance-summary"></p>
+        <ul id="compliance-states"></ul>
+      </section>
+
+      <section>
+        <h3>Founder Personal Layer handoffs</h3>
+        <!--
+          Collingswood handoffs (Option B, via Gardner). Three counts and no total: awaiting the
+          client's own per-handoff consent, already transferred, declined. ADR-0058 is the rule they
+          count against - a client who agreed to one introduction has not agreed to the next.
+        -->
+        <p id="handoffs-summary"></p>
+        <ul id="handoffs-states"></ul>
+      </section>
+
       <section>
         <h3>Your queue</h3>
         <p id="queue-summary"></p>
@@ -237,6 +295,18 @@
         <p id="obligations-summary"></p>
         <ul id="obligations-list"></ul>
       </section>
+
+      <!--
+        C5. The panels below used to begin here with no heading, immediately after the Correction
+        obligations list - so eleven collapsed module numbers (9.1, 9.2, 5.1 ...) read as though
+        they were obligations nobody had expanded. They are the rest of the Console. A heading is
+        the whole fix: nothing was wrong with the panels, only with what preceded them.
+      -->
+      <h3 class="module-panels-heading">Module surfaces</h3>
+      <p class="muted">
+        The rest of the Console, one panel per module. Collapsed by default and unrelated to the
+        obligations above.
+      </p>
 
       <!--
         Module surfaces: 5.1/5.6, 9.1/9.2, 1.2, 1.3, 8.1/8.3.
@@ -708,6 +778,7 @@
 
       <script type="module" src="/console/views/signin.js"></script>
       <script type="module" src="/console/views/security.js"></script>
+      <script type="module" src="/console/views/resolveReview.js"></script>
       <!-- Compliance & governance surfaces: 7.2, 7.1, 5.4, 7.4 + 4.5 ---------
         Inside the overview deliberately, and it is the whole of the integration. The existing view
         switcher hides `view-overview` when nobody is signed in, so these blocks inherit that and no
@@ -751,8 +822,17 @@
       <section id="section-contracts">
         <h3>Contracts and disclosures — 7.3</h3>
 
-        <label for="contracts-jurisdiction">Jurisdiction (two letters, required)</label>
-        <input id="contracts-jurisdiction" name="jurisdiction" type="text" maxlength="2" />
+        <label for="contracts-jurisdiction">Jurisdiction (required)</label>
+        <!--
+          C9. A select rather than free text. `maxlength="2"` stopped 'NewYork' and accepted '12':
+          a jurisdiction is a member of a list, not a string two characters wide. The options come
+          from the vocabulary endpoint for the reason that endpoint exists - a hard-coded list here
+          drifts the moment a code is added, and the failure is a Console offering a choice the
+          system refuses.
+        -->
+        <select id="contracts-jurisdiction" name="jurisdiction">
+          <option value="">Select a state…</option>
+        </select>
         <label for="contracts-tier">Offer tier (optional)</label>
         <input id="contracts-tier" name="offerTier" type="text" />
         <p><button id="contracts-clause-load" type="button">Load applicable clauses</button></p>
