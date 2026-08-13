@@ -124,3 +124,37 @@ renderWrites('workflow-writes', [
     body: () => ({}),
   },
 ]);
+
+/**
+ * What is running.
+ *
+ * The panel could only ever show one instance by id, because the module offered only
+ * `findInstance`. `instancesFor` closed that, and the counts are separated because "12 instances"
+ * hides the only distinction an operator cares about: a waiting instance is fine, a failed one is
+ * not.
+ */
+const loadRunning = async () => {
+  const status = $('workflow-running-status');
+  const list = $('workflow-running');
+  list.replaceChildren();
+
+  const result = await call('/api/console/workflow/instances');
+  if (!result.ok) {
+    status.textContent = `${result.status}: ${result.reason}`;
+    return;
+  }
+
+  for (const instance of result.data.instances) {
+    line(
+      list,
+      `${instance.playbookKey} v${instance.playbookVersion} - ${instance.status} - at ${
+        instance.currentNodeKey ?? 'start'
+      }${instance.clientId ? ` - client ${instance.clientId}` : ''}`,
+    );
+  }
+
+  const { running, waiting, failed } = result.data.summary;
+  status.textContent = `${result.data.detail} ${running} running, ${waiting} waiting, ${failed} failed.`;
+};
+
+$('workflow-running-load').addEventListener('click', () => void loadRunning());

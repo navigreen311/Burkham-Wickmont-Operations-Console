@@ -126,3 +126,21 @@ test.describe('the vendor activation board, which was never wired', () => {
     await expect(board).toContainText('not activated');
   });
 });
+
+test.describe('2.2 lists what is running', () => {
+  test('loads the instances and separates waiting from failed', async ({ page }) => {
+    await signIn(page, E2E_CONSOLE_ACCOUNTS[33]);
+
+    await page.getByRole('button', { name: 'Load what is running' }).click();
+
+    // The panel could only ever show one instance by id, because `@bwc/workflow` offered only
+    // `findInstance`. This spec exists because the surface reported that absence for months.
+    const status = page.locator('#workflow-running-status');
+    await expect(status).toContainText('running');
+    await expect(status).toContainText('waiting');
+    await expect(status).toContainText('failed');
+
+    // An empty result is a sentence rather than a blank screen.
+    await expect(status).not.toHaveText('');
+  });
+});

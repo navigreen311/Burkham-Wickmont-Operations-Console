@@ -61,7 +61,14 @@ const BRIEF: PlaybookDefinition = {
 
 describe('one pass drives scheduler, listener and engine', () => {
   it('fires a schedule and dispatches its first task in the same pass', async () => {
-    await publishPlaybook({ key: key('brief'), version: 1, phase: 2, definition: BRIEF });
+    await publishPlaybook({
+      key: key('brief'),
+      version: 1,
+      phase: 2,
+      definition: BRIEF,
+      tenantId: fx.tenant.id,
+      actor: actor(),
+    });
     await upsertSchedule({
       tenantId: fx.tenant.id,
       key: key('monthly'),
@@ -83,7 +90,14 @@ describe('one pass drives scheduler, listener and engine', () => {
   });
 
   it('carries a trigger-started workflow through to completion across passes', async () => {
-    await publishPlaybook({ key: key('onboard'), version: 1, phase: 0, definition: BRIEF });
+    await publishPlaybook({
+      key: key('onboard'),
+      version: 1,
+      phase: 0,
+      definition: BRIEF,
+      tenantId: fx.tenant.id,
+      actor: actor(),
+    });
     await upsertTrigger({
       tenantId: fx.tenant.id,
       eventType: 'client.created',

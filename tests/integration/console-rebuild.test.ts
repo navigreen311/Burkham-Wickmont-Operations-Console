@@ -246,11 +246,35 @@ describe('2.2 / 2.4 workflow', () => {
     expect(reply['status']).toBe('no_data');
   });
 
-  it('names the missing list read as a gap in 2.2 rather than pretending to have one', async () => {
-    // There is no route that lists running instances, and that is deliberate: `@bwc/workflow`
-    // exposes no tenant-scoped read, and querying the table from the transport would put a module
-    // read in the wrong layer. The blocked list is where that is recorded.
-    const paths = await fetch(`${base}/api/console/workflow/instances`, { headers: { cookie } });
-    expect(paths.status).toBe(404);
+  it('lists what is running, from a module read rather than a query the route invented', async () => {
+    // **This asserted a 404, and it was right to.** `@bwc/workflow` exposed no tenant-scoped read,
+    // and the route refused to produce one by querying the table - a module read living in the
+    // transport is the thing this repository has refused everywhere else. So the gap was reported
+    // on the panel and left in the module where it belonged.
+    //
+    // `instancesFor` closed it. The route is a forward, not a query.
+    const response = await fetch(`${base}/api/console/workflow/instances`, {
+      headers: { cookie },
+    });
+    expect(response.status).toBe(200);
+
+    const body = (await response.json()) as Record<string, unknown>;
+    const data = body['data'] as Record<string, unknown>;
+    expect(Array.isArray(data['instances'])).toBe(true);
+
+    // The counts that matter are separated, because "12 instances" hides the only distinction an
+    // operator cares about: a waiting instance is fine and a failed one is not.
+    const summary = data['summary'] as Record<string, number>;
+    for (const key of ['running', 'waiting', 'failed']) {
+      expect(typeof summary[key], key).toBe('number');
+    }
+
+    // And an empty result is a sentence rather than a blank screen.
+    expect(String(data['detail']).length).toBeGreaterThan(0);
+
+    // Nothing on this surface is blocked for want of a module read any more - it was the last such
+    // entry anywhere in the Console.
+    const writes = data['writes'] as { blocked: unknown[] };
+    expect(writes.blocked).toEqual([]);
   });
 });

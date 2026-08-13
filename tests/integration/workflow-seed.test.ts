@@ -38,6 +38,7 @@ import {
   completeExternalTask,
   listenerPass,
   seedV1Playbooks,
+  publishPlaybook,
   seekToLatest,
   start,
   tick,
@@ -68,7 +69,7 @@ afterAll(async () => {
 
 describe('seeding', () => {
   it('publishes the three V1 playbooks', async () => {
-    const result = await seedV1Playbooks();
+    const result = await seedV1Playbooks(fx.tenant.id, actor());
 
     expect(result.refused).toEqual([]);
     expect(result.published).toEqual(V1_PLAYBOOK_SEEDS.map((seed) => seed.key));
@@ -82,7 +83,7 @@ describe('seeding', () => {
     });
 
     // **THE ASSERTION.** Not "it does not throw" - the rows are compared.
-    const second = await seedV1Playbooks();
+    const second = await seedV1Playbooks(fx.tenant.id, actor());
     expect(second.refused).toEqual([]);
 
     const after = await db().playbook.findMany({
@@ -160,7 +161,7 @@ describe('a Phase 0 client, walked', () => {
   };
 
   beforeAll(async () => {
-    await seedV1Playbooks();
+    await seedV1Playbooks(fx.tenant.id, actor());
     // Start the listener at the tail, so the events this test appends are the only ones it sees.
     await seekToLatest(fx.tenant.id);
 
@@ -303,5 +304,65 @@ describe('a Phase 0 client, walked', () => {
     // Blueprint would read as a served client in every count that reads instance status.
     const instance = await findInstance(instanceId);
     expect(instance?.status).toBe('cancelled');
+  });
+});
+
+describe('publishing a playbook is an event, which it was not', () => {
+  it('records who published what, and whether it was a republish', async () => {
+    const key = `ledger-check-${fx.tenant.id.slice(0, 8)}`;
+    const definition = PHASE_0_PLAYBOOK.definition;
+
+    const first = await publishPlaybook({
+      key,
+      version: 1,
+      phase: 0,
+      definition,
+      tenantId: fx.tenant.id,
+      actor: actor(),
+    });
+    expect(first.status).toBe('ok');
+
+    const events = await db().ledgerEvent.findMany({
+      where: { tenantId: fx.tenant.id, type: 'workflow.playbook_published' },
+    });
+    const mine = events.filter((event) => (event.payload as { key?: string }).key === key);
+    expect(mine).toHaveLength(1);
+
+    // Attributable. The whole reason `tenantId` and `actor` became required rather than optional:
+    // an act that changes how the firm serves clients, recorded against nobody, is not recorded.
+    expect(mine[0]?.actorId).toBe(fx.human.id);
+
+    const payload = mine[0]?.payload as { republished?: boolean; nodeCount?: number };
+    expect(payload.republished).toBe(false);
+    expect(payload.nodeCount).toBeGreaterThan(0);
+  });
+
+  it('distinguishes a republish from a first publish, which the upsert cannot', async () => {
+    const key = `ledger-republish-${fx.tenant.id.slice(0, 8)}`;
+    const definition = PHASE_0_PLAYBOOK.definition;
+    const publish = () =>
+      publishPlaybook({
+        key,
+        version: 1,
+        phase: 0,
+        definition,
+        tenantId: fx.tenant.id,
+        actor: actor(),
+      });
+
+    await publish();
+    await publish();
+
+    const events = await db().ledgerEvent.findMany({
+      where: { tenantId: fx.tenant.id, type: 'workflow.playbook_published' },
+    });
+    const mine = events
+      .filter((event) => (event.payload as { key?: string }).key === key)
+      .map((event) => (event.payload as { republished?: boolean }).republished);
+
+    // Two events, and they say different things. `upsert` makes the two acts identical in the row,
+    // and they are not: one adds a version, the other rewrites a definition that instances may
+    // already be pinned to.
+    expect(mine).toEqual([false, true]);
   });
 });

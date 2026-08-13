@@ -112,6 +112,8 @@ describe('playbook validation', () => {
           end: { kind: 'terminal', outcome: 'completed' },
         },
       },
+      tenantId: fx.tenant.id,
+      actor: actor(),
     });
     expect(result.status).toBe('refused');
     if (result.status === 'refused') expect(result.reason).toMatch(/does not exist/i);
@@ -139,7 +141,14 @@ describe('playbook validation', () => {
 
 describe('a workflow runs end to end', () => {
   it('dispatches, branches, waits 90 days, checkpoints, and completes', async () => {
-    await publishPlaybook({ key: key('phase-0'), version: 1, phase: 0, definition: PHASE_0 });
+    await publishPlaybook({
+      key: key('phase-0'),
+      version: 1,
+      phase: 0,
+      definition: PHASE_0,
+      tenantId: fx.tenant.id,
+      actor: actor(),
+    });
 
     const client = await createClient(fx.tenant.id, 'Walkthrough Co', actor());
     await transitionComplianceState({
@@ -238,7 +247,14 @@ describe('a workflow runs end to end', () => {
   });
 
   it('takes the otherwise branch when the client is not in a passing state', async () => {
-    await publishPlaybook({ key: key('phase-0-b'), version: 1, phase: 0, definition: PHASE_0 });
+    await publishPlaybook({
+      key: key('phase-0-b'),
+      version: 1,
+      phase: 0,
+      definition: PHASE_0,
+      tenantId: fx.tenant.id,
+      actor: actor(),
+    });
 
     const client = await createClient(fx.tenant.id, 'Blocked Co', actor());
     await transitionComplianceState({
@@ -273,7 +289,14 @@ describe('a workflow runs end to end', () => {
 
 describe('instances pin their playbook version', () => {
   it('does not re-route an in-flight instance when a new version is published', async () => {
-    await publishPlaybook({ key: key('pinned'), version: 1, phase: 0, definition: PHASE_0 });
+    await publishPlaybook({
+      key: key('pinned'),
+      version: 1,
+      phase: 0,
+      definition: PHASE_0,
+      tenantId: fx.tenant.id,
+      actor: actor(),
+    });
 
     const started = await start({
       tenantId: fx.tenant.id,
@@ -292,6 +315,8 @@ describe('instances pin their playbook version', () => {
         startNode: 'straight_to_end',
         nodes: { straight_to_end: { kind: 'terminal', outcome: 'cancelled' } },
       },
+      tenantId: fx.tenant.id,
+      actor: actor(),
     });
 
     const t0 = new Date();
@@ -308,7 +333,14 @@ describe('instances pin their playbook version', () => {
 
 describe('SLA escalation', () => {
   it('escalates a breached task exactly once and notifies compliance', async () => {
-    await publishPlaybook({ key: key('sla'), version: 1, phase: 0, definition: PHASE_0 });
+    await publishPlaybook({
+      key: key('sla'),
+      version: 1,
+      phase: 0,
+      definition: PHASE_0,
+      tenantId: fx.tenant.id,
+      actor: actor(),
+    });
     const t0 = new Date('2026-08-10T09:00:00Z');
     const started = await start({
       tenantId: fx.tenant.id,
@@ -336,7 +368,14 @@ describe('SLA escalation', () => {
 
 describe('external completion is guarded', () => {
   it('refuses to complete a task that is not awaiting external completion', async () => {
-    await publishPlaybook({ key: key('guard'), version: 1, phase: 0, definition: PHASE_0 });
+    await publishPlaybook({
+      key: key('guard'),
+      version: 1,
+      phase: 0,
+      definition: PHASE_0,
+      tenantId: fx.tenant.id,
+      actor: actor(),
+    });
     const started = await start({
       tenantId: fx.tenant.id,
       playbookKey: key('guard'),
@@ -355,7 +394,14 @@ describe('external completion is guarded', () => {
   it("refuses to complete another tenant's task", async () => {
     const other = await makeFixture('wf-other');
     try {
-      await publishPlaybook({ key: key('cross'), version: 1, phase: 0, definition: PHASE_0 });
+      await publishPlaybook({
+        key: key('cross'),
+        version: 1,
+        phase: 0,
+        definition: PHASE_0,
+        tenantId: fx.tenant.id,
+        actor: actor(),
+      });
       const started = await start({
         tenantId: fx.tenant.id,
         playbookKey: key('cross'),

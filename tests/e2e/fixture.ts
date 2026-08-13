@@ -131,6 +131,8 @@ export const E2E_CONSOLE_ACCOUNTS = [
   'e2e-operator-view-retention-blocked@example.com',
   // Batch A: presses a write control and reads the refusal the module produced.
   'e2e-operator-write-control@example.com',
+  // Loads the running-instance list, which the module could not answer until instancesFor.
+  'e2e-operator-running-list@example.com',
 ] as const;
 
 /**

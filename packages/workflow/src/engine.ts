@@ -53,6 +53,24 @@ export interface PublishInput {
   readonly version: number;
   readonly phase: number;
   readonly definition: PlaybookDefinition;
+  /**
+   * Who published it, and into whose Ledger.
+   *
+   * **Both required, and that is the fix rather than an inconvenience.** Publishing a playbook is
+   * the firm changing the rules by which it serves every client who starts on it afterwards, and
+   * principle 3 says a state change is an event. This wrote nothing for the whole life of the
+   * module - ADR-0069 recorded the gap when only tests could reach it, and Batch D then gave it a
+   * button at Level 3, which made an unrecorded act one click away.
+   *
+   * Optional attribution would have been the smaller change and the wrong one: every existing
+   * caller would have kept publishing anonymously, and the one place it mattered would have been
+   * the only place it was recorded. A control a caller can skip is not a control (ADR-0034).
+   *
+   * A playbook row is firm-wide and carries no tenant. The EVENT is tenant-scoped because the
+   * Ledger is, and a Console process serves one tenant.
+   */
+  readonly tenantId: string;
+  readonly actor: EventActor;
 }
 
 /**
@@ -74,6 +92,11 @@ export const publishPlaybook = async (input: PublishInput): Promise<Outcome<{ id
     };
   }
 
+  const existing = await db().playbook.findUnique({
+    where: { key_version: { key: input.key, version: input.version } },
+    select: { id: true },
+  });
+
   const row = await db().playbook.upsert({
     where: { key_version: { key: input.key, version: input.version } },
     create: {
@@ -89,6 +112,23 @@ export const publishPlaybook = async (input: PublishInput): Promise<Outcome<{ id
       status: 'active',
       definition: input.definition as unknown as object,
       publishedAt: new Date(),
+    },
+  });
+
+  await append({
+    tenantId: input.tenantId,
+    type: 'workflow.playbook_published',
+    actor: input.actor,
+    payload: {
+      playbookId: row.id,
+      key: input.key,
+      version: input.version,
+      phase: input.phase,
+      nodeCount: Object.keys(input.definition.nodes).length,
+      // Republished, not first published. The upsert makes those indistinguishable in the row and
+      // they are different acts: one adds a version, the other rewrites a definition instances may
+      // already be pinned to.
+      republished: existing !== null,
     },
   });
 
@@ -189,6 +229,43 @@ const toInstance = (row: InstanceRow): WorkflowInstance => ({
 export const findInstance = async (instanceId: string): Promise<WorkflowInstance | null> => {
   const row = await db().workflowInstance.findUnique({ where: { id: instanceId } });
   return row ? toInstance(row) : null;
+};
+
+export interface InstanceFilter {
+  /** Omit for every status. `running` and `waiting` together are "what is live". */
+  readonly status?: InstanceStatus;
+  readonly clientId?: string;
+  readonly playbookKey?: string;
+  readonly limit?: number;
+}
+
+/**
+ * What is running for one tenant.
+ *
+ * **This did not exist, and its absence was the last thing any Console panel reported as missing.**
+ * The module offered `findInstance(instanceId)` and nothing else, so a surface could answer "how is
+ * this one instance doing" and not "what is happening". The route refused to fill the gap by
+ * querying the table itself - that would have put a module read in the transport, which is the
+ * thing this repository has refused everywhere else - so it reported the gap and waited.
+ *
+ * Ordered newest first and limited, because an unbounded list of every instance a tenant has ever
+ * run is a page nobody can use and a query that gets slower every month.
+ */
+export const instancesFor = async (
+  tenantId: string,
+  filter: InstanceFilter = {},
+): Promise<readonly WorkflowInstance[]> => {
+  const rows = await db().workflowInstance.findMany({
+    where: {
+      tenantId,
+      ...(filter.status !== undefined ? { status: filter.status } : {}),
+      ...(filter.clientId !== undefined ? { clientId: filter.clientId } : {}),
+      ...(filter.playbookKey !== undefined ? { playbookKey: filter.playbookKey } : {}),
+    },
+    orderBy: [{ startedAt: 'desc' }, { id: 'asc' }],
+    take: Math.min(filter.limit ?? 50, 200),
+  });
+  return rows.map(toInstance);
 };
 
 /** Enqueue the task for a node, translating node config into queue config. */

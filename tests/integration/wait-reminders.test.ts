@@ -73,6 +73,8 @@ const startChase = async (key: string, now: Date): Promise<string> => {
     version: 1,
     phase: 0,
     definition: chaseDefinition,
+    tenantId: fx.tenant.id,
+    actor: actor(),
   });
   expect(published.status, JSON.stringify(published)).toBe('ok');
   const started = await start({
@@ -207,6 +209,8 @@ describe('a wait until a moment in the context', () => {
       version: 1,
       phase: 0,
       definition: definition(-DAY),
+      tenantId: fx.tenant.id,
+      actor: actor(),
     });
     expect(published.status).toBe('ok');
     const started = await start({
@@ -288,6 +292,8 @@ describe('the post-funding follow-up, which needed no engine change at all', () 
       version: POST_FUNDING_PLAYBOOK.version,
       phase: POST_FUNDING_PLAYBOOK.phase,
       definition: POST_FUNDING_PLAYBOOK.definition,
+      tenantId: fx.tenant.id,
+      actor: actor(),
     });
     expect(published.status, JSON.stringify(published)).toBe('ok');
 

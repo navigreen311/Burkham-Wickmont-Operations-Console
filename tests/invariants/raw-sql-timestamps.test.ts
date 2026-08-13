@@ -21,6 +21,8 @@ import { makeFixture, cleanupTenant, type Fixture } from '../setup.js';
 
 let fx: Fixture;
 
+const actor = () => ({ id: fx.human.id, kind: 'human' as const });
+
 beforeAll(async () => {
   fx = await makeFixture('raw-ts');
 });
@@ -40,7 +42,14 @@ const SIMPLE: PlaybookDefinition = {
 describe('raw SQL timestamps match Prisma timestamps', () => {
   it('claims exactly the tasks Prisma reports as due', async () => {
     const key = `raw-ts-${fx.tenant.slug}`;
-    await publishPlaybook({ key, version: 1, phase: 0, definition: SIMPLE });
+    await publishPlaybook({
+      key,
+      version: 1,
+      phase: 0,
+      definition: SIMPLE,
+      tenantId: fx.tenant.id,
+      actor: actor(),
+    });
 
     // A time deliberately far from "now", so any timezone shift changes the answer.
     const anchor = new Date('2026-08-10T09:00:00.000Z');
@@ -89,7 +98,14 @@ describe('raw SQL timestamps match Prisma timestamps', () => {
 
   it('does not shift the boundary: a task due exactly at now is claimed', async () => {
     const key = `raw-ts-boundary-${fx.tenant.slug}`;
-    await publishPlaybook({ key, version: 1, phase: 0, definition: SIMPLE });
+    await publishPlaybook({
+      key,
+      version: 1,
+      phase: 0,
+      definition: SIMPLE,
+      tenantId: fx.tenant.id,
+      actor: actor(),
+    });
 
     const anchor = new Date('2026-12-25T00:00:00.000Z');
     const started = await start({

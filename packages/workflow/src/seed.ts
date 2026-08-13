@@ -55,7 +55,7 @@
  * @see docs/adr/0067-a-playbook-is-a-proposal-about-how-a-firm-works.md
  */
 
-import type { Outcome } from '@bwc/core';
+import type { EventActor, Outcome } from '@bwc/core';
 import { publishPlaybook } from './engine.js';
 import type { PlaybookDefinition } from './playbook.js';
 
@@ -935,19 +935,18 @@ export interface SeedResult {
  * this file is ever invalid the useful output is which one and why, not a stack trace from the
  * first failure.
  *
- * ## Nothing here is written to the Event Ledger, and that is a reported gap rather than a choice
+ * ## Publishing is recorded now, which it was not when this file was written
  *
- * The regulatory seed appends `regulatory.seed.published`. There is no `workflow.seed.published`
- * in `packages/core/src/events.ts`, this slice does not own that file, and borrowing a neighbouring
- * type would put a false entry in an append-only store - so this function records nothing and says
- * so instead.
+ * The header here used to say that `publishPlaybook` wrote no Ledger event, so publishing a
+ * playbook - the rules by which the firm serves clients - was unrecorded however it was done.
+ * ADR-0069 reported it; Batch D then put a Level 3 button on it, which turned a documented gap into
+ * an unrecorded act one click away.
  *
- * **The larger half of that finding is not about seeding.** `publishPlaybook` itself writes no
- * Ledger event either, so publishing a playbook - the rules by which the firm serves clients - is
- * currently unrecorded however it is done. Principle 3 says every state change is an event. Both are
- * in the PR.
+ * `publishPlaybook` now appends `workflow.playbook_published` and REQUIRES a tenant and an actor to
+ * do it, which is why this function takes them. There is still no `workflow.seed.published` - the
+ * seed is a caller like any other, and each playbook it publishes records itself.
  */
-export const seedV1Playbooks = async (): Promise<SeedResult> => {
+export const seedV1Playbooks = async (tenantId: string, actor: EventActor): Promise<SeedResult> => {
   const published: string[] = [];
   const refused: { key: string; reason: string }[] = [];
 
@@ -957,6 +956,8 @@ export const seedV1Playbooks = async (): Promise<SeedResult> => {
       version: seed.version,
       phase: seed.phase,
       definition: seed.definition,
+      tenantId,
+      actor,
     });
 
     if (result.status === 'ok') {
