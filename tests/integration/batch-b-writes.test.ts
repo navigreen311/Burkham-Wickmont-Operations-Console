@@ -238,3 +238,47 @@ describe('a Batch B write needs its level', () => {
     expect(reply.body['status']).not.toBe('ok');
   });
 });
+
+/** A client of this tenant, made on demand: the intelligence read is per client. */
+const freshClientId = async (): Promise<string> =>
+  (await createClient(fx.tenant.id, 'Intelligence Subject LLC', { id: fx.human.id, kind: 'human' }))
+    .id;
+
+describe('Batch C: the casework, and the one act inside it that is not', () => {
+  it('offers the lead lifecycle at Level 1 and conversion separately', async () => {
+    const data = (await get('/api/console/sales/pipeline'))['data'] as Record<string, unknown>;
+    const writes = data['writes'] as { available: { action: string; note: string }[] };
+    const actions = writes.available.map((entry) => entry.action);
+
+    // One capability line became two actions, at 1 and 3.
+    expect(actions).toEqual(['manage_lead', 'convert_lead']);
+  });
+
+  it('gates conversion at the level of the heaviest thing it can do', async () => {
+    const data = (await get('/api/console/sales/pipeline'))['data'] as Record<string, unknown>;
+    const available = (data['writes'] as { available: { action: string; note: string }[] })
+      .available;
+
+    // **THE FINDING.** `convertLead` creates a client and may start an engagement - which are
+    // `create_client_record` at 2 and `manage_engagement` at 3. Declared at Level 1 alongside the
+    // rest of the lifecycle, it would have been a lower-level path to both: ADR-0034's rule that a
+    // control somebody can reach another way is not a control.
+    const convert = available.find((entry) => entry.action === 'convert_lead');
+    expect(convert?.note).toMatch(/Level 3/);
+    expect(convert?.note).toMatch(/creates a client/i);
+  });
+
+  it('records market intelligence at Level 1, and says why it is not Level 0', async () => {
+    const data = (await get(`/api/console/clients/${await freshClientId()}/intelligence?phase=0`))[
+      'data'
+    ] as Record<string, unknown>;
+    const available = (data['writes'] as { available: { action: string; note: string }[] })
+      .available;
+
+    const intel = available.find((entry) => entry.action === 'record_market_intelligence');
+    expect(intel).toBeDefined();
+    // It WRITES a feed others read as given, which is more than generate_internal_report does.
+    expect(intel?.note).toMatch(/writes a feed/i);
+    expect(intel?.note).toMatch(/Level 0/);
+  });
+});

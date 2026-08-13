@@ -256,16 +256,17 @@ test.describe('1.2 on the page', () => {
 });
 
 test.describe('1.3 and 8.1 on the page', () => {
-  test('renders the pipeline and the writes it cannot offer', async () => {
+  test('renders the pipeline and the lead writes it now offers', async () => {
     await openPanel('panel-sales');
 
     await expect(page.locator('#sales-status')).toContainText('lead(s)');
 
-    // A pipeline with no button is a pipeline somebody will file a bug about. The reason is on the
-    // page instead.
-    const blocked = page.locator('#sales-blocked');
-    await expect(blocked).toContainText('Create, qualify, convert or close a lead');
-    await expect(blocked).toContainText('middleware chain');
+    // Batch C declared the lead lifecycle, so this is no longer a write the surface cannot offer.
+    // The two actions are on the panel at their two levels - conversion apart from the rest,
+    // because it creates a client and may start an engagement.
+    const available = page.locator('#sales-available');
+    await expect(available).toContainText('manage_lead');
+    await expect(available).toContainText('convert_lead');
   });
 
   test('renders an empty partner list as empty, with the reason nothing can register one', async () => {

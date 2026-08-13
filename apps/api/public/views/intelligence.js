@@ -19,6 +19,7 @@
  * Every value reaches the DOM through `textContent`.
  */
 
+import { renderAvailable, renderWrites } from './writes.js';
 const call = async (path) => {
   const response = await fetch(path, { credentials: 'same-origin' });
   const payload = await response.json().catch(() => ({ status: 'failed', reason: 'No response.' }));
@@ -100,6 +101,7 @@ const render = (data) => {
     `The pipeline treats coverage below ${data.minimumCoverage} as insufficient to reconcile against.`,
   );
 
+  renderAvailable('intelligence-available', data.writes?.available);
   const blocked = $('intelligence-blocked');
   blocked.replaceChildren();
   for (const entry of data.writes?.blocked ?? []) {
@@ -141,3 +143,27 @@ const load = async () => {
 };
 
 $('intelligence-load').addEventListener('click', () => void load());
+
+/** Internal intelligence. Nothing here reaches a client or commits the firm. */
+renderWrites('intelligence-writes', [
+  {
+    id: 'intel-ingest',
+    capability: 'Start an ingestion run',
+    action: 'record_market_intelligence',
+    note: 'Level 1. Writes a feed that other reads treat as given.',
+    buttonLabel: 'Ingest',
+    done: 'Ingestion run started.',
+    fields: [
+      { name: 'clientId', label: 'Client id' },
+      { name: 'source', label: 'Source' },
+      { name: 'scope', label: 'Scope' },
+      { name: 'monthsRequested', label: 'Months requested' },
+    ],
+    path: (v) => `/api/console/intelligence/clients/${encodeURIComponent(v.clientId)}/ingest`,
+    body: (v) => ({
+      source: v.source,
+      scope: v.scope,
+      monthsRequested: Number(v.monthsRequested),
+    }),
+  },
+]);

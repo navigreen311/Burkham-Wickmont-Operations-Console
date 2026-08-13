@@ -412,12 +412,22 @@ describe('3.3 - a finding is not a fact', () => {
     expect(data['coverage']).toHaveProperty('phase');
   });
 
-  it('names the pipeline write it cannot offer, and why analyze_file is the wrong label', async () => {
+  it('offers the pipeline write, and still says why analyze_file was the wrong label', async () => {
     const data = dataOf(await call(`/api/console/clients/${clientId}/intelligence?phase=0`));
-    const blocked = (data['writes'] as Record<string, unknown>)['blocked'] as { why: string }[];
-    expect(blocked.length).toBeGreaterThan(0);
-    expect(blocked[0]?.why).toMatch(/analyze_file/);
-    expect(blocked[0]?.why).toMatch(/not creating risk findings/);
+    const writes = data['writes'] as Record<string, unknown>;
+
+    // Batch C declared `record_market_intelligence` at Level 1. This asserted the write was
+    // blocked, which was true while no action named it.
+    const available = writes['available'] as { action: string; note: string }[];
+    expect(available.map((entry) => entry.action)).toContain('record_market_intelligence');
+    expect(writes['blocked']).toEqual([]);
+
+    // **The reasoning survives the unblocking**, which is the part worth keeping: the refusal used
+    // to explain why `analyze_file` at Level 0 was the wrong label - it authorises reading a file,
+    // not creating findings about a client - and the note now carries that same distinction.
+    const intel = available.find((entry) => entry.action === 'record_market_intelligence');
+    expect(intel?.note).toMatch(/Level 0/);
+    expect(intel?.note).toMatch(/not creating findings/);
   });
 });
 

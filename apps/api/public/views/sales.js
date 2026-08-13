@@ -14,6 +14,7 @@
  * Every value reaches the DOM through `textContent`.
  */
 
+import { renderAvailable, renderWrites } from './writes.js';
 const call = async (path) => {
   const response = await fetch(path, { credentials: 'same-origin' });
   const payload = await response.json().catch(() => ({ status: 'failed', reason: 'No response.' }));
@@ -87,6 +88,7 @@ const render = (data) => {
     for (const entry of data.lossReasons) line(losses, `${entry.reason}: ${entry.count}`);
   }
 
+  renderAvailable('sales-available', data.writes?.available);
   const blocked = $('sales-blocked');
   blocked.replaceChildren();
   for (const entry of data.writes?.blocked ?? []) {
@@ -157,3 +159,62 @@ $('sales-refresh').addEventListener('click', () => {
   loaded = false;
   void load();
 });
+
+/**
+ * The lead lifecycle, and conversion apart from it.
+ *
+ * Conversion is marked as the heavier act because it is one: a client is created and an engagement
+ * may start. Grouping it with "close this lead" on the page would have made the level look
+ * arbitrary, when it is the most defensible one in the batch.
+ */
+renderWrites('sales-writes', [
+  {
+    id: 'sales-create',
+    capability: 'Create a lead',
+    action: 'manage_lead',
+    note: 'A prospect, not a client. No client record exists yet.',
+    buttonLabel: 'Create the lead',
+    done: 'Lead created.',
+    fields: [
+      { name: 'prospectName', label: 'Prospect name' },
+      { name: 'sourceChannel', label: 'Source channel', placeholder: 'referral' },
+    ],
+    path: () => '/api/console/sales/leads',
+    body: (v) => v,
+  },
+  {
+    id: 'sales-qualify',
+    capability: 'Qualify a lead',
+    action: 'manage_lead',
+    note: 'A note is required. Unexplained, a qualification is a filter nobody can improve and a decision the salesperson who disagrees cannot appeal.',
+    buttonLabel: 'Record the qualification',
+    done: 'Qualification recorded.',
+    fields: [
+      { name: 'leadId', label: 'Lead id' },
+      { name: 'qualification', label: 'Qualification', placeholder: 'qualified' },
+      { name: 'note', label: 'Note' },
+      { name: 'occurredAt', label: 'Occurred at', type: 'date' },
+    ],
+    path: (v) => `/api/console/sales/leads/${encodeURIComponent(v.leadId)}/qualification`,
+    body: (v) => ({ qualification: v.qualification, note: v.note, occurredAt: v.occurredAt }),
+  },
+  {
+    id: 'sales-convert',
+    capability: 'Convert a lead',
+    action: 'convert_lead',
+    note: 'LEVEL 3, unlike the rest of the lifecycle. Converting creates a client and may start an engagement, so a lower level here would be a way round the gate on both. All-or-nothing: a half-done conversion leaves an orphan client nobody can see.',
+    danger: true,
+    buttonLabel: 'Convert',
+    done: 'Converted. The client starts in pending_assessment.',
+    fields: [
+      { name: 'leadId', label: 'Lead id' },
+      { name: 'offerKey', label: 'Offer key (blank for no engagement)' },
+      { name: 'convertedOn', label: 'Converted on', type: 'date' },
+    ],
+    path: (v) => `/api/console/sales/leads/${encodeURIComponent(v.leadId)}/conversion`,
+    body: (v) => ({
+      ...(v.offerKey ? { offerKey: v.offerKey } : {}),
+      convertedOn: v.convertedOn,
+    }),
+  },
+]);
