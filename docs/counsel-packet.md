@@ -16,7 +16,7 @@ For each of the seven states: **may the firm operate there, and under what condi
 
 Answering means confirming or correcting three things per state:
 
-1. **The statutory position** as summarised — including, for three states, an asserted *absence* of
+1. **The statutory position** as summarised — including, for three states, an asserted _absence_ of
    a statute, which is the item most in need of checking.
 2. **The disclosure obligations** the module records, and whether the firm's role is described
    correctly. Every disclosure here is drafted on the basis that **the provider originates the
@@ -31,12 +31,12 @@ Answering means confirming or correcting three things per state:
 
 A state is activated by `activateState`, which requires all of:
 
-| Requirement | Enforcement |
-| --- | --- |
-| A human actor at **Authority Level 3** | Read from the database, not trusted from the caller |
-| `reviewedBy` — the reviewing counsel, named | Required, non-empty |
-| `reviewedAt` — the date of review | Required |
-| `documentReference` — where the review lives | Required: *"a review nobody can produce did not happen"* |
+| Requirement                                  | Enforcement                                              |
+| -------------------------------------------- | -------------------------------------------------------- |
+| A human actor at **Authority Level 3**       | Read from the database, not trusted from the caller      |
+| `reviewedBy` — the reviewing counsel, named  | Required, non-empty                                      |
+| `reviewedAt` — the date of review            | Required                                                 |
+| `documentReference` — where the review lives | Required: _"a review nobody can produce did not happen"_ |
 
 The activation is recorded against the module **version** reviewed. That matters for §4.
 
@@ -55,18 +55,19 @@ Provider-side disclosures under SB 1235 and its implementing regulations; UDAAP 
 small-business financing conduct. **Broker conduct and compensation disclosure are flagged in the
 module itself as requiring counsel attention.**
 
-*Citations drafted against:* California SB 1235 (2018), Fin. Code §22800 et seq. · 10 C.C.R. §900
+_Citations drafted against:_ California SB 1235 (2018), Fin. Code §22800 et seq. · 10 C.C.R. §900
 et seq. (DFPI commercial financing disclosure regulations) · California Consumer Financial
 Protection Law (UDAAP), Fin. Code §90000 et seq.
 
-*Disclosures recorded (2):*
+_Disclosures recorded (2):_
+
 - **Commercial financing disclosure** — the provider must furnish a standardised disclosure stating
   total amount funded, total dollar cost, term, payment amount and frequency, prepayment policy and
   an annualised rate. The firm does not originate these and does not substitute for them.
 - **Broker compensation** — any compensation received in connection with a placement is disclosed
   to the client before an application is submitted.
 
-*Marketing note carried:* UDAAP standards under the CCFPL reach small-business financing conduct, so
+_Marketing note carried:_ UDAAP standards under the CCFPL reach small-business financing conduct, so
 marketing review for California should be at least as strict as the national claim library.
 
 ### Item 2 — New York (NY)
@@ -74,37 +75,39 @@ marketing review for California should be at least as strict as the national cla
 Commercial Finance Disclosure Law; Attorney General enforcement on merchant cash advance conduct;
 confession-of-judgment practice restricted.
 
-*Citations drafted against:* N.Y. Fin. Serv. Law §801 et seq. · 23 N.Y.C.R.R. Part 600 (DFS
+_Citations drafted against:_ N.Y. Fin. Serv. Law §801 et seq. · 23 N.Y.C.R.R. Part 600 (DFS
 commercial financing disclosure) · N.Y. C.P.L.R. §3218 (confession of judgment restrictions).
 
-*Disclosures recorded (2):*
+_Disclosures recorded (2):_
+
 - **Commercial financing disclosure** — finance charge, annual percentage rate and payment terms,
   furnished by the provider; the firm does not substitute for them.
 - **MCA conduct** — a merchant cash advance presented to a New York client is accompanied by the
   true cost of capital as an annualised rate alongside any factor rate.
 
-*Marketing note carried:* enforcement has focused on cost presentation; any material naming an MCA
+_Marketing note carried:_ enforcement has focused on cost presentation; any material naming an MCA
 should carry the annualised cost, not only the factor.
 
 ### Item 3 — Utah (UT)
 
 Registration for commercial financing providers, and disclosures on covered transactions.
 
-*Citation drafted against:* Utah Commercial Financing Registration and Disclosure Act, Utah Code
+_Citation drafted against:_ Utah Commercial Financing Registration and Disclosure Act, Utah Code
 §7-27-101 et seq.
 
-*Disclosure recorded (1):* total repayment amount and payment terms, furnished by the provider.
+_Disclosure recorded (1):_ total repayment amount and payment terms, furnished by the provider.
 
-**Question for counsel:** the Act imposes *registration* obligations. The module records a
+**Question for counsel:** the Act imposes _registration_ obligations. The module records a
 disclosure requirement and does not record whether the firm's own activity triggers registration.
 
 ### Item 4 — Florida (FL)
 
 Disclosures on covered commercial financing transactions, and regulation of broker conduct.
 
-*Citation drafted against:* Fla. Stat. §559.9611 et seq.
+_Citation drafted against:_ Fla. Stat. §559.9611 et seq.
 
-*Disclosures recorded (2):*
+_Disclosures recorded (2):_
+
 - **Commercial financing disclosure** — total funds provided, total repayment amount, payment terms.
 - **Broker conduct** — the firm does not accept an advance fee for arranging commercial financing in
   Florida.
@@ -116,19 +119,20 @@ matches the statutory prohibition, and whether the firm's retainer model falls w
 
 **These three assert an absence, and an absence is the hardest thing to be confident about.**
 
-Each records: *no general commercial financing disclosure statute identified as at drafting; federal
-baseline applies.* None carries a disclosure requirement. Each module says in its own marketing note
+Each records: _no general commercial financing disclosure statute identified as at drafting; federal
+baseline applies._ None carries a disclosure requirement. Each module says in its own marketing note
 that **the absence of a statute is a finding for counsel to confirm, not a conclusion the module
 asserts.**
 
 Additional citations flagged for scope confirmation:
+
 - **Texas** — Tex. Fin. Code general lending and brokerage provisions; scope to be confirmed.
 - **Nevada** — Nev. Rev. Stat. ch. 675 (installment loans); applicability to the firm's specific
   activities to be confirmed.
 - **Arizona** — no secondary provision flagged.
 
-The drafting note on Texas records the reason for caution: *several states have adopted regimes
-recently.* These three items are where the packet is most likely to be out of date, and where a
+The drafting note on Texas records the reason for caution: _several states have adopted regimes
+recently._ These three items are where the packet is most likely to be out of date, and where a
 negative finding is worth the least without a date attached to it.
 
 ---
