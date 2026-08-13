@@ -16,6 +16,7 @@
  * Every value reaches the DOM through `textContent`.
  */
 
+import { renderAvailable, renderWrites } from './writes.js';
 const call = async (path) => {
   const response = await fetch(path, { credentials: 'same-origin' });
   const payload = await response.json().catch(() => ({ status: 'failed', reason: 'No response.' }));
@@ -53,6 +54,7 @@ const loadTemplates = async () => {
     );
   }
 
+  renderAvailable('deliverables-available', result.data.writes?.available);
   const blocked = $('deliverables-blocked');
   blocked.replaceChildren();
   for (const entry of result.data.writes?.blocked ?? []) {
@@ -131,3 +133,48 @@ $('panel-deliverables').addEventListener('toggle', () => {
 
 $('deliverables-refresh').addEventListener('click', () => void loadTemplates());
 $('deliverables-client-load').addEventListener('click', () => void loadForClient());
+
+/**
+ * Three levels from one capability line.
+ *
+ * Drafting is preparation. Approving and delivering put a document in front of a client.
+ * Registering a template sets the wording every future document of its kind is generated from.
+ */
+renderWrites('deliverables-writes', [
+  {
+    id: 'deliv-approve',
+    capability: 'Approve a deliverable for delivery',
+    action: 'deliver_deliverable',
+    note: '3.4 human review. Only a human actor may approve, and only an approved deliverable may be delivered.',
+    buttonLabel: 'Approve',
+    done: 'Approved.',
+    fields: [{ name: 'deliverableId', label: 'Deliverable id' }],
+    path: (v) => `/api/console/deliverables/${encodeURIComponent(v.deliverableId)}/approval`,
+    body: () => ({}),
+  },
+  {
+    id: 'deliv-reject',
+    capability: 'Reject one',
+    action: 'deliver_deliverable',
+    note: 'With the reason the drafter needs in order to act on it.',
+    buttonLabel: 'Reject',
+    done: 'Rejected.',
+    fields: [
+      { name: 'deliverableId', label: 'Deliverable id' },
+      { name: 'reason', label: 'Reason' },
+    ],
+    path: (v) => `/api/console/deliverables/${encodeURIComponent(v.deliverableId)}/rejection`,
+    body: (v) => ({ reason: v.reason }),
+  },
+  {
+    id: 'deliv-deliver',
+    capability: 'Deliver it to the client',
+    action: 'deliver_deliverable',
+    note: 'Refused unless approved - QA, the Communication Compliance Scanner and human review come first.',
+    buttonLabel: 'Deliver',
+    done: 'Delivered.',
+    fields: [{ name: 'deliverableId', label: 'Deliverable id' }],
+    path: (v) => `/api/console/deliverables/${encodeURIComponent(v.deliverableId)}/delivery`,
+    body: () => ({}),
+  },
+]);

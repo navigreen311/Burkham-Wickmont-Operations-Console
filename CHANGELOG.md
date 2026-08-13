@@ -7,6 +7,34 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added - Batch D: the seventeen are declared (`ai-feature/batch-d-writes`)
+
+- **No roadmap-blocked write remains anywhere in the Console.** Seventeen capability lines became
+  **forty-seven declared actions**, from fifteen at the start. Eleven of them came from Batch D's
+  five lines, every one of which bundled routine casework with something consequential.
+- **THE ONE YOU FLAGGED: `correct_attribution` is Level 3 and was bundled with logging a phone
+  call.** "Record activity, a readiness reading, or an attribution correction" reads as one job.
+  Correcting an attribution changes who a referral fee is owed to - and `correctAttribution` had
+  been refusing below Level 3 in its own words the whole time: "It moves money between partners,
+  and an agent able to do it would make the record unreliable in exactly the place it needs to be
+  trusted." The module knew; the blocked list did not.
+- A deliverable became three actions at three levels - drafting is preparation,
+  delivering puts a document in front of a client, registering a template sets the wording every
+  future one is generated from.
+- **`publish_playbook` is 3 and `run_workflow` is 1**, because the consequential acts inside a
+  playbook are gated where they happen: a task that transitions a compliance state still needs
+  `transition_compliance_state`. Gating the door at the level of the most dangerous room would stop
+  the daily work of running playbooks at all.
+- **Three blocked entries survive and all three are blocked BY DESIGN**, which is the distinction
+  ADR-0063 built before there was anything to distinguish: downloading a document
+  (`deliberately absent` - the Portal owns it), acknowledging a conflict disclosure
+  (`not applicable` - it would manufacture the evidence), and listing running instances
+  (`no module read exists` - no function to call).
+- **Twenty modules had already chosen a level for their own most consequential act, and every one
+  chose 3.** ADR-0079 counted nineteen; `correctAttribution` is the twentieth, found in the last
+  batch (ADR-0082).
+- `pnpm verify` 1787 tests / 96 files; `pnpm test:e2e` 70 passing.
+
 ### Added - Batch C: the casework, and the one act inside it that is not (`ai-feature/batch-c-writes`)
 
 - **THE FINDING: `convertLead` is Level 3, and the rest of its line is Level 1.** Converting creates

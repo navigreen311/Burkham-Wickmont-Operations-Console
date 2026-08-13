@@ -16,6 +16,7 @@
  * Every value reaches the DOM through `textContent`.
  */
 
+import { renderAvailable, renderWrites } from './writes.js';
 const call = async (path) => {
   const response = await fetch(path, { credentials: 'same-origin' });
   const payload = await response.json().catch(() => ({ status: 'failed', reason: 'No response.' }));
@@ -84,6 +85,42 @@ const loadInstance = async () => {
     : 'Instance found. Its pinned definition version could not be read, which is worth investigating rather than ignoring.';
 
   blocked($('workflow-blocked'), result.data.writes);
+  renderAvailable('workflow-available', result.data.writes?.available);
 };
 
 $('workflow-load').addEventListener('click', () => void loadInstance());
+
+/**
+ * Publishing a playbook, and running one.
+ *
+ * Publishing is Level 3 and takes a VERSION: `publishPlaybook` upserts on (key, version), and an
+ * instance is pinned to the version it began on - so republishing a live version rewrites the graph
+ * under everybody currently running it.
+ */
+renderWrites('workflow-writes', [
+  {
+    id: 'wf-start',
+    capability: 'Start an instance',
+    action: 'run_workflow',
+    note: 'Level 1. Starts on the latest active version and pins it. The consequential acts inside a playbook are gated where they happen.',
+    buttonLabel: 'Start',
+    done: 'Instance started.',
+    fields: [
+      { name: 'playbookKey', label: 'Playbook key', placeholder: 'phase-0-capital-readiness' },
+      { name: 'clientId', label: 'Client id' },
+    ],
+    path: () => '/api/console/workflow/instances',
+    body: (v) => ({ playbookKey: v.playbookKey, ...(v.clientId ? { clientId: v.clientId } : {}) }),
+  },
+  {
+    id: 'wf-complete',
+    capability: 'Complete a parked task',
+    action: 'run_workflow',
+    note: 'Level 1. The daily work of running a playbook.',
+    buttonLabel: 'Complete it',
+    done: 'Task completed.',
+    fields: [{ name: 'taskId', label: 'Task id' }],
+    path: (v) => `/api/console/workflow/tasks/${encodeURIComponent(v.taskId)}/completion`,
+    body: () => ({}),
+  },
+]);

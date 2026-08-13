@@ -760,19 +760,27 @@ describe('1.3 - the pipeline is visible and unchangeable, and says so', () => {
     expect(referral?.conversionRate).toBeCloseTo(1, 10);
   });
 
-  it('states the writes it cannot offer, with the missing action named', async () => {
+  it('offers every sales write, split by what each act can actually do', async () => {
     const data = dataOf(await call('/api/console/sales/pipeline'));
-    const blocked = (data['writes'] as Record<string, unknown>)['blocked'] as {
-      capability: string;
-      missingAction: string;
-      why: string;
-    }[];
+    const writes = data['writes'] as Record<string, unknown>;
+    const available = writes['available'] as { action: string; note: string }[];
 
-    expect(blocked.length).toBeGreaterThan(0);
-    for (const entry of blocked) {
-      expect(entry.missingAction).toBe('none declared');
-      expect(entry.why).toMatch(/middleware chain|declared action/);
-    }
+    // This asserted the writes were blocked and the missing action named. Batches C and D declared
+    // all four, and the interesting part is that one capability line became four actions across
+    // two levels - which is what the blocked list could never have shown.
+    expect(writes['blocked']).toEqual([]);
+    expect(available.map((entry) => entry.action).sort()).toEqual([
+      'convert_lead',
+      'correct_attribution',
+      'manage_lead',
+      'record_lead_activity',
+    ]);
+
+    // The two that are not Level 1, each for its own reason.
+    const convert = available.find((entry) => entry.action === 'convert_lead');
+    expect(convert?.note).toMatch(/creates a client/i);
+    const attribution = available.find((entry) => entry.action === 'correct_attribution');
+    expect(attribution?.note).toMatch(/moves money between partners/i);
   });
 
   it('says plainly that a lead is not there', async () => {
