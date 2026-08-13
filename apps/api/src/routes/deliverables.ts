@@ -25,7 +25,6 @@
  * counterpart in the catalogue at all. See ADR-0063.
  */
 
-import type { Express, Request, Response } from 'express';
 import {
   COMPLIANCE_STATE_LABELS,
   SHIPPED_TEMPLATES,
@@ -34,33 +33,41 @@ import {
   find,
   forClient,
   qaIssues,
+  approve,
+  deliver,
+  draft,
+  registerTemplate,
+  reject,
 } from '@bwc/deliverables';
 import { ok } from '@bwc/core';
 import { send } from '@bwc/http';
-import type { Actor } from '@bwc/identity';
 
-export interface DeliverableRouteContext {
-  readonly app: Express;
-  readonly requireStaff: (req: Request, res: Response) => Promise<Actor | undefined>;
-  readonly asyncRoute: (
-    handler: (req: Request, res: Response) => Promise<void>,
-  ) => (req: Request, res: Response) => void;
-  readonly param: (req: Request, name: string) => string;
-  readonly tenantId: string;
-}
+import type { ConsoleRouteContext } from './context.js';
 
-const BLOCKED_WRITES = [
+export type DeliverableRouteContext = ConsoleRouteContext;
+
+const AVAILABLE_WRITES = [
   {
-    capability: 'Draft, QA, approve, reject or deliver a deliverable; register a template',
-    module:
-      '@bwc/deliverables draft, runQaCheck, runComplianceScan, requestHumanReview, approve, reject, deliver, registerTemplate',
-    missingAction: 'none declared',
-    why: 'Each emits a Ledger event and so must pass the middleware chain with a declared action, and ACTION_MINIMUM_LEVEL declares none for deliverables. draft_communication and send_client_communication are the near misses and are wrong: a Capital Command Brief is a deliverable rather than a communication, and approving one is a governance determination with no counterpart in the catalogue.',
+    capability: 'Draft a deliverable, or run QA on it',
+    action: 'draft_deliverable',
+    note: 'Level 1. Preparation - the document is not client-facing until somebody approves it, and 3.4 requires that approval for anything carrying a compliance state or a recommendation.',
+  },
+  {
+    capability: 'Approve, reject or deliver a deliverable',
+    action: 'deliver_deliverable',
+    note: 'Level 2, where send_client_communication sits. Approval and delivery are one action because approving a client-facing document IS the decision to send it. Only an approved deliverable may be delivered.',
+  },
+  {
+    capability: 'Register a template',
+    action: 'register_deliverable_template',
+    note: 'Level 3. The wording every future document of its kind is generated from, including ones nobody re-reads - the same argument as publishing a contract clause.',
   },
 ] as const;
 
+const BLOCKED_WRITES = [] as const;
+
 export const registerDeliverableRoutes = (context: DeliverableRouteContext): void => {
-  const { app, requireStaff, asyncRoute, param, tenantId } = context;
+  const { app, requireStaff, authorised, asyncRoute, jsonBody, param, tenantId, now } = context;
 
   /**
    * The template library.
@@ -81,7 +88,7 @@ export const registerDeliverableRoutes = (context: DeliverableRouteContext): voi
           /** The label the renderer puts on an unresearched figure, so the page uses that wording. */
           unverifiedLabel: UNVERIFIED_LABEL,
           complianceStateLabels: COMPLIANCE_STATE_LABELS,
-          writes: { available: [], blocked: BLOCKED_WRITES },
+          writes: { available: AVAILABLE_WRITES, blocked: BLOCKED_WRITES },
         }),
       );
     }),
@@ -131,7 +138,7 @@ export const registerDeliverableRoutes = (context: DeliverableRouteContext): voi
           ).length,
           delivered: deliverables.filter((deliverable) => deliverable.deliveredAt !== null).length,
           unverifiedLabel: UNVERIFIED_LABEL,
-          writes: { available: [], blocked: BLOCKED_WRITES },
+          writes: { available: AVAILABLE_WRITES, blocked: BLOCKED_WRITES },
         }),
       );
     }),
@@ -179,9 +186,121 @@ export const registerDeliverableRoutes = (context: DeliverableRouteContext): voi
           carriesUnverifiedFigures: containsUnverifiedFigures(deliverable.content),
           unverifiedLabel: UNVERIFIED_LABEL,
           complianceStateLabels: COMPLIANCE_STATE_LABELS,
-          writes: { available: [], blocked: BLOCKED_WRITES },
+          writes: { available: AVAILABLE_WRITES, blocked: BLOCKED_WRITES },
         }),
       );
+    }),
+  );
+
+  // --- Writes -------------------------------------------------------------
+
+  /** Draft one. Preparation: nothing here is client-facing yet. */
+  app.post(
+    '/api/console/deliverables',
+    jsonBody,
+    asyncRoute(async (req, res) => {
+      const body = req.body as Record<string, unknown>;
+      const clientId = typeof body['clientId'] === 'string' ? body['clientId'] : undefined;
+
+      const permitted = await authorised(req, res, {
+        action: 'draft_deliverable',
+        ...(clientId !== undefined ? { clientId } : {}),
+      });
+      if (!permitted) return;
+
+      send(
+        res,
+        await draft({
+          ...body,
+          tenantId,
+          actor: { id: permitted.actor.id, kind: permitted.actor.kind },
+        } as never),
+        { trace: permitted.trace },
+      );
+    }),
+  );
+
+  /** Approve it for delivery. 3.4's human review, and the module refuses a non-human actor. */
+  app.post(
+    '/api/console/deliverables/:deliverableId/approval',
+    jsonBody,
+    asyncRoute(async (req, res) => {
+      const permitted = await authorised(req, res, { action: 'deliver_deliverable' });
+      if (!permitted) return;
+
+      send(
+        res,
+        await approve(
+          tenantId,
+          param(req, 'deliverableId'),
+          {
+            id: permitted.actor.id,
+            kind: permitted.actor.kind,
+          },
+          now(),
+        ),
+        { trace: permitted.trace },
+      );
+    }),
+  );
+
+  /** Reject it, with the reason the drafter needs to act on. */
+  app.post(
+    '/api/console/deliverables/:deliverableId/rejection',
+    jsonBody,
+    asyncRoute(async (req, res) => {
+      const permitted = await authorised(req, res, { action: 'deliver_deliverable' });
+      if (!permitted) return;
+
+      const body = req.body as { reason?: unknown };
+      send(
+        res,
+        await reject(
+          tenantId,
+          param(req, 'deliverableId'),
+          String(body.reason ?? ''),
+          { id: permitted.actor.id, kind: permitted.actor.kind },
+          now(),
+        ),
+        { trace: permitted.trace },
+      );
+    }),
+  );
+
+  /** Deliver it. Refused unless approved - QA, the scanner and human review come first. */
+  app.post(
+    '/api/console/deliverables/:deliverableId/delivery',
+    jsonBody,
+    asyncRoute(async (req, res) => {
+      const permitted = await authorised(req, res, { action: 'deliver_deliverable' });
+      if (!permitted) return;
+
+      send(
+        res,
+        await deliver(
+          tenantId,
+          param(req, 'deliverableId'),
+          {
+            id: permitted.actor.id,
+            kind: permitted.actor.kind,
+          },
+          now(),
+        ),
+        { trace: permitted.trace },
+      );
+    }),
+  );
+
+  /** Register a template. Firm-wide wording, so Level 3. */
+  app.post(
+    '/api/console/deliverables/templates',
+    jsonBody,
+    asyncRoute(async (req, res) => {
+      const permitted = await authorised(req, res, { action: 'register_deliverable_template' });
+      if (!permitted) return;
+
+      const registered = await registerTemplate(req.body as never);
+      send(res, ok(registered), { trace: permitted.trace });
     }),
   );
 };

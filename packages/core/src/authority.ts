@@ -273,6 +273,87 @@ export const ACTION_MINIMUM_LEVEL = {
    * `generate_internal_report` - but nothing here reaches a client or commits the firm.
    */
   record_market_intelligence: 1,
+
+  // --- Batch D: the four lines that had to be split before a level meant anything ---
+  //
+  // Every line here bundles routine casework with something consequential. One level per line
+  // would have been wrong in both directions: high enough for the heavy act means the firm's most
+  // senior person completes workflow tasks, and low enough for the routine one puts an
+  // irreversible act a click away from a junior.
+
+  /**
+   * Level 1. Drafting a deliverable and running QA on it are preparation - the document is not
+   * client-facing until somebody approves it, and 3.4 requires that approval for anything carrying
+   * a compliance state or a recommendation.
+   */
+  draft_deliverable: 1,
+
+  /**
+   * Level 2. Approving, rejecting and delivering are the acts that put a document in front of a
+   * client, which is where `send_client_communication` sits. Approval and delivery are one action
+   * because approving a client-facing document IS the decision to send it.
+   */
+  deliver_deliverable: 2,
+
+  /**
+   * Level 3. A template is the wording every future document of its kind is generated from,
+   * including ones nobody re-reads - the same argument as `publish_contract_clause`.
+   */
+  register_deliverable_template: 3,
+
+  /**
+   * Level 2. Registering, qualifying and onboarding a partner. Onboarding is what certifies them
+   * to refer clients, so it gates a commercial capability rather than filing a form.
+   */
+  onboard_partner: 2,
+
+  /**
+   * Level 3. Suspending or terminating ends a commercial relationship, and the module already says
+   * so with `TERMINATION_AUTHORITY_LEVEL`.
+   */
+  end_partner_relationship: 3,
+
+  /**
+   * Level 2. Recording that a partner completed a curriculum module is what certifies them, and a
+   * certification recorded in error lets somebody refer clients they are not trained to advise.
+   */
+  record_partner_completion: 2,
+
+  /**
+   * Level 3. Approving a claim decides what a partner may SAY about this firm, and a brand
+   * arrangement decides whose name goes on it. Both are the firm's voice in somebody else's mouth,
+   * which is why the Marketing Claim Library reviews at the same level.
+   */
+  approve_partner_claim: 3,
+
+  /**
+   * Level 1. Logging an activity, a readiness reading, or escalating a stale lead. Ordinary
+   * pipeline hygiene on somebody who is not yet a client.
+   */
+  record_lead_activity: 1,
+
+  /**
+   * **Level 3, and the module chose it before this file did.**
+   *
+   * `correctAttribution` refuses below Level 3 in its own words: "It moves money between partners,
+   * and an agent able to do it would make the record unreliable in exactly the place it needs to be
+   * trusted." It sat bundled with logging a phone call, which is the clearest case in the whole
+   * seventeen of a line hiding what it contained.
+   */
+  correct_attribution: 3,
+
+  /**
+   * Level 3. Publishing a playbook changes how the firm serves every client who starts on it
+   * afterwards - the rules themselves, not one file.
+   */
+  publish_playbook: 3,
+
+  /**
+   * Level 1. Starting an instance and completing an external task is the daily work of running
+   * them. The consequential acts inside a playbook are gated where they happen: a task that
+   * transitions a compliance state still needs `transition_compliance_state`.
+   */
+  run_workflow: 1,
 } as const satisfies Record<string, AuthorityLevel>;
 
 /**

@@ -94,3 +94,4 @@ missing** — these numbers were never used.
 | 0079 | [Nineteen modules had already chosen three](0079-nineteen-modules-had-already-chosen-three.md)                                                                  |
 | 0080 | [The graph is an input to the assessment that gates it](0080-the-graph-is-an-input-to-the-assessment-that-gates-it.md)                                          |
 | 0081 | [A level is the heaviest thing an action can do](0081-a-level-is-the-heaviest-thing-an-action-can-do.md)                                                        |
+| 0082 | [The seventeen are declared](0082-the-seventeen-are-declared.md)                                                                                                |

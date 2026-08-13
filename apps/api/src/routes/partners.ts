@@ -38,9 +38,17 @@ import {
   PARTNER_TRACKS,
   RECERTIFICATION_CADENCE_DAYS,
   aggregateStatus,
+  approveClaim,
   approvedClaimsFor,
   canRefer,
+  completeOnboarding,
   publishModule,
+  recordCompletion,
+  recordQualification,
+  registerPartner,
+  suspendPartner,
+  terminatePartner,
+  withdrawClaim,
   completionsFor,
   currentCurriculum,
   findPartner,
@@ -60,27 +68,33 @@ export type PartnerRouteContext = ConsoleRouteContext;
 
 const AVAILABLE_WRITES = [
   {
+    capability: 'Register, qualify or onboard a partner',
+    action: 'onboard_partner',
+    note: 'Level 2. Onboarding is what certifies a partner to refer clients, so it gates a commercial capability rather than filing a form.',
+  },
+  {
+    capability: 'Suspend or terminate a partner',
+    action: 'end_partner_relationship',
+    note: 'Level 3, and the module already required it: ending a commercial relationship.',
+  },
+  {
+    capability: 'Record a curriculum completion',
+    action: 'record_partner_completion',
+    note: 'Level 2. Recording a completion is what certifies a partner, and one recorded in error lets somebody refer clients they are not trained to advise.',
+  },
+  {
+    capability: 'Approve or withdraw a partner claim',
+    action: 'approve_partner_claim',
+    note: "Level 3. This decides what a partner may SAY about this firm - the firm's voice in somebody else's mouth, which is why the Marketing Claim Library reviews at the same level.",
+  },
+  {
     capability: 'Publish a curriculum module',
     action: 'publish_curriculum_module',
     note: 'Level 3. A material republish DECERTIFIES every partner who completed the previous version, so this is an act against the whole network rather than a document edit.',
   },
 ] as const;
 
-const BLOCKED_WRITES = [
-  {
-    capability: 'Register, qualify, onboard, suspend or terminate a partner',
-    module:
-      '@bwc/partners registerPartner, recordQualification, completeOnboarding, suspendPartner, terminatePartner',
-    missingAction: 'none declared',
-    why: 'Each emits a Ledger event and so must pass the middleware chain with a declared action. ACTION_MINIMUM_LEVEL has none for administering a partner relationship. send_partner_followup exists at Level 2 and means communicating WITH a partner, which is a different act from ending one.',
-  },
-  {
-    capability: 'Record a completion, approve or withdraw a claim',
-    module: '@bwc/partners recordCompletion, approveClaim, withdrawClaim, approveBrandArrangement',
-    missingAction: 'none declared',
-    why: 'Publishing a module moved to `publish_curriculum_module` in Batch A - a material republish decertifies the network, which put it with the irreversible acts. These did not follow it: recording a completion is what certifies a partner to refer clients, so it gates a commercial capability and is not a clerical write, but it is also not irreversible. It belongs to a later batch, at a level somebody still has to choose.',
-  },
-] as const;
+const BLOCKED_WRITES = [] as const;
 
 const isTrack = (value: unknown): value is PartnerTrack =>
   typeof value === 'string' && (PARTNER_TRACKS as readonly string[]).includes(value);
@@ -257,6 +271,175 @@ export const registerPartnerRoutes = (context: PartnerRouteContext): void => {
           publishedBy: permitted.actor.id,
           actor: { id: permitted.actor.id, kind: permitted.actor.kind },
           now: now(),
+        } as never),
+        { trace: permitted.trace },
+      );
+    }),
+  );
+
+  /** Register a partner. */
+  app.post(
+    '/api/console/partners',
+    jsonBody,
+    asyncRoute(async (req, res) => {
+      const permitted = await authorised(req, res, { action: 'onboard_partner' });
+      if (!permitted) return;
+
+      send(
+        res,
+        await registerPartner({
+          ...(req.body as Record<string, unknown>),
+          tenantId,
+          actor: { id: permitted.actor.id, kind: permitted.actor.kind },
+        } as never),
+        { trace: permitted.trace },
+      );
+    }),
+  );
+
+  /** Record a qualification against the requirements their track carries. */
+  app.post(
+    '/api/console/partners/:partnerId/qualifications',
+    jsonBody,
+    asyncRoute(async (req, res) => {
+      const permitted = await authorised(req, res, { action: 'onboard_partner' });
+      if (!permitted) return;
+
+      send(
+        res,
+        await recordQualification({
+          ...(req.body as Record<string, unknown>),
+          tenantId,
+          partnerId: param(req, 'partnerId'),
+          actor: { id: permitted.actor.id, kind: permitted.actor.kind },
+        } as never),
+        { trace: permitted.trace },
+      );
+    }),
+  );
+
+  /** Complete onboarding - the act that lets them refer. */
+  app.post(
+    '/api/console/partners/:partnerId/onboarding',
+    jsonBody,
+    asyncRoute(async (req, res) => {
+      const permitted = await authorised(req, res, { action: 'onboard_partner' });
+      if (!permitted) return;
+
+      send(
+        res,
+        await completeOnboarding({
+          tenantId,
+          partnerId: param(req, 'partnerId'),
+          completedBy: permitted.actor.id,
+          actor: { id: permitted.actor.id, kind: permitted.actor.kind },
+          now: now(),
+        }),
+        { trace: permitted.trace },
+      );
+    }),
+  );
+
+  /** Suspend one. Reversible, unlike termination, and at the same level. */
+  app.post(
+    '/api/console/partners/:partnerId/suspension',
+    jsonBody,
+    asyncRoute(async (req, res) => {
+      const permitted = await authorised(req, res, { action: 'end_partner_relationship' });
+      if (!permitted) return;
+
+      send(
+        res,
+        await suspendPartner({
+          ...(req.body as Record<string, unknown>),
+          tenantId,
+          partnerId: param(req, 'partnerId'),
+          actor: { id: permitted.actor.id, kind: permitted.actor.kind },
+        } as never),
+        { trace: permitted.trace },
+      );
+    }),
+  );
+
+  /** Terminate. The module refuses below Level 3 in its own words. */
+  app.post(
+    '/api/console/partners/:partnerId/termination',
+    jsonBody,
+    asyncRoute(async (req, res) => {
+      const permitted = await authorised(req, res, { action: 'end_partner_relationship' });
+      if (!permitted) return;
+
+      send(
+        res,
+        await terminatePartner({
+          ...(req.body as Record<string, unknown>),
+          tenantId,
+          partnerId: param(req, 'partnerId'),
+          actor: { id: permitted.actor.id, kind: permitted.actor.kind },
+        } as never),
+        { trace: permitted.trace },
+      );
+    }),
+  );
+
+  /** Record that a partner completed a curriculum module. */
+  app.post(
+    '/api/console/partners/:partnerId/completions',
+    jsonBody,
+    asyncRoute(async (req, res) => {
+      const permitted = await authorised(req, res, { action: 'record_partner_completion' });
+      if (!permitted) return;
+
+      send(
+        res,
+        await recordCompletion({
+          ...(req.body as Record<string, unknown>),
+          tenantId,
+          partnerId: param(req, 'partnerId'),
+          actor: { id: permitted.actor.id, kind: permitted.actor.kind },
+          now: now(),
+        } as never),
+        { trace: permitted.trace },
+      );
+    }),
+  );
+
+  /** Approve a claim a partner may make about this firm. */
+  app.post(
+    '/api/console/partners/:partnerId/claims',
+    jsonBody,
+    asyncRoute(async (req, res) => {
+      const permitted = await authorised(req, res, { action: 'approve_partner_claim' });
+      if (!permitted) return;
+
+      send(
+        res,
+        await approveClaim({
+          ...(req.body as Record<string, unknown>),
+          tenantId,
+          partnerId: param(req, 'partnerId'),
+          actor: { id: permitted.actor.id, kind: permitted.actor.kind },
+        } as never),
+        { trace: permitted.trace },
+      );
+    }),
+  );
+
+  /** Withdraw one. */
+  app.post(
+    '/api/console/partners/:partnerId/claims/withdrawal',
+    jsonBody,
+    asyncRoute(async (req, res) => {
+      const permitted = await authorised(req, res, { action: 'approve_partner_claim' });
+      if (!permitted) return;
+
+      send(
+        res,
+        await withdrawClaim({
+          ...(req.body as Record<string, unknown>),
+          tenantId,
+          partnerId: param(req, 'partnerId'),
+          actor: { id: permitted.actor.id, kind: permitted.actor.kind },
         } as never),
         { trace: permitted.trace },
       );

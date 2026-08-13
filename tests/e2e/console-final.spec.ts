@@ -188,11 +188,18 @@ test.describe('3.3 and 3.1 on the page', () => {
     await expect(page.locator('#intelligence-status')).toContainText('Enter a client id');
   });
 
-  test('lists the template library and the deliverable write it cannot offer', async () => {
+  test('lists the template library and the three levels a deliverable passes through', async () => {
     await openPanel('panel-deliverables');
 
     await expect(page.locator('#deliverables-status')).toContainText('shipped template(s)');
     await expect(page.locator('#deliverables-templates').locator('li').first()).toBeVisible();
-    await expect(page.locator('#deliverables-blocked')).toContainText('approve');
+
+    // One capability line became three actions at three levels: drafting is preparation,
+    // delivering puts a document in front of a client, and registering a template sets the wording
+    // every future one is generated from.
+    const available = page.locator('#deliverables-available');
+    await expect(available).toContainText('draft_deliverable');
+    await expect(available).toContainText('deliver_deliverable');
+    await expect(available).toContainText('register_deliverable_template');
   });
 });

@@ -256,25 +256,30 @@ test.describe('1.2 on the page', () => {
 });
 
 test.describe('1.3 and 8.1 on the page', () => {
-  test('renders the pipeline and the lead writes it now offers', async () => {
+  test('renders the pipeline and the writes it can now offer', async () => {
     await openPanel('panel-sales');
 
     await expect(page.locator('#sales-status')).toContainText('lead(s)');
 
-    // Batch C declared the lead lifecycle, so this is no longer a write the surface cannot offer.
-    // The two actions are on the panel at their two levels - conversion apart from the rest,
-    // because it creates a client and may start an engagement.
+    // Batches C and D declared every sales write, so nothing here is blocked for want of an action.
+    await expect(page.locator('#sales-blocked')).toHaveText('');
+
+    // Four actions across two levels from one capability line - including the attribution
+    // correction that spent the whole project bundled with logging a phone call.
     const available = page.locator('#sales-available');
+    await expect(available).toContainText('correct_attribution');
     await expect(available).toContainText('manage_lead');
-    await expect(available).toContainText('convert_lead');
   });
 
-  test('renders an empty partner list as empty, with the reason nothing can register one', async () => {
+  test('renders an empty partner list as empty, and offers the acts that fill it', async () => {
     await openPanel('panel-partners');
 
     await expect(page.locator('#partners-list')).toContainText('No partner is registered');
-    await expect(page.locator('#partners-blocked')).toContainText(
-      'Register, qualify, onboard, suspend or terminate a partner',
-    );
+
+    // The line that read "Register, qualify, onboard, suspend or terminate" became two actions two
+    // levels apart: onboarding certifies a partner to refer, ending the relationship is Level 3.
+    const available = page.locator('#partners-available');
+    await expect(available).toContainText('onboard_partner');
+    await expect(available).toContainText('end_partner_relationship');
   });
 });

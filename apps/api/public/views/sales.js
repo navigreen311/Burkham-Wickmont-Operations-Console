@@ -218,3 +218,50 @@ renderWrites('sales-writes', [
     }),
   },
 ]);
+
+/**
+ * The two acts that were hiding in "record activity".
+ *
+ * Logging a phone call and changing who a referral fee is owed to sat on one capability line. They
+ * are two levels apart, and the second is the one the module had already refused below Level 3.
+ */
+renderWrites('sales-writes-activity', [
+  {
+    id: 'sales-activity',
+    capability: 'Log an activity against a lead',
+    action: 'record_lead_activity',
+    note: 'Level 1. Ordinary pipeline hygiene.',
+    buttonLabel: 'Log it',
+    done: 'Activity recorded.',
+    fields: [
+      { name: 'leadId', label: 'Lead id' },
+      { name: 'kind', label: 'Kind', placeholder: 'call' },
+      { name: 'note', label: 'Note' },
+    ],
+    path: (v) => `/api/console/sales/leads/${encodeURIComponent(v.leadId)}/activities`,
+    body: (v) => ({ kind: v.kind, note: v.note }),
+  },
+  {
+    id: 'sales-attribution',
+    capability: 'Correct a lead attribution',
+    action: 'correct_attribution',
+    note: 'LEVEL 3. It changes who a referral fee is owed to - the module refuses below Level 3 in its own words, because it moves money between partners. A reason is required: an unexplained change to who gets paid is indistinguishable from an error nobody caught.',
+    danger: true,
+    buttonLabel: 'Correct the attribution',
+    done: 'Attribution corrected.',
+    fields: [
+      { name: 'leadId', label: 'Lead id' },
+      { name: 'toSourceChannel', label: 'Corrected source channel' },
+      { name: 'toReferrerName', label: 'Corrected referrer name' },
+      { name: 'reason', label: 'Reason' },
+      { name: 'correctedAt', label: 'Corrected at', type: 'date' },
+    ],
+    path: (v) => `/api/console/sales/leads/${encodeURIComponent(v.leadId)}/attribution`,
+    body: (v) => ({
+      toSourceChannel: v.toSourceChannel,
+      toReferrerName: v.toReferrerName || null,
+      reason: v.reason,
+      correctedAt: v.correctedAt,
+    }),
+  },
+]);

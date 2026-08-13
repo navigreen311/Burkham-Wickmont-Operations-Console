@@ -250,8 +250,10 @@ describe('Batch C: the casework, and the one act inside it that is not', () => {
     const writes = data['writes'] as { available: { action: string; note: string }[] };
     const actions = writes.available.map((entry) => entry.action);
 
-    // One capability line became two actions, at 1 and 3.
-    expect(actions).toEqual(['manage_lead', 'convert_lead']);
+    // One capability line became two actions, at 1 and 3 - and Batch D added two more to the same
+    // surface, including the one hiding inside "record activity".
+    expect(actions).toContain('manage_lead');
+    expect(actions).toContain('convert_lead');
   });
 
   it('gates conversion at the level of the heaviest thing it can do', async () => {
@@ -280,5 +282,70 @@ describe('Batch C: the casework, and the one act inside it that is not', () => {
     // It WRITES a feed others read as given, which is more than generate_internal_report does.
     expect(intel?.note).toMatch(/writes a feed/i);
     expect(intel?.note).toMatch(/Level 0/);
+  });
+});
+
+describe('Batch D: the four lines that had to be split', () => {
+  it('leaves no roadmap-blocked write anywhere in the Console', async () => {
+    // The end of the seventeen. What remains is blocked BY DESIGN and says so with a different
+    // `missingAction` - a distinction ADR-0063 built before there was anything to distinguish.
+    const reads = [
+      '/api/console/sales/pipeline',
+      '/api/console/partners',
+      '/api/console/deliverables/templates',
+    ];
+
+    for (const path of reads) {
+      const data = (await get(path))['data'] as Record<string, unknown>;
+      const blocked = (data['writes'] as { blocked: { missingAction: string }[] }).blocked;
+      for (const entry of blocked) {
+        expect(entry.missingAction, path).not.toBe('none declared');
+      }
+    }
+  });
+
+  it('separates correcting an attribution from logging a phone call', async () => {
+    const data = (await get('/api/console/sales/pipeline'))['data'] as Record<string, unknown>;
+    const available = (data['writes'] as { available: { action: string; note: string }[] })
+      .available;
+
+    // **The act that was hiding.** One capability line read "Record activity, a readiness reading,
+    // or an attribution correction". The first two are pipeline hygiene at Level 1; the third
+    // changes who a referral fee is owed to, and `correctAttribution` had refused below Level 3 in
+    // its own words the whole time - the module knew, and the surface did not.
+    const activity = available.find((entry) => entry.action === 'record_lead_activity');
+    const attribution = available.find((entry) => entry.action === 'correct_attribution');
+
+    expect(activity?.note).toMatch(/Level 1/);
+    expect(attribution?.note).toMatch(/LEVEL 3/);
+    expect(attribution?.note).toMatch(/moves money between partners/i);
+  });
+
+  it('splits a deliverable into preparing it, sending it, and setting the wording for all of them', async () => {
+    const data = (await get('/api/console/deliverables/templates'))['data'] as Record<
+      string,
+      unknown
+    >;
+    const actions = (data['writes'] as { available: { action: string }[] }).available.map(
+      (entry) => entry.action,
+    );
+
+    // Three levels from one line: drafting is preparation, delivering puts it in front of a client,
+    // and registering a template sets the wording every future one is generated from.
+    expect(actions).toEqual([
+      'draft_deliverable',
+      'deliver_deliverable',
+      'register_deliverable_template',
+    ]);
+  });
+
+  it('separates publishing a playbook from running one', async () => {
+    // Publishing changes how the firm serves every client who starts afterwards. Starting an
+    // instance is the daily work of running them, and the consequential acts INSIDE a playbook are
+    // gated where they happen rather than at the door.
+    const instance = await post('/api/console/workflow/instances', { playbookKey: 'nope' });
+    const trace = instance.body['trace'] as { step: string; detail?: string }[];
+    const level = trace.find((step) => step.step === 'authority_level');
+    expect(String(level?.detail)).toMatch(/>= 1/);
   });
 });

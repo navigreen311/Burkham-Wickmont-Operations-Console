@@ -34,6 +34,9 @@ import {
   renewalStates,
   staleLeads,
   closeLead,
+  correctAttribution,
+  recordActivity,
+  recordReadiness,
   convertLead,
   createLead,
   qualifyLead,
@@ -62,6 +65,16 @@ export type SalesRouteContext = ConsoleRouteContext;
  */
 const AVAILABLE_WRITES = [
   {
+    capability: 'Record an activity or a readiness reading',
+    action: 'record_lead_activity',
+    note: 'Level 1. Ordinary pipeline hygiene on somebody who is not yet a client.',
+  },
+  {
+    capability: 'Correct a lead attribution',
+    action: 'correct_attribution',
+    note: 'LEVEL 3, and the module chose it before the authority model did: it moves money between partners, and an agent able to do it would make the record unreliable in exactly the place it needs to be trusted. A reason is required - an unexplained change to who a fee is owed to is indistinguishable from an error nobody caught.',
+  },
+  {
     capability: 'Create, qualify or close a lead',
     action: 'manage_lead',
     note: 'Level 1. Work on a prospect who is not yet a client. A qualification needs a note - unexplained, it is a filter nobody can improve and a decision the salesperson who disagrees cannot appeal.',
@@ -73,14 +86,7 @@ const AVAILABLE_WRITES = [
   },
 ] as const;
 
-const BLOCKED_WRITES = [
-  {
-    capability: 'Record activity, a readiness reading, or an attribution correction',
-    module: '@bwc/sales recordActivity, recordReadiness, correctAttribution, escalateStaleLeads',
-    missingAction: 'none declared',
-    why: 'Each emits a Ledger event and so must pass the middleware chain with a declared action, and ACTION_MINIMUM_LEVEL declares none. An attribution correction in particular moves who a referral fee is owed to, which is a financial fact and the last thing to authorise under a borrowed label.',
-  },
-] as const;
+const BLOCKED_WRITES = [] as const;
 
 export const registerSalesRoutes = (context: SalesRouteContext): void => {
   const { app, requireStaff, authorised, asyncRoute, jsonBody, param, tenantId, now } = context;
@@ -284,6 +290,79 @@ export const registerSalesRoutes = (context: SalesRouteContext): void => {
           leadId: param(req, 'leadId'),
           convertedBy: permitted.actor.id,
           convertedOn: new Date(String(body['convertedOn'])),
+          actor: { id: permitted.actor.id, kind: permitted.actor.kind },
+        } as never),
+        { trace: permitted.trace },
+      );
+    }),
+  );
+
+  /** Log an activity against a lead. */
+  app.post(
+    '/api/console/sales/leads/:leadId/activities',
+    jsonBody,
+    asyncRoute(async (req, res) => {
+      const permitted = await authorised(req, res, { action: 'record_lead_activity' });
+      if (!permitted) return;
+
+      send(
+        res,
+        await recordActivity({
+          ...(req.body as Record<string, unknown>),
+          tenantId,
+          leadId: param(req, 'leadId'),
+          actor: { id: permitted.actor.id, kind: permitted.actor.kind },
+        } as never),
+        { trace: permitted.trace },
+      );
+    }),
+  );
+
+  /** Record an expansion-readiness reading. */
+  app.post(
+    '/api/console/sales/clients/:clientId/readiness',
+    jsonBody,
+    asyncRoute(async (req, res) => {
+      const clientId = param(req, 'clientId');
+      const permitted = await authorised(req, res, { action: 'record_lead_activity', clientId });
+      if (!permitted) return;
+
+      send(
+        res,
+        await recordReadiness({
+          ...(req.body as Record<string, unknown>),
+          tenantId,
+          clientId,
+          actor: { id: permitted.actor.id, kind: permitted.actor.kind },
+        } as never),
+        { trace: permitted.trace },
+      );
+    }),
+  );
+
+  /**
+   * Correct an attribution.
+   *
+   * **The act that was hiding in "record activity".** It changes who a referral fee is owed to, and
+   * the module refuses below Level 3 in its own words. A reason is required for the same reason:
+   * an unexplained change to who gets paid is indistinguishable from an error nobody caught.
+   */
+  app.post(
+    '/api/console/sales/leads/:leadId/attribution',
+    jsonBody,
+    asyncRoute(async (req, res) => {
+      const permitted = await authorised(req, res, { action: 'correct_attribution' });
+      if (!permitted) return;
+
+      const body = req.body as Record<string, unknown>;
+      send(
+        res,
+        await correctAttribution({
+          ...body,
+          tenantId,
+          leadId: param(req, 'leadId'),
+          correctedBy: permitted.actor.id,
+          correctedAt: new Date(String(body['correctedAt'])),
           actor: { id: permitted.actor.id, kind: permitted.actor.kind },
         } as never),
         { trace: permitted.trace },

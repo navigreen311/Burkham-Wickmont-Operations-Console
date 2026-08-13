@@ -15,29 +15,34 @@
  * id, and the list is a gap in 2.2 rather than a gap in this file.
  */
 
-import type { Express, Request, Response } from 'express';
-import { definitionForInstance, findInstance } from '@bwc/workflow';
+import {
+  completeExternalTask,
+  definitionForInstance,
+  findInstance,
+  publishPlaybook,
+  start,
+} from '@bwc/workflow';
 import { noData, ok } from '@bwc/core';
 import { send } from '@bwc/http';
-import type { Actor } from '@bwc/identity';
 
-export interface WorkflowRouteContext {
-  readonly app: Express;
-  readonly requireStaff: (req: Request, res: Response) => Promise<Actor | undefined>;
-  readonly asyncRoute: (
-    handler: (req: Request, res: Response) => Promise<void>,
-  ) => (req: Request, res: Response) => void;
-  readonly param: (req: Request, name: string) => string;
-  readonly tenantId: string;
-}
+import type { ConsoleRouteContext } from './context.js';
+
+export type WorkflowRouteContext = ConsoleRouteContext;
+
+const AVAILABLE_WRITES = [
+  {
+    capability: 'Publish a playbook',
+    action: 'publish_playbook',
+    note: 'Level 3. It changes how the firm serves every client who starts on it afterwards - the rules themselves, not one file. Publish a new VERSION rather than editing one: an instance is pinned to the version it began on.',
+  },
+  {
+    capability: 'Start an instance, or complete an external task',
+    action: 'run_workflow',
+    note: 'Level 1. The daily work of running playbooks. The consequential acts inside one are gated where they happen - a task that transitions a compliance state still needs transition_compliance_state.',
+  },
+] as const;
 
 const BLOCKED_WRITES = [
-  {
-    capability: 'Publish a playbook, start an instance, or complete an external task',
-    module: '@bwc/workflow publishPlaybook, start, completeExternalTask',
-    missingAction: 'none declared',
-    why: 'Each writes to the Ledger and needs a declared action; none exists for workflow authoring. Starting an instance is the consequential one - it sets work in motion against a client - and naming its Authority Level is a judgement that belongs in packages/core.',
-  },
   {
     capability: 'List what is running',
     module: '@bwc/workflow',
@@ -47,7 +52,7 @@ const BLOCKED_WRITES = [
 ] as const;
 
 export const registerWorkflowRoutes = (context: WorkflowRouteContext): void => {
-  const { app, requireStaff, asyncRoute, param, tenantId } = context;
+  const { app, requireStaff, authorised, asyncRoute, jsonBody, param, tenantId, now } = context;
 
   /**
    * One instance, with the definition version it PINNED at start.
@@ -79,8 +84,91 @@ export const registerWorkflowRoutes = (context: WorkflowRouteContext): void => {
         ok({
           instance,
           definition,
-          writes: { available: [], blocked: BLOCKED_WRITES },
+          writes: { available: AVAILABLE_WRITES, blocked: BLOCKED_WRITES },
         }),
+      );
+    }),
+  );
+
+  // --- Writes -------------------------------------------------------------
+
+  /**
+   * Publish a playbook.
+   *
+   * A NEW version, always. `publishPlaybook` upserts on (key, version) and an instance is pinned to
+   * the version it started on, so republishing a live version rewrites the graph under everybody
+   * currently running it.
+   */
+  app.post(
+    '/api/console/workflow/playbooks',
+    jsonBody,
+    asyncRoute(async (req, res) => {
+      const permitted = await authorised(req, res, { action: 'publish_playbook' });
+      if (!permitted) return;
+
+      const body = req.body as Record<string, unknown>;
+      send(
+        res,
+        await publishPlaybook({
+          key: String(body['key'] ?? ''),
+          version: Number(body['version']),
+          phase: Number(body['phase']),
+          definition: body['definition'] as never,
+        }),
+        { trace: permitted.trace },
+      );
+    }),
+  );
+
+  /** Start an instance on the latest active version. */
+  app.post(
+    '/api/console/workflow/instances',
+    jsonBody,
+    asyncRoute(async (req, res) => {
+      const body = req.body as Record<string, unknown>;
+      const clientId = typeof body['clientId'] === 'string' ? body['clientId'] : undefined;
+
+      const permitted = await authorised(req, res, {
+        action: 'run_workflow',
+        ...(clientId !== undefined ? { clientId } : {}),
+      });
+      if (!permitted) return;
+
+      send(
+        res,
+        await start({
+          tenantId,
+          playbookKey: String(body['playbookKey'] ?? ''),
+          ...(clientId !== undefined ? { clientId } : {}),
+          actor: { id: permitted.actor.id, kind: permitted.actor.kind },
+          now: now(),
+        }),
+        { trace: permitted.trace },
+      );
+    }),
+  );
+
+  /** Complete a parked task, optionally writing a fact the graph below it will branch on. */
+  app.post(
+    '/api/console/workflow/tasks/:taskId/completion',
+    jsonBody,
+    asyncRoute(async (req, res) => {
+      const permitted = await authorised(req, res, { action: 'run_workflow' });
+      if (!permitted) return;
+
+      const body = req.body as { contextPatch?: unknown };
+      send(
+        res,
+        await completeExternalTask(
+          tenantId,
+          param(req, 'taskId'),
+          { id: permitted.actor.id, kind: permitted.actor.kind },
+          (typeof body.contextPatch === 'object' && body.contextPatch !== null
+            ? body.contextPatch
+            : {}) as Record<string, unknown>,
+          now(),
+        ),
+        { trace: permitted.trace },
       );
     }),
   );
