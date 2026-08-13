@@ -317,6 +317,9 @@ importers:
       '@bwc/identity':
         specifier: workspace:*
         version: link:../identity
+      '@bwc/integration':
+        specifier: workspace:*
+        version: link:../integration
       '@bwc/ledger':
         specifier: workspace:*
         version: link:../ledger
@@ -396,6 +399,9 @@ importers:
       '@bwc/db':
         specifier: workspace:*
         version: link:../db
+      '@bwc/integration':
+        specifier: workspace:*
+        version: link:../integration
       '@bwc/ledger':
         specifier: workspace:*
         version: link:../ledger

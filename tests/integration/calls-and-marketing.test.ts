@@ -216,9 +216,13 @@ describe('4.3 the VoiceForge seam', () => {
     const result = await captureCall('any-call-id');
     expect(result.status).toBe('not_built');
     if (result.status === 'not_built') {
-      expect(result.module).toMatch(/VoiceForge/);
+      expect(result.module).toMatch(/voice provider/);
       // The reason has to say the analysis is built, or a reader concludes the whole module is.
       expect(result.reason).toMatch(/Analysis .* is built/);
+      // **And it now names the GATE rather than a constant sentence.** Before ADR-0085 this seam
+      // returned a hardcoded refusal, which meant switching voice capture on was a code edit. The
+      // refusal names the outstanding evidence because `voice` is a vendor.
+      expect(result.reason).toMatch(/vendor selection|Argus|DPA|attestation/i);
     }
   });
 

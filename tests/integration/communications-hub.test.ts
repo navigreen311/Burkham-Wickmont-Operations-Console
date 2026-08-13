@@ -116,8 +116,12 @@ describe('the send path', () => {
     expect(result.status).toBe('not_built');
     if (result.status !== 'not_built') return;
 
-    expect(result.module).toMatch(/email and SMS providers/);
+    expect(result.module).toMatch(/email provider/);
     expect(result.reason).toMatch(/logged as approved to send/);
+    // **The refusal names the gate now, not a constant.** Email was outside the vendor model
+    // entirely until ADR-0085 - it could have been switched on by editing one line, with no
+    // evidence, no accountable person and no record.
+    expect(result.reason).toMatch(/vendor selection|Argus|DPA|attestation/i);
 
     const log = await communicationsFor(fx.tenant.id, clientId);
     const approved = log.filter((entry) => entry.status === 'approved_to_send');

@@ -21,6 +21,7 @@
     "@bwc/core": "workspace:*",
     "@bwc/db": "workspace:*",
     "@bwc/identity": "workspace:*",
+    "@bwc/integration": "workspace:*",
     "@bwc/ledger": "workspace:*",
     "@bwc/notifications": "workspace:*",
     "@bwc/regulatory": "workspace:*"

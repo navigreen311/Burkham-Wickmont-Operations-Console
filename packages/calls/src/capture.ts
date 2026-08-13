@@ -19,6 +19,7 @@
 import { db } from '@bwc/db';
 import { append } from '@bwc/ledger';
 import { notBuilt, ok, refused, type EventActor, type Outcome } from '@bwc/core';
+import { activationStanding } from '@bwc/integration';
 import { requiredDisclosures } from '@bwc/regulatory';
 import { mayRecord } from './consent.js';
 import {
@@ -135,11 +136,20 @@ export const beginCall = async (input: BeginCallInput): Promise<Outcome<CallReco
  * exists to prevent, applied to the module where a false clean reading means a promise nobody
  * corrected.
  */
-export const captureCall = async (callId: string): Promise<Outcome<never>> =>
-  notBuilt(
-    '11.5 Integration Layer - CapitalForge to VoiceForge',
-    `Call ${callId} is on record with its consent basis, but no voice provider is gated in, so no audio was captured, no transcript exists and no summary was generated. Analysis (promise detection, disclosure completeness, objections and buying signals) is built and runs the moment a transcript is supplied.`,
+export const captureCall = async (callId: string): Promise<Outcome<never>> => {
+  // A gate rather than a constant sentence. `voice` is a vendor now (ADR-0085), so this names the
+  // evidence still outstanding and going live takes the same four items Plaid needs - rather than
+  // an edit to this line.
+  //
+  // Recording a call is the seam with the sharpest consent exposure in the system: several states
+  // require all-party consent, and that rule is an INVARIANT rather than a parameter. A capture
+  // path that could be switched on without a security review is the one worth gating hardest.
+  const standing = await activationStanding('voice');
+  return notBuilt(
+    '11.5 Integration Layer - voice provider',
+    `Call ${callId} is on record with its consent basis, but no audio was captured, no transcript exists and no summary was generated: ${standing.explanation} Analysis (promise detection, disclosure completeness, objections and buying signals) is built and runs the moment a transcript is supplied.`,
   );
+};
 
 /**
  * Attach a transcript from outside.

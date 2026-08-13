@@ -26,7 +26,27 @@ export const mode = (): IntegrationMode => {
   throw new Error(`INTEGRATION_MODE must be stub | sandbox | live, received '${value}'.`);
 };
 
-export const VENDOR_IDS = ['plaid', 'business_bureau', 'personal_credit', 'capitalforge'] as const;
+/**
+ * Every external processor, including the three that used to be outside this list.
+ *
+ * **`email`, `sms` and `voice` were not here, and their absence was the hole.** They had no gate,
+ * no evidence requirement and no reserved configuration - each returned `not_built` from a
+ * hardcoded line in its own module, so switching one on meant editing that line and deploying.
+ *
+ * That is the exact mechanism ADR-0065 removed for the other four, and the reason it gave applies
+ * with more force here rather than less: email carries client names, application status and
+ * document requests to an outside processor. It was the only category that could have gone live
+ * without a security review, a signed agreement, an accountable person or a Ledger entry.
+ */
+export const VENDOR_IDS = [
+  'plaid',
+  'business_bureau',
+  'personal_credit',
+  'capitalforge',
+  'email',
+  'sms',
+  'voice',
+] as const;
 export type VendorId = (typeof VENDOR_IDS)[number];
 
 export interface VendorGate {
@@ -83,6 +103,27 @@ export const VENDOR_GATES: Readonly<Record<VendorId, VendorGate>> = {
   },
   capitalforge: {
     vendor: 'capitalforge',
+    argusReviewed: false,
+    dpaSigned: false,
+    securityAttestationVerified: false,
+    vendorSelected: false,
+  },
+  email: {
+    vendor: 'email',
+    argusReviewed: false,
+    dpaSigned: false,
+    securityAttestationVerified: false,
+    vendorSelected: false,
+  },
+  sms: {
+    vendor: 'sms',
+    argusReviewed: false,
+    dpaSigned: false,
+    securityAttestationVerified: false,
+    vendorSelected: false,
+  },
+  voice: {
+    vendor: 'voice',
     argusReviewed: false,
     dpaSigned: false,
     securityAttestationVerified: false,
