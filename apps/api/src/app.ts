@@ -39,6 +39,7 @@ import helmet from 'helmet';
 import {
   create as createClient,
   find as findClient,
+  countByComplianceState,
   listClients,
   openFindings,
   transitionComplianceState,
@@ -63,11 +64,13 @@ import { requestRecommendation } from '@bwc/placement';
 import { CAPITAL_NEEDS, type CapitalNeed } from '@bwc/lenders';
 import { activeListing, timelineFor } from '@bwc/risk';
 import { openObligations } from '@bwc/calls';
+import { handoffStanding } from '@bwc/interventure';
 import { VENDOR_GATES, isActivated, mode, outstandingPreconditions } from '@bwc/integration';
 import { registerIntegrationRoutes } from './routes/integrations.js';
 import {
   ACTION_MINIMUM_LEVEL,
   failed,
+  USPS_STATE_CODES,
   isComplianceState,
   noData,
   ok,
@@ -705,11 +708,13 @@ export const createApp = (deps: ConsoleAppDeps = {}): Express => {
       if (!actor) return;
 
       const at = now();
-      const [health, queue, obligations, clients] = await Promise.all([
+      const [health, queue, obligations, clients, compliance, handoffs] = await Promise.all([
         systemHealth(config.tenantId, at),
         openFor(config.tenantId, actor.id),
         openObligations(config.tenantId, at),
         listClients({ tenantId: config.tenantId, limit: 1 }),
+        countByComplianceState(config.tenantId),
+        handoffStanding(config.tenantId),
       ]);
 
       send(
@@ -720,6 +725,31 @@ export const createApp = (deps: ConsoleAppDeps = {}): Express => {
           openObligations: obligations.length,
           overdueObligations: obligations.filter((o) => o.overdue).length,
           clients: clients.status === 'ok' ? clients.value.total : null,
+
+          /**
+           * Decision E's four categories, plus the one every client starts in.
+           *
+           * Counts per state and nothing derived from them - no total, no ordering, no percentage.
+           * A number invites an average, and an average of a breach and a success is a smaller
+           * breach, which is the whole reason the state is categorical.
+           *
+           * `pending_assessment` is carried because omitting it would hide every client whose file
+           * opened today, and a summary that under-reports a tenant is worse than no summary.
+           */
+          compliance,
+
+          /**
+           * Collingswood handoffs, by where each has got to.
+           *
+           * Three counts rather than one: awaiting the client's own per-handoff consent (somebody
+           * to chase), already transferred (data that has left the firm), and declined. Adding them
+           * would produce a figure describing none of the three.
+           */
+          handoffs: {
+            awaitingConsent: handoffs.awaitingConsent.length,
+            withCollingswood: handoffs.withCollingswood.length,
+            declined: handoffs.declined.length,
+          },
         }),
       );
     }),
@@ -740,7 +770,14 @@ export const createApp = (deps: ConsoleAppDeps = {}): Express => {
     '/api/console/vocabulary',
     asyncRoute(async (req, res) => {
       if (!(await requireStaff(req, res))) return;
-      send(res, ok({ consentKinds: CONSENT_KINDS, capitalNeeds: CAPITAL_NEEDS }));
+      send(
+        res,
+        ok({
+          consentKinds: CONSENT_KINDS,
+          capitalNeeds: CAPITAL_NEEDS,
+          stateCodes: USPS_STATE_CODES,
+        }),
+      );
     }),
   );
 

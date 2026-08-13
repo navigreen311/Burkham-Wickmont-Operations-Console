@@ -176,3 +176,48 @@ renderWrites('contracts-writes', [
     body: (v) => ({ clientId: v.clientId, state: v.state }),
   },
 ]);
+
+/**
+ * C9. Fill the jurisdiction select from the vocabulary the server serves.
+ *
+ * Built here rather than written into the markup so the page cannot offer a code the Regulatory
+ * Engine does not recognise. If the fetch fails the select stays as its single placeholder, which
+ * refuses honestly rather than silently degrading to free text.
+ */
+const fillJurisdictions = async () => {
+  const select = document.getElementById('contracts-jurisdiction');
+  if (!select) return;
+
+  const response = await fetch('/api/console/vocabulary', { credentials: 'same-origin' });
+  const payload = await response.json().catch(() => ({ status: 'failed' }));
+  if (payload.status !== 'ok') return;
+
+  for (const code of payload.data.stateCodes ?? []) {
+    const option = document.createElement('option');
+    option.value = code;
+    option.textContent = code;
+    select.append(option);
+  }
+};
+
+/**
+ * Filled on first use rather than on module execution.
+ *
+ * Running it at load meant fetching before sign-in, so the vocabulary came back refused and the
+ * select kept only its placeholder - a dropdown with nothing in it, which reads as a broken control
+ * rather than an unauthenticated one. Bound to the panel opening and to the first focus, whichever
+ * happens first, and guarded so it fills once.
+ */
+let filled = false;
+const fillOnce = () => {
+  if (filled) return;
+  filled = true;
+  void fillJurisdictions();
+};
+
+document.getElementById('panel-compliance')?.addEventListener('toggle', fillOnce);
+document.getElementById('contracts-jurisdiction')?.addEventListener('focus', fillOnce);
+document.getElementById('contracts-clauses-load')?.addEventListener('click', fillOnce);
+
+// And once a session exists, which is what the sign-in flow dispatches.
+window.addEventListener('bwc:signed-in', fillOnce);

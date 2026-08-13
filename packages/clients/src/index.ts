@@ -13,6 +13,7 @@ import { db } from '@bwc/db';
 import { append } from '@bwc/ledger';
 import { autoListForComplianceFail } from '@bwc/risk';
 import {
+  COMPLIANCE_STATES,
   isComplianceState,
   ok,
   failed,
@@ -225,6 +226,43 @@ export const MAX_CLIENT_PAGE = 100;
  * `find` already returns `failed` for one, and a list that quietly omitted it would hide the client
  * whose record is broken - which is the client somebody most needs to see.
  */
+/**
+ * How many clients sit in each compliance state.
+ *
+ * **Counted per state and never totalled into a score.** Decision E makes compliance state
+ * categorical precisely so that it cannot be averaged: a number invites an average, and an average
+ * of a breach and a success is a smaller breach. This returns the categories with their counts and
+ * nothing derived from them - no ordering, no percentage, no "health".
+ *
+ * **All five states, including `pending_assessment`.** The blueprint names four categories a file
+ * can be assessed into; `pending_assessment` is the fifth and is where every client starts on the
+ * day their file opens. A summary that showed only the assessed four would silently omit every new
+ * client, and under-reporting a tenant is the failure this surface exists to prevent.
+ *
+ * A state with no clients is returned as zero rather than dropped. An absent row and a zero row
+ * read identically on a page, and only one of them is a fact.
+ */
+export const countByComplianceState = async (
+  tenantId: string,
+): Promise<Readonly<Record<ComplianceState, number>>> => {
+  const rows = await db().client.groupBy({
+    by: ['complianceState'],
+    where: { tenantId },
+    _count: { _all: true },
+  });
+
+  const counts = Object.fromEntries(COMPLIANCE_STATES.map((state) => [state, 0])) as Record<
+    ComplianceState,
+    number
+  >;
+
+  for (const row of rows) {
+    const state = row.complianceState as ComplianceState;
+    if (state in counts) counts[state] = row._count._all;
+  }
+  return counts;
+};
+
 export const listClients = async (input: {
   tenantId: string;
   limit?: number;

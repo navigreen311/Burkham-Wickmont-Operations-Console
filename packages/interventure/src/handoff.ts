@@ -295,6 +295,43 @@ export const declineHandoff = async (input: {
   return ok(toHandoff(updated));
 };
 
+/**
+ * Every handoff in the tenant, grouped by where it has got to.
+ *
+ * **The counts a compliance officer needs, and no total.** A handoff awaiting the client's consent
+ * and one already transferred to Collingswood are different obligations - the first is somebody to
+ * chase, the second is data that has left. Adding them together produces a number that describes
+ * neither.
+ *
+ * `handoffsFor` answers for one client, which is the right shape for a client file and the wrong
+ * one for an Overview: an operator asking "is anything waiting on me" cannot ask it per client.
+ *
+ * Per-handoff consent is the rule this counts against (ADR-0058). A client who agreed to be
+ * introduced to Collingswood once has not agreed to be introduced again, so `awaitingConsent` is
+ * the queue that matters and it never empties by inference.
+ */
+export const handoffStanding = async (
+  tenantId: string,
+): Promise<{
+  readonly awaitingConsent: readonly Handoff[];
+  readonly withCollingswood: readonly Handoff[];
+  readonly declined: readonly Handoff[];
+}> => {
+  const rows = await db().crossPortfolioHandoff.findMany({
+    where: { tenantId },
+    orderBy: [{ proposedAt: 'asc' }, { id: 'asc' }],
+  });
+  const all = rows.map(toHandoff);
+
+  return {
+    // Proposed, and nobody has consented yet. Nothing may be shared.
+    awaitingConsent: all.filter((h) => h.consentId === null && h.transferredAt === null),
+    // Consented and sent. The data has left the firm.
+    withCollingswood: all.filter((h) => h.transferredAt !== null),
+    declined: all.filter((h) => h.state === 'declined'),
+  };
+};
+
 export const handoffsFor = async (
   tenantId: string,
   clientId: string,

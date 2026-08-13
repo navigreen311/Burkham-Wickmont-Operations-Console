@@ -49,7 +49,44 @@ const renderIntegrations = async (root, api) => {
   modeLine.textContent = `INTEGRATION_MODE is ${mode}.`;
   root.append(modeLine);
 
-  for (const vendor of vendors) {
+  /**
+   * C2. Two groups, because these are two kinds of processor.
+   *
+   * `email`, `sms` and `voice` are the carriers underneath the platform seams - Twilio, Sendgrid or
+   * whoever is eventually picked. Blueprint 4.3 routes voice through CapitalForge to VoiceForge, so
+   * it is tempting to read them as covered by CapitalForge's gate. They are not: CapitalForge's
+   * SOC 2 says nothing about the carrier that actually moves the message, and that carrier holds
+   * client names, application status and document requests.
+   *
+   * Grouping rather than removing, and the header says which is which.
+   */
+  const COMMUNICATIONS = ['email', 'sms', 'voice'];
+  const groups = [
+    {
+      heading: 'Client financial data vendors',
+      note: 'Each holds or transmits client financial data. All four evidence items are required before any client onboards.',
+      members: vendors.filter((v) => !COMMUNICATIONS.includes(v.vendor)),
+    },
+    {
+      heading: 'Communications infrastructure',
+      note: 'The carriers underneath the platform seams. CapitalForge routes voice to VoiceForge, but the provider that moves the message is a separate processor with its own SOC 2 - so each carries its own four items rather than inheriting the platform gate above.',
+      members: vendors.filter((v) => COMMUNICATIONS.includes(v.vendor)),
+    },
+  ];
+
+  for (const group of groups) {
+    if (group.members.length === 0) continue;
+
+    const groupHeading = document.createElement('h3');
+    groupHeading.textContent = group.heading;
+    root.append(groupHeading);
+
+    const groupNote = document.createElement('p');
+    groupNote.className = 'muted';
+    groupNote.textContent = group.note;
+    root.append(groupNote);
+
+    for (const vendor of group.members) {
     const block = document.createElement('section');
 
     const title = document.createElement('h3');
@@ -117,7 +154,50 @@ const renderIntegrations = async (root, api) => {
     }
 
     root.append(block);
+    }
   }
+
+  /**
+   * C1. The Forge platforms, present with a stated reason rather than silently absent.
+   *
+   * Blueprint 11.5 lists these among the Integration Layer's configurations, so a reader who knows
+   * the blueprint and does not find them here concludes the board is incomplete. They follow a
+   * different gate because they carry no client financial data: FunnelForge is an external
+   * marketing funnel, and the content Forges publish the firm's own material.
+   *
+   * FunnelForge does carry prospect contact details, which is personal data even though it is not
+   * financial - said here rather than smoothed over, because "not financial" is not "not personal".
+   *
+   * ChamberForge is V2 scope and is listed as such: a reader should not have to work out whether
+   * its absence from the evidence board is an omission or a roadmap.
+   */
+  const nonFinancial = [
+    ['FunnelForge', 'External marketing funnel. Carries prospect contact details - personal data, though not financial - and no client file.'],
+    ['SelfPublisherForge', "Publishes the firm's own long-form content. No client data."],
+    ['AnimaForge', "Generates the firm's own motion content. No client data."],
+    ['VideoEditForge', "Edits the firm's own video content. No client data."],
+    ['ChamberForge', 'V2 scope - the bridge integration is not built. Listed so its absence reads as a roadmap rather than an omission.'],
+  ];
+
+  const nfHeading = document.createElement('h3');
+  nfHeading.textContent = 'Non-financial-data integrations';
+  root.append(nfHeading);
+
+  const nfNote = document.createElement('p');
+  nfNote.className = 'muted';
+  nfNote.textContent =
+    'Named in blueprint 11.5 and not on the evidence board above, because none holds client financial data. They are shown here so their absence from the four-item gate is a stated position rather than a gap. None is activated, and none has a vendor gate in this system today.';
+  root.append(nfNote);
+
+  const nfList = document.createElement('ul');
+  for (const [name, why] of nonFinancial) {
+    const entry = document.createElement('li');
+    const strong = document.createElement('strong');
+    strong.textContent = name;
+    entry.append(strong, document.createTextNode(` — ${why}`));
+    nfList.append(entry);
+  }
+  root.append(nfList);
 
   // Where a form would be.
   const note = document.createElement('p');

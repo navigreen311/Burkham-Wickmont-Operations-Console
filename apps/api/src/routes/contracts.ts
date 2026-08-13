@@ -23,7 +23,7 @@ import {
   publishClause,
 } from '@bwc/contracts';
 import { exhibitInputFor } from '@bwc/billing';
-import { ok, refused } from '@bwc/core';
+import { JURISDICTION_REFUSAL, ok, refused, toUspsStateCode } from '@bwc/core';
 import { send } from '@bwc/http';
 
 import type { ConsoleRouteContext } from './context.js';
@@ -61,15 +61,16 @@ export const registerContractRoutes = (context: ContractsRouteContext): void => 
     asyncRoute(async (req, res) => {
       if (!(await requireStaff(req, res))) return;
       const query = req.query as Record<string, unknown>;
-      const jurisdiction =
-        typeof query['jurisdiction'] === 'string' ? query['jurisdiction'].trim().toUpperCase() : '';
+      // C9. The parse boundary. `length !== 2` accepted '12', 'N-' and any two characters; a
+      // jurisdiction is a member of a list, not a string of a certain width.
+      const jurisdiction = toUspsStateCode(query['jurisdiction']);
       const offerTier = typeof query['offerTier'] === 'string' ? query['offerTier'] : undefined;
 
-      if (jurisdiction.length !== 2) {
+      if (jurisdiction === null) {
         send(
           res,
           refused(
-            'jurisdiction is required and is a two-letter state code. A clause set assembled without one is a different question, not a smaller one - "we could not tell which state" and "no state rule applies" are different statements and only one of them is a check.',
+            `${JURISDICTION_REFUSAL}. A clause set assembled without one is a different question, not a smaller one - "we could not tell which state" and "no state rule applies" are different statements and only one of them is a check.`,
             'Blueprint 7.3 with 7.2 - jurisdiction is never inferred',
           ),
         );

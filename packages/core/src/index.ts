@@ -15,6 +15,7 @@
 
 export * from './outcome.js';
 export * from './compliance.js';
+export * from './jurisdiction.js';
 export * from './authority.js';
 export * from './provenance.js';
 export * from './events.js';
