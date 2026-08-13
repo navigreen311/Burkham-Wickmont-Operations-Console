@@ -91,6 +91,7 @@ import { registerGraphRoutes } from './routes/graph.js';
 import { registerIntelligenceRoutes } from './routes/intelligence.js';
 import { registerInterventureRoutes } from './routes/interventure.js';
 import { registerPartnerRoutes } from './routes/partners.js';
+import { registerPartnerRiskRoutes } from './routes/partnerRisk.js';
 import { registerSalesRoutes } from './routes/sales.js';
 import { registerWarehouseRoutes } from './routes/warehouse.js';
 // The five modules that had no surface until now: 1.4, 7.3, 3.2, 11.11, 2.2/2.4.
@@ -1161,6 +1162,8 @@ export const createApp = (deps: ConsoleAppDeps = {}): Express => {
   registerGraphRoutes(routeContext);
   registerSalesRoutes(routeContext);
   registerPartnerRoutes(routeContext);
+  // 8.4, the V1.5 engine that had no surface until now.
+  registerPartnerRiskRoutes(routeContext);
   registerAdminRoutes(routeContext);
   registerDeliverableRoutes(routeContext);
   registerIntelligenceRoutes(routeContext);

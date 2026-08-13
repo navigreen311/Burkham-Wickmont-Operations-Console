@@ -354,6 +354,30 @@ export const ACTION_MINIMUM_LEVEL = {
    * transitions a compliance state still needs `transition_compliance_state`.
    */
   run_workflow: 1,
+
+  // --- 8.4 Partner Risk, the V1.5 engine that had no surface ---
+
+  /**
+   * **Level 1, and deliberately the lowest here - the same asymmetry `trigger_firewall` has.**
+   *
+   * A conduct finding STOPS things. A finding nobody recorded is a partner promising clients an
+   * approval with nothing in the file about it; a finding recorded in error is visible at once,
+   * costs the partner nothing irreversible, and takes a person to resolve. Over-recording produces
+   * a conversation, under-recording produces a client who was promised something.
+   *
+   * A `critical` finding suspends the partner from inside `recordFinding` - automatic in, human
+   * out. That is not a reason to raise this level: it is the reason the level is low, because the
+   * act that fires it must not be gated behind whoever is senior enough to be busy on a Friday.
+   */
+  record_partner_finding: 1,
+
+  /**
+   * Level 3, and the counterpart to the above for the same reason `release_legal_hold` is separate
+   * from placing one: **resolving is the direction that restores.** An open finding suppresses a
+   * partner's standing; resolving it lifts the suppression, and one resolved carelessly puts
+   * somebody back in front of clients. The module already requires a note somebody can read back.
+   */
+  resolve_partner_finding: 3,
 } as const satisfies Record<string, AuthorityLevel>;
 
 /**
