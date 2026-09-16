@@ -57,6 +57,19 @@ calendar gave them.
 a note. A red baseline means no PR can show that it is green, and the next failure lands in a
 suite that is already failing.
 
+**CI runs on a nightly schedule as well as on push and pull request** — ruling (Ivan Green,
+2026-09-16) — so a red `main` is found within a day, not after 34.
+
+The two triggers this workflow had only answer the question when somebody asks it. Both of them
+are somebody's action, and the failure this ADR exists for happened in a month when nobody took
+one: the tree was untouched, the suite was untouched, and the thing that moved was the date. A
+trigger that fires on a change cannot see a failure whose cause is the absence of one.
+
+Once a day is the resolution the ruling names, and it is a bound on DISCOVERY, not on breakage.
+A test that bakes in a date still rots the moment the date passes; what changes is that the
+window between rotting and being seen is a day instead of however long the repository stays
+quiet.
+
 **No test is skipped, weakened, or narrowed to get green.** Not `.skip`, not a loosened matcher,
 not a smaller assertion. A test that cannot pass is either testing something real that is broken —
 fix the code — or testing wrongly — fix the test, and say which in the commit. The three fixes
@@ -71,6 +84,21 @@ A test anchored to the run is harder to read than one with a calendar date in it
 hold "fourteen days before this run" instead of "2026-08-01". That is the cost, and it is paid once
 per file at the anchor, where a comment explains which value could not be injected and why.
 
-This does not stop the class. A test can still bake a date in, and CI will not notice for as long
-as nobody pushes. What would notice is running the suite against a clock set forward, and that is
-not built here — it is the obvious next control, and naming it is not the same as having it.
+This does not stop the class. A test can still bake a date in; the nightly bounds how long that
+goes unseen and does not prevent it. What would prevent it is running the suite against a clock
+set forward, and that is not built here — it is the obvious next control, and naming it is not
+the same as having it.
+
+**And nothing yet tells a person that a nightly failed.** The repository has no webhooks and no
+notification integration. GitHub's own behaviour for a scheduled workflow is narrow and worth
+stating exactly, because it is easy to assume a team is being told when one account is:
+
+> Notifications for scheduled workflows are sent to the user who initially created the workflow.
+> If a different user updates the cron syntax, in the `schedule` event in the workflow file,
+> subsequent notifications will be sent to that user instead.
+
+So the audience for a failed nightly is one account — whoever last edited the cron line — and
+whether it reaches them at all depends on that account's own Actions notification preferences,
+which are not visible from the repository. There is no channel, no rota and no escalation. A
+nightly that nobody reads finds a red `main` in a day and tells no one, which is a different
+failure from the one this ADR fixes and is not fixed here.
