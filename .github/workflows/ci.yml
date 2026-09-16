@@ -27,9 +27,34 @@ on:
   schedule:
     - cron: '17 7 * * *'
 
+# CANCELLATION IS A PULL-REQUEST BEHAVIOUR ONLY.
+#
+# `${{ github.workflow }}-${{ github.ref }}` put a push to main and the nightly in the SAME
+# group as each other, and every push to main in one group with every other. With
+# cancel-in-progress on, the newer run killed the older one.
+#
+# That is not theoretical. On 2026-09-16, #86 and #83 were merged a minute apart and the run
+# for 0e04595 was CANCELLED by the run for 6c1deb2. The first merge commit has no result and
+# never will. A cancelled run is not a green one and it is not a red one - it is a commit
+# nothing ever checked, sitting in main's history looking like it was checked.
+#
+# On a pull request the behaviour is right and stays: push twice in a minute and only the
+# last commit matters, because the branch is the unit under review.
+#
+# TWO INDEPENDENT REASONS a push or a nightly cannot now be cancelled, because one of them is
+# a flag somebody can flip by accident:
+#   1. the GROUP. Non-pull-request runs key on `github.run_id`, which is unique per run, so
+#      such a run is alone in its group and there is nothing for it to collide with. This
+#      also rules out the OTHER cancellation GitHub does - a PENDING run in a shared group is
+#      replaced regardless of cancel-in-progress - which a queue of merges would have hit.
+#   2. the FLAG, which now says what is intended rather than relying on the group to prevent
+#      what it permits.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  group: >-
+    ${{ github.workflow }}-${{ github.event_name == 'pull_request'
+    && format('pr-{0}', github.ref)
+    || format('run-{0}', github.run_id) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/bwc_console_ci?schema=public
