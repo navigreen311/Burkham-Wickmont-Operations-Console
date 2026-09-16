@@ -457,10 +457,23 @@ describe('through the portal', () => {
     if (changed.status !== 'ok') throw new Error('change failed');
     expect(changed.value.otherSessionsRevoked).toBe(1);
 
-    expect((await resolveSession({ tenantId: fx.tenant.id, token: mine.token })).status).toBe('ok');
-    expect((await resolveSession({ tenantId: fx.tenant.id, token: other.token })).status).toBe(
-      'refused',
-    );
+    // ONE CLOCK, ALL THE WAY THROUGH.
+    //
+    // `resolveSession` slides the idle window on every resolve: it writes `lastSeenAt = now`.
+    // `principalFromToken` above was given `NOW`, so it stamped these sessions at 2026-08-15,
+    // and these two resolves used to omit `now` and fall back to the wall clock. Thirty minutes
+    // of real time after that date, SESSION_IDLE_MINUTES had elapsed between the two calls and
+    // the caller's own session read as idle - a session expiring in the middle of a test that
+    // never meant to let any time pass at all.
+    //
+    // The assertion is unchanged and so is the behaviour it checks. What is fixed is that the
+    // test now names the instant instead of taking one from whenever it happens to run.
+    expect(
+      (await resolveSession({ tenantId: fx.tenant.id, token: mine.token, now: NOW })).status,
+    ).toBe('ok');
+    expect(
+      (await resolveSession({ tenantId: fx.tenant.id, token: other.token, now: NOW })).status,
+    ).toBe('refused');
   });
 
   it('records the change, with no credential material in the payload', async () => {
