@@ -99,3 +99,4 @@ missing** — these numbers were never used.
 | 0084 | [A surface must refuse the score as hard as the module](0084-a-surface-must-refuse-the-score-as-hard-as-the-module.md)                                          |
 | 0085 | [A message carrier is a vendor](0085-a-message-carrier-is-a-vendor.md)                                                                                          |
 | 0086 | [A test names its own clock, and a red main blocks every merge](0086-a-test-names-its-own-clock.md)                                                             |
+| 0087 | [An unclassified state is not a one-party state](0087-an-unclassified-state-is-not-a-one-party-state.md)                                                        |

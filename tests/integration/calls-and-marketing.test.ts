@@ -57,6 +57,8 @@ import { cleanupTenant, makeFixture, type Fixture } from '../setup.js';
 let fx: Fixture;
 let texan: string;
 let californian: string;
+let nevadan: string;
+let unclassifiedClient: string;
 
 const NOW = new Date('2026-08-10T15:00:00.000Z');
 const HOUR = 60 * 60 * 1000;
@@ -73,10 +75,14 @@ beforeAll(async () => {
   fx = await makeFixture('calls-marketing');
   await seedFoundingClaims(fx.tenant.id, 'compliance@burkhamwickmont.test', HUMAN());
 
-  const [a, b] = await Promise.all([
+  const [a, b, c, d] = await Promise.all([
     createClient(fx.tenant.id, 'Lone Star Fabrication LLC', HUMAN()),
     createClient(fx.tenant.id, 'Pacific Coast Logistics LLC', HUMAN()),
+    createClient(fx.tenant.id, 'Silver State Equipment LLC', HUMAN()),
+    createClient(fx.tenant.id, 'Bighorn Basin Drilling LLC', HUMAN()),
   ]);
+  unclassifiedClient = d.id;
+  nevadan = c.id;
   texan = a.id;
   californian = b.id;
 });
@@ -101,6 +107,158 @@ describe('4.3 recording consent follows the client state', () => {
     if (call.status !== 'ok') return;
     expect(call.value.recordingPermitted).toBe(true);
     expect(call.value.clientConsentRequired).toBe(false);
+  });
+
+  it('refuses to record in Nevada without the client consenting', async () => {
+    // Ruling (Ivan Green, 2026-09-16): Nevada is treated as an ALL-PARTY consent state until a
+    // lawyer confirms otherwise. Before the ruling this call was permitted and the consent
+    // ledger was never read - `mayRecord` returned permitted before its first query.
+    const call = await beginCall({
+      tenantId: fx.tenant.id,
+      clientId: nevadan,
+      jurisdiction: 'NV',
+      purpose: 'Discovery call',
+      internalParticipants: ['Concierge lead'],
+      startedAt: NOW,
+      actor: HUMAN(),
+    });
+
+    expect(call.status).toBe('ok');
+    if (call.status !== 'ok') return;
+    expect(call.value.recordingPermitted).toBe(false);
+    expect(call.value.status).toBe('consent_refused');
+    expect(call.value.clientConsentRequired).toBe(true);
+    // The basis says it is a ruling, not a statute. A regulator asking what the rule was on the
+    // day gets the honest answer rather than an invented citation.
+    expect(call.value.consentBasis).toMatch(/Founder ruling, 2026-09-16/);
+
+    // And the refusal is evidence.
+    const events = await read({
+      tenantId: fx.tenant.id,
+      clientId: nevadan,
+      type: 'calls.recording.refused',
+    });
+    expect(events.length).toBeGreaterThan(0);
+  });
+
+  it('records in Nevada once the client consents, reading the same ledger California reads', async () => {
+    const consent = await grant({
+      tenantId: fx.tenant.id,
+      clientId: nevadan,
+      kind: CALL_RECORDING_CONSENT_KIND,
+      scope: 'Recording of advisory calls',
+      actor: HUMAN(),
+    });
+    expect(consent.status).toBe('ok');
+
+    const permitted = await beginCall({
+      tenantId: fx.tenant.id,
+      clientId: nevadan,
+      jurisdiction: 'NV',
+      purpose: 'Strategy call',
+      internalParticipants: ['Concierge lead'],
+      startedAt: NOW,
+      actor: HUMAN(),
+    });
+
+    expect(permitted.status).toBe('ok');
+    if (permitted.status !== 'ok') return;
+    expect(permitted.value.recordingPermitted).toBe(true);
+    expect(permitted.value.status).toBe('recording');
+    expect(permitted.value.clientConsentRequired).toBe(true);
+  });
+
+  it('refuses a state on neither list, and records it as unclassified rather than one-party', async () => {
+    // Ruling (Ivan Green, 2026-09-16): a state on neither list is recorded as `unclassified`,
+    // never `one_party`. It still requires consent and reads the ledger.
+    //
+    // The consent requirement was never the bug. The LABEL was: `ruleFor` returned
+    // `regime: 'one_party'` for a state nobody had looked at, and `beginCall` writes that regime
+    // into the append-only Event Ledger - so the permanent record said somebody had classified
+    // Wyoming. Nobody had.
+    const call = await beginCall({
+      tenantId: fx.tenant.id,
+      clientId: unclassifiedClient,
+      jurisdiction: 'WY',
+      purpose: 'Discovery call',
+      internalParticipants: ['Concierge lead'],
+      startedAt: NOW,
+      actor: HUMAN(),
+    });
+
+    expect(call.status).toBe('ok');
+    if (call.status !== 'ok') return;
+    expect(call.value.recordingPermitted).toBe(false);
+    expect(call.value.status).toBe('consent_refused');
+    expect(call.value.clientConsentRequired).toBe(true);
+
+    // What the ledger was given. This is the assertion the ruling is about.
+    const events = await read({
+      tenantId: fx.tenant.id,
+      clientId: unclassifiedClient,
+      type: 'calls.recording.refused',
+    });
+    expect(events.length).toBeGreaterThan(0);
+    const payload = events[events.length - 1]?.payload as Record<string, unknown>;
+    expect(payload['jurisdiction']).toBe('WY');
+    expect(payload['regime']).toBe('unclassified');
+    expect(payload['regime']).not.toBe('one_party');
+  });
+
+  it('records an unclassified state once the client consents, off the same ledger', async () => {
+    // "Requires consent" has to mean the ledger is actually read, not that the call is refused
+    // unconditionally. A module that refused every unclassified state would pass the test above.
+    const consent = await grant({
+      tenantId: fx.tenant.id,
+      clientId: unclassifiedClient,
+      kind: CALL_RECORDING_CONSENT_KIND,
+      scope: 'Recording of advisory calls',
+      actor: HUMAN(),
+    });
+    expect(consent.status).toBe('ok');
+
+    const permitted = await beginCall({
+      tenantId: fx.tenant.id,
+      clientId: unclassifiedClient,
+      jurisdiction: 'WY',
+      purpose: 'Strategy call',
+      internalParticipants: ['Concierge lead'],
+      startedAt: NOW,
+      actor: HUMAN(),
+    });
+
+    expect(permitted.status).toBe('ok');
+    if (permitted.status !== 'ok') return;
+    expect(permitted.value.recordingPermitted).toBe(true);
+    expect(permitted.value.status).toBe('recording');
+
+    const events = await read({
+      tenantId: fx.tenant.id,
+      clientId: unclassifiedClient,
+      type: 'calls.recording.started',
+    });
+    const payload = events[events.length - 1]?.payload as Record<string, unknown>;
+    expect(payload['regime']).toBe('unclassified');
+  });
+
+  it('leaves the other one-party states recording without consent', async () => {
+    // The ruling moved Nevada only. NY, TX, AZ and UT are unchanged, and a run that quietly
+    // reclassified them would be a different decision than the one that was made.
+    for (const jurisdiction of ['NY', 'TX', 'AZ', 'UT']) {
+      const call = await beginCall({
+        tenantId: fx.tenant.id,
+        clientId: texan,
+        jurisdiction,
+        purpose: `Discovery call (${jurisdiction})`,
+        internalParticipants: ['Concierge lead'],
+        startedAt: NOW,
+        actor: HUMAN(),
+      });
+      expect(call.status, jurisdiction).toBe('ok');
+      if (call.status !== 'ok') continue;
+      expect(call.value.recordingPermitted, jurisdiction).toBe(true);
+      expect(call.value.clientConsentRequired, jurisdiction).toBe(false);
+    }
   });
 
   it('refuses to record in an all-party state without the client consenting', async () => {

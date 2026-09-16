@@ -15,6 +15,7 @@ import { describe, expect, it } from 'vitest';
 import {
   ALL_PARTY_CONSENT_STATES,
   CONFIRMED_ONE_PARTY_STATES,
+  UNCLASSIFIED_STATE_RULE,
   checkDisclosures,
   detectPromises,
   detectSignals,
@@ -198,6 +199,41 @@ describe('recording consent by jurisdiction', () => {
     expect(rule.unclassified).toBe(true);
     expect(rule.clientConsentRequired).toBe(true);
     expect(rule.detail).toMatch(/not the same as a one-party state/);
+
+    // Ruling (Ivan Green, 2026-09-16): recorded as `unclassified`, NEVER `one_party`. The
+    // behaviour was always right; the LABEL said one-party, and the label is what `beginCall`
+    // writes into the append-only ledger.
+    expect(rule.regime).toBe('unclassified');
+  });
+
+  it('has one rule for an unclassified state, and it is a named constant', () => {
+    // The module header claimed a constant called `UNCLASSIFIED_STATES` for six weeks. Nothing
+    // by that name existed - a comment describing a mechanism that was not there, which is the
+    // failure mode 7.2 calls worse than a missing rule because it looks reviewed.
+    expect(UNCLASSIFIED_STATE_RULE.regime).toBe('unclassified');
+    expect(UNCLASSIFIED_STATE_RULE.clientConsentRequired).toBe(true);
+    expect(UNCLASSIFIED_STATE_RULE.citation).toBeNull();
+
+    // And `ruleFor` answers FROM it rather than restating it, so the two cannot drift.
+    const rule = ruleFor('WY');
+    expect(rule.regime).toBe(UNCLASSIFIED_STATE_RULE.regime);
+    expect(rule.clientConsentRequired).toBe(UNCLASSIFIED_STATE_RULE.clientConsentRequired);
+    expect(rule.detail).toContain(UNCLASSIFIED_STATE_RULE.reason);
+  });
+
+  it('never reports a regime that disagrees with the unclassified flag', () => {
+    // Two fields saying the same thing is two chances to say it differently. Checked across
+    // every list plus a state on neither.
+    const states = [
+      ...ALL_PARTY_CONSENT_STATES.map((rule) => rule.state),
+      ...CONFIRMED_ONE_PARTY_STATES,
+      'WY',
+      'ZZ',
+    ];
+    for (const state of states) {
+      const rule = ruleFor(state);
+      expect(rule.unclassified, state).toBe(rule.regime === 'unclassified');
+    }
   });
 
   it('normalises the state code', () => {
@@ -220,6 +256,41 @@ describe('recording consent by jurisdiction', () => {
     for (const state of ['NV', 'CA', 'NY', 'TX', 'FL', 'AZ', 'UT']) {
       expect(ruleFor(state).unclassified, state).toBe(false);
     }
-    expect(CONFIRMED_ONE_PARTY_STATES).toContain('NV');
+  });
+
+  it('treats Nevada as all-party, by founder ruling rather than by statute', () => {
+    // Ruling (Ivan Green, 2026-09-16): Nevada is an ALL-PARTY consent state until a lawyer
+    // confirms otherwise. The cautious setting is the ruling; it is not a legal conclusion.
+    // This test pins the RULING, so a later counsel position has to change it deliberately.
+    const rule = ruleFor('NV');
+    expect(rule.regime).toBe('all_party');
+    expect(rule.clientConsentRequired).toBe(true);
+    expect(rule.unclassified).toBe(false);
+    expect(CONFIRMED_ONE_PARTY_STATES).not.toContain('NV');
+
+    // The entry must not read as a statutory position, because it is not one.
+    expect(rule.citation).toMatch(/Founder ruling, 2026-09-16/);
+    expect(rule.citation).toMatch(/pending counsel review/i);
+    expect(rule.openQuestion).toMatch(/not a reading of Nevada law/i);
+  });
+
+  it('leaves the other four one-party states exactly as they were', () => {
+    // The ruling moved one state. It did not validate the rest, and it must not quietly
+    // reclassify them either.
+    expect([...CONFIRMED_ONE_PARTY_STATES]).toEqual(['NY', 'TX', 'AZ', 'UT']);
+    for (const state of ['NY', 'TX', 'AZ', 'UT']) {
+      const rule = ruleFor(state);
+      expect(rule.regime, state).toBe('one_party');
+      expect(rule.clientConsentRequired, state).toBe(false);
+      expect(rule.unclassified, state).toBe(false);
+      expect(rule.citation, state).toBeNull();
+
+      // Ruling (Ivan Green, 2026-09-16): they stay, MARKED PENDING COUNSEL REVIEW. A null
+      // openQuestion would state that there is nothing outstanding about an unsourced
+      // classification, which is the opposite of what is true.
+      expect(rule.openQuestion, state).toMatch(/pending counsel review/i);
+      expect(rule.openQuestion, state).toMatch(/No source is on record/i);
+      expect(rule.detail, state).toMatch(/unsourced and pending counsel review/i);
+    }
   });
 });
