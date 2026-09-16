@@ -220,6 +220,34 @@ describe('recording consent by jurisdiction', () => {
     for (const state of ['NV', 'CA', 'NY', 'TX', 'FL', 'AZ', 'UT']) {
       expect(ruleFor(state).unclassified, state).toBe(false);
     }
-    expect(CONFIRMED_ONE_PARTY_STATES).toContain('NV');
+  });
+
+  it('treats Nevada as all-party, by founder ruling rather than by statute', () => {
+    // Ruling (Ivan Green, 2026-09-16): Nevada is an ALL-PARTY consent state until a lawyer
+    // confirms otherwise. The cautious setting is the ruling; it is not a legal conclusion.
+    // This test pins the RULING, so a later counsel position has to change it deliberately.
+    const rule = ruleFor('NV');
+    expect(rule.regime).toBe('all_party');
+    expect(rule.clientConsentRequired).toBe(true);
+    expect(rule.unclassified).toBe(false);
+    expect(CONFIRMED_ONE_PARTY_STATES).not.toContain('NV');
+
+    // The entry must not read as a statutory position, because it is not one.
+    expect(rule.citation).toMatch(/Founder ruling, 2026-09-16/);
+    expect(rule.citation).toMatch(/pending counsel review/i);
+    expect(rule.openQuestion).toMatch(/not a reading of Nevada law/i);
+  });
+
+  it('leaves the other four one-party states exactly as they were', () => {
+    // The ruling moved one state. It did not validate the rest, and it must not quietly
+    // reclassify them either.
+    expect([...CONFIRMED_ONE_PARTY_STATES]).toEqual(['NY', 'TX', 'AZ', 'UT']);
+    for (const state of ['NY', 'TX', 'AZ', 'UT']) {
+      const rule = ruleFor(state);
+      expect(rule.regime, state).toBe('one_party');
+      expect(rule.clientConsentRequired, state).toBe(false);
+      expect(rule.unclassified, state).toBe(false);
+      expect(rule.citation, state).toBeNull();
+    }
   });
 });

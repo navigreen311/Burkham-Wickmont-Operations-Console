@@ -271,9 +271,9 @@ export const INVARIANTS: readonly Invariant[] = [
   {
     key: 'calls.ALL_PARTY_CONSENT_STATES',
     label: 'All-party call-recording consent states',
-    value: 'CA, FL, IL, MD, MA, MT, NH, OR, PA, WA, CT',
+    value: 'NV, CA, FL, IL, MD, MA, MT, NH, OR, PA, WA, CT',
     whyFixed:
-      'State criminal law. Recording a client without their consent in one of these states is a crime in the state where the CLIENT is sitting. The list changes when the law changes, which is a counsel review and a code change, not an admin screen.',
+      'State criminal law. Recording a client without their consent in one of these states is a crime in the state where the CLIENT is sitting. The list changes when the law changes, which is a counsel review and a code change, not an admin screen. NV is on the list by founder ruling of 2026-09-16 pending counsel review, not by a reading of its statute - and it is not editable here for the same reason as the rest.',
   },
   {
     key: 'core.COMPLIANCE_STATES',

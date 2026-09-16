@@ -49,6 +49,29 @@ export interface RecordingRule {
  * one-party.
  */
 export const ALL_PARTY_CONSENT_STATES: readonly RecordingRule[] = [
+  // NEVADA IS HERE BY FOUNDER RULING, NOT BY A READING OF THE STATUTE.
+  //
+  // Ruling (Ivan Green, 2026-09-16): Nevada is treated as an ALL-PARTY consent state for
+  // recorded calls until a lawyer confirms otherwise. The cautious setting is the ruling. It is
+  // NOT a legal conclusion, and nothing here should be cited as one.
+  //
+  // PENDING COUNSEL REVIEW. Nevada previously sat in `CONFIRMED_ONE_PARTY_STATES`, where its
+  // effect was to skip the consent ledger entirely - `mayRecord` returns permitted before it
+  // reads a single consent row. That is the failure mode the module header calls a criminal
+  // exposure, reached by a default rather than by a decision.
+  //
+  // AND THE WIDER POINT: NO LAWYER HAS CONFIRMED ANY STATE ON `CONFIRMED_ONE_PARTY_STATES`.
+  // The word "confirmed" in that constant's name is not backed by a citation, a comment, a doc
+  // or a commit message anywhere in this repository - see the note on the constant itself. This
+  // ruling moves the one state the founder ruled on; it does not validate the other four.
+  {
+    state: 'NV',
+    regime: 'all_party',
+    citation:
+      'Founder ruling, 2026-09-16 - pending counsel review. No statute has been confirmed for Nevada.',
+    openQuestion:
+      'Counsel has not classified Nevada. The all-party treatment is a deliberately cautious default chosen by the founder, not a reading of Nevada law, and counsel should replace this entry with a statutory position either way.',
+  },
   {
     state: 'CA',
     regime: 'all_party',
@@ -128,11 +151,23 @@ export const ALL_PARTY_CONSENT_STATES: readonly RecordingRule[] = [
  * and defaulting is how a rule nobody checked becomes a recording nobody was entitled to make -
  * so `ruleFor` reports an unclassified state as one requiring confirmation rather than as settled.
  *
- * V1's seven priority states are NV, CA, NY, TX, FL, AZ and UT. CA and FL are all-party above;
- * the rest are one-party on the public reading, and are listed here as confirmed rather than
- * assumed so the distinction between "checked" and "not on the other list" survives.
+ * V1's seven priority states are NV, CA, NY, TX, FL, AZ and UT. CA, FL and NV are all-party
+ * above - NV by founder ruling of 2026-09-16 rather than by a reading of its statute. The
+ * remaining four are one-party on the public reading, and are listed here as confirmed rather
+ * than assumed so the distinction between "checked" and "not on the other list" survives.
+ *
+ * That distinction is currently doing less work than the name claims: see the note on the
+ * constant. No lawyer has confirmed any of the four.
  */
-export const CONFIRMED_ONE_PARTY_STATES: readonly string[] = ['NV', 'NY', 'TX', 'AZ', 'UT'];
+//
+// NOTHING HAS CONFIRMED THE STATES ON THIS LIST. The name says "confirmed", and no state on it
+// carries a citation, a comment, a doc reference or a commit message saying who checked it or
+// against what - unlike `ALL_PARTY_CONSENT_STATES`, where every entry cites a statute. Each
+// entry here is one state code in a bare string array, and a state on this list skips the
+// consent ledger completely. Counsel should source all four or they should move.
+//
+// NV was removed on 2026-09-16 by founder ruling and is now an all-party entry above.
+export const CONFIRMED_ONE_PARTY_STATES: readonly string[] = ['NY', 'TX', 'AZ', 'UT'];
 
 export interface RecordingRequirement {
   readonly state: string;
