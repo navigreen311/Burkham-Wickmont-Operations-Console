@@ -6,6 +6,27 @@ on:
   pull_request:
     types: [opened, synchronize, reopened, edited]
 
+  # NIGHTLY, per ADR-0086.
+  #
+  # `push` and `pull_request` only answer the question when somebody asks it. Between
+  # 2026-08-13 and 2026-09-16 nobody did, and `main` was red for 34 days at a commit that
+  # had passed - three tests whose fixed calendar dates had gone by. The suite had not
+  # changed and neither had the code; the only thing that moved was the date, and nothing
+  # was running to notice.
+  #
+  # Once a day is the resolution that ruling asks for: a red `main` is found within a day.
+  # Off the hour deliberately - the top of an hour is when every other cron on GitHub's
+  # shared runners fires, and a queued run is a late answer.
+  #
+  # Two things about scheduled workflows worth knowing before trusting this:
+  #   - it runs the workflow file on the DEFAULT BRANCH, against the default branch. It
+  #     tests `main` and nothing else, which is exactly the gap it exists to close.
+  #   - GitHub DISABLES a schedule after 60 days with no repository activity, and says so
+  #     only by email. A quiet repository is the case this trigger is for, so the trigger
+  #     switching itself off in that case is worth knowing rather than assuming.
+  schedule:
+    - cron: '17 7 * * *'
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
