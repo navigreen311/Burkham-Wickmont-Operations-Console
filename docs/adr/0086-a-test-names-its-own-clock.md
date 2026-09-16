@@ -75,6 +75,22 @@ not a smaller assertion. A test that cannot pass is either testing something rea
 fix the code — or testing wrongly — fix the test, and say which in the commit. The three fixes
 here changed no production code, and that is the claim being made about them, not a convenience.
 
+**Cancellation is a pull-request behaviour only** — ruling (Ivan Green, 2026-09-16) — so every
+merge commit gets its own result.
+
+The workflow grouped by `github.ref`, which is `refs/heads/main` for a push to `main` and for the
+nightly alike, with `cancel-in-progress: true` over the top. Two merges a minute apart therefore
+produced one result: on the day this ADR's nightly landed, the run for the first of them was
+cancelled by the second, and that commit has no result and never will.
+
+A cancelled run is not a green one and it is not a red one. It is a commit nothing ever checked,
+sitting in `main`'s history looking like it was checked — the same shape as the 34-day-old green
+badge above, arrived at in one minute instead of a month. The nightly does not cover it either:
+the nightly tests `main`'s head, and the commit that was skipped is already behind it.
+
+On a pull request the behaviour is correct and stays. Push twice in a minute and only the last
+commit matters, because the branch is the unit under review, not each commit on it.
+
 ## Consequences
 
 The three tests assert exactly what they asserted before, on a clock they name. No production file
