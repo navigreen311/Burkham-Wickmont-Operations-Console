@@ -98,3 +98,4 @@ missing** — these numbers were never used.
 | 0083 | [Attribution is required, or it is decorative](0083-attribution-is-required-or-it-is-decorative.md)                                                             |
 | 0084 | [A surface must refuse the score as hard as the module](0084-a-surface-must-refuse-the-score-as-hard-as-the-module.md)                                          |
 | 0085 | [A message carrier is a vendor](0085-a-message-carrier-is-a-vendor.md)                                                                                          |
+| 0086 | [A test names its own clock, and a red main blocks every merge](0086-a-test-names-its-own-clock.md)                                                             |

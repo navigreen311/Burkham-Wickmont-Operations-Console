@@ -25,6 +25,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { create as createClient } from '@bwc/clients';
+import { db } from '@bwc/db';
 import { read as readLedger } from '@bwc/ledger';
 import {
   EnvKekProvider,
@@ -110,6 +111,24 @@ const storeClean = async (kind = 'bank_statement', owner = clientId) => {
   if (stored.status !== 'ok') throw new Error(`store failed: ${stored.status}`);
   await recordScanResult(fx.tenant.id, stored.value.id, 'clean', fx.human.id);
   return stored.value;
+};
+
+/**
+ * The creation date the vault actually recorded.
+ *
+ * `store` sets it from the wall clock and `VaultDocument` does not carry it, so a test that
+ * needs to reason about the retention period has to read it back rather than assume a date.
+ */
+const documentCreatedAt = async (documentId: string): Promise<Date> => {
+  const row = await db().vaultDocument.findFirstOrThrow({ where: { id: documentId } });
+  return row.createdAt;
+};
+
+/** Calendar months, matching how the schedule resolver counts them. */
+const addMonths = (from: Date, months: number): Date => {
+  const out = new Date(from.getTime());
+  out.setUTCMonth(out.getUTCMonth() + months);
+  return out;
 };
 
 const litigationHold = (overrides: Record<string, unknown> = {}) =>
@@ -561,7 +580,19 @@ describe('an unverified schedule does not authorise destruction', () => {
       now: NOW,
     });
 
-    const twoMonthsOn = new Date('2026-10-11T00:00:00.000Z');
+    // THE RETENTION CLOCK STARTS AT THE ROW'S createdAt, WHICH IS WALL-CLOCK NOW.
+    //
+    // `remove` resolves the schedule with `documentDate: row.createdAt`, and `store` has no way
+    // to inject that - deliberately, because a vault that accepts an arbitrary creation date is
+    // a vault that accepts a backdated one. So the document's date is whenever this test ran,
+    // and a removal instant written as a fixed calendar date is a countdown, not an assertion.
+    // This one was `2026-10-11`, which stopped being a month after "now" on 2026-09-11.
+    //
+    // Read the date the document actually has, and derive the removal instant from it. Explicit,
+    // and it cannot rot.
+    const storedAt = await documentCreatedAt(doc.id);
+    const twoMonthsOn = addMonths(storedAt, 2);
+
     const removed = await remove({
       tenantId: fx.tenant.id,
       documentId: doc.id,

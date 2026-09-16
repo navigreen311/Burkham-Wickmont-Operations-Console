@@ -38,12 +38,37 @@ let fx: Fixture;
 let passing: string;
 let failing: string;
 
-const NOW = new Date('2026-08-15T12:00:00.000Z');
-const PERIOD = periodOf(
-  new Date('2026-08-01T00:00:00.000Z'),
-  new Date('2026-08-14T00:00:00.000Z'),
-  NOW,
-);
+/**
+ * THE CLOCK THIS FILE RUNS ON, AND WHY IT IS NOT A CALENDAR.
+ *
+ * Every fixture below carries an explicit date - `occurredOn`, `takenOn`, `createdOn`. One does
+ * not, and cannot: `trigger` and `clear` in 6.2 take no time. The resolution rate counts their
+ * entries in the Event Ledger by the ledger's own `createdAt`, and the ledger is append-only and
+ * hash-chained, so nothing may backdate an entry. That timestamp is INSERT TIME - this instant,
+ * by construction.
+ *
+ * So a fixed August window could contain every dated fixture and still not contain the one
+ * event that arrives by running. It did, until 2026-08-14, when the window's end passed into
+ * the past and `firewallResolutionRate` began reporting null - correctly, because no trigger was
+ * raised in that period any more. The metric was right and the test's calendar had expired.
+ *
+ * The anchor is the run. Every date below is expressed against it, at the same spacing the
+ * calendar dates had, so the window necessarily contains both the dated fixtures and the
+ * undatable one.
+ */
+const ANCHOR = new Date();
+const DAY = 24 * 60 * 60 * 1000;
+/** `n` days before this run, at midnight UTC, so the fixtures keep whole-day spacing. */
+const daysBefore = (n: number): Date => {
+  const day = new Date(ANCHOR.getTime() - n * DAY);
+  day.setUTCHours(0, 0, 0, 0);
+  return day;
+};
+// An hour's headroom past the anchor: the ledger entries are written during `beforeAll`, and the
+// period is half-open, so its end has to sit after the last of them. `now` is the same instant,
+// which keeps `partial` false - the period is over by the time it is read.
+const NOW = new Date(ANCHOR.getTime() + 60 * 60 * 1000);
+const PERIOD = periodOf(daysBefore(14), NOW, NOW);
 const HUMAN = () => ({ id: fx.human.id, kind: 'human' as const });
 
 beforeAll(async () => {
@@ -91,7 +116,7 @@ beforeAll(async () => {
     tenantId: fx.tenant.id,
     clientId: passing,
     offerKey: 'foundation',
-    startedOn: new Date('2026-08-02T00:00:00.000Z'),
+    startedOn: daysBefore(13),
     startedBy: fx.human.id,
     actor: HUMAN(),
   });
@@ -103,7 +128,7 @@ beforeAll(async () => {
     kind: 'charge',
     amountCents: fromDollars(2_495),
     description: 'Foundation retainer',
-    occurredOn: new Date('2026-08-03T00:00:00.000Z'),
+    occurredOn: daysBefore(12),
     recordedBy: fx.human.id,
     actor: HUMAN(),
   });
@@ -113,7 +138,7 @@ beforeAll(async () => {
     kind: 'payment',
     amountCents: fromDollars(2_495),
     description: 'Retainer paid',
-    occurredOn: new Date('2026-08-04T00:00:00.000Z'),
+    occurredOn: daysBefore(11),
     recordedBy: fx.human.id,
     actor: HUMAN(),
   });
@@ -128,7 +153,7 @@ beforeAll(async () => {
       tenantId: fx.tenant.id,
       prospectName: name,
       sourceChannel: 'paid_search',
-      createdOn: new Date('2026-08-05T00:00:00.000Z'),
+      createdOn: daysBefore(10),
       actor: HUMAN(),
     });
     if (lead.status !== 'ok') throw new Error('setup: lead');
@@ -138,7 +163,7 @@ beforeAll(async () => {
       leadId: lead.value.id,
       readiness: 40,
       note: 'First blueprint reading.',
-      takenOn: new Date('2026-08-05T00:00:00.000Z'),
+      takenOn: daysBefore(10),
       takenBy: fx.human.id,
       actor: HUMAN(),
     });
@@ -147,7 +172,7 @@ beforeAll(async () => {
       leadId: lead.value.id,
       readiness: 40 + (index + 1) * 10,
       note: 'Improved after document work.',
-      takenOn: new Date('2026-08-09T00:00:00.000Z'),
+      takenOn: daysBefore(6),
       takenBy: fx.human.id,
       actor: HUMAN(),
     });
@@ -158,14 +183,14 @@ beforeAll(async () => {
         leadId: lead.value.id,
         qualification: 'qualified',
         note: 'Three years operating with clean statements.',
-        occurredAt: new Date('2026-08-06T00:00:00.000Z'),
+        occurredAt: daysBefore(9),
         actor: HUMAN(),
       });
       await convertLead({
         tenantId: fx.tenant.id,
         leadId: lead.value.id,
         convertedBy: 'concierge-desk',
-        convertedOn: new Date('2026-08-07T00:00:00.000Z'),
+        convertedOn: daysBefore(8),
         actor: HUMAN(),
       });
     }
