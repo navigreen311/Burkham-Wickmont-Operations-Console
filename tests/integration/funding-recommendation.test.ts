@@ -246,6 +246,37 @@ const profile = (overrides: Partial<ClientProfile> = {}): ClientProfile => ({
   ...overrides,
 });
 
+/** The two client attributes that must never reach the Ledger, as the fixture sets them. */
+const CREDIT_SCORE = 730;
+const ANNUAL_REVENUE = 1_200_000;
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+interface Leaf {
+  readonly path: string;
+  /** The key this value sits under, or '' at the root and inside arrays. */
+  readonly key: string;
+  readonly value: unknown;
+}
+
+/**
+ * Every scalar in a payload, with the key it sits under and the path to it.
+ *
+ * Recursive because a leak one level down is the same leak, and a failure that names
+ * `offeringIds[2]` is a failure somebody can act on.
+ */
+const leaves = (node: unknown, path = '$', key = ''): Leaf[] => {
+  if (Array.isArray(node)) {
+    return node.flatMap((item, index) => leaves(item, `${path}[${index}]`, ''));
+  }
+  if (node !== null && typeof node === 'object') {
+    return Object.entries(node).flatMap(([childKey, child]) =>
+      leaves(child, `${path}.${childKey}`, childKey),
+    );
+  }
+  return [{ path, key, value: node }];
+};
+
 describe('ranking', () => {
   it('recommends the approved, eligible, well-suited option first', async () => {
     const result = await rankCandidates({
@@ -512,12 +543,40 @@ describe('the full request path', () => {
   it('never writes client attributes into the Ledger', async () => {
     // The recommendation is computed from revenue and a credit score. Neither may reach the
     // event payload - the Ledger is the one store that cannot be corrected after the fact.
+    //
+    // CHECKED AS VALUES, NOT AS A SUBSTRING OF THE SERIALIZED PAYLOAD.
+    //
+    // This used to be `expect(JSON.stringify(payload)).not.toMatch(/730/)`, and the payload
+    // carries `offeringIds` - UUIDs. On 2026-09-16 one of them came back
+    // `7a12e3c1-7300-4a0c-...` and the test failed on a branch that had touched nothing near
+    // it. Roughly one UUID in 140 contains `730` somewhere, so a substring search over a blob
+    // that includes identifiers reddens a run every few percent of the time, on any branch and
+    // on the nightly.
+    //
+    // The rule is unchanged and the assertion is narrower, not weaker: a credit score in a
+    // string is still caught, and a credit score in a NUMBER is now caught that the old regex
+    // would have missed if it had been serialized as `7.3e2`. What is no longer caught is a
+    // coincidence inside an identifier, which was never a leak.
     const events = await read({ tenantId: fx.tenant.id, type: 'placement.recommended' });
+    expect(events.length).toBeGreaterThan(0);
+
     for (const event of events) {
-      const serialized = JSON.stringify(event.payload);
-      expect(serialized).not.toMatch(/1200000|1_200_000/);
-      expect(serialized).not.toMatch(/730/);
-      expect(serialized).not.toMatch(/annualRevenue|personalCreditScore/);
+      for (const { path, key, value } of leaves(event.payload)) {
+        // A key naming a client attribute is a leak whatever it holds.
+        expect(key, path).not.toMatch(/annualRevenue|personalCreditScore/i);
+
+        if (typeof value === 'number') {
+          expect(value, path).not.toBe(CREDIT_SCORE);
+          expect(value, path).not.toBe(ANNUAL_REVENUE);
+        }
+
+        // A value in free text still counts - "underwritten at 730" is the same leak. An
+        // identifier is exempt: a credit score cannot be inside a UUID, only coincide with one.
+        if (typeof value === 'string' && !UUID.test(value)) {
+          expect(value, path).not.toContain(String(CREDIT_SCORE));
+          expect(value, path).not.toContain(String(ANNUAL_REVENUE));
+        }
+      }
     }
   });
 
